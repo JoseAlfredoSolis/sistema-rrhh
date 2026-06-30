@@ -14,8 +14,8 @@
         var acciones = '';
         if (estado === 'pendiente' && puedeEditar()) {
           acciones =
-            '<button class="btn-mini" onclick="decidirVacaciones(\'' + v.id + '\',\'aprobada\')">Aprobar</button>' +
-            '<button class="btn-mini peligro" onclick="decidirVacaciones(\'' + v.id + '\',\'rechazada\')">Rechazar</button>';
+            '<button class="btn-mini" onclick="decidirVacaciones(\'' + escaparAttr(v.id) + '\',\'aprobada\')">Aprobar</button>' +
+            '<button class="btn-mini peligro" onclick="decidirVacaciones(\'' + escaparAttr(v.id) + '\',\'rechazada\')">Rechazar</button>';
         } else {
           acciones = '<span style="color:var(--txt-3);font-size:13px">—</span>';
         }
@@ -69,20 +69,14 @@
     }
     var btn = document.getElementById('btnGuardarVacaciones');
     btn.disabled = true; btn.textContent = 'Enviando...';
-    google.script.run
-      .withSuccessHandler(function (res) {
-        btn.disabled = false; btn.textContent = 'Solicitar';
-        if (res.ok) {
-          cerrarModalVacaciones();
-          mostrarMensaje(res.mensaje, 'exito');
-          cargarVacaciones();
-        } else { mostrarMensaje(res.mensaje, 'error'); }
-      })
-      .withFailureHandler(function (err) {
-        btn.disabled = false; btn.textContent = 'Solicitar';
-        mostrarMensaje('Error: ' + err.message, 'error');
-      })
-      .crearVacaciones(datos);
+    llamarBackend('crearVacaciones', [datos], function (res) {
+      btn.disabled = false; btn.textContent = 'Solicitar';
+      if (res.ok) {
+        cerrarModalVacaciones();
+        mostrarMensaje(res.mensaje, 'exito');
+        cargarVacaciones();
+      } else { mostrarMensaje(res.mensaje, 'error'); }
+    });
   }
 
   function decidirVacaciones(id, nuevoEstado) {

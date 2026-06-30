@@ -223,4 +223,32 @@
     html += '</div>';
     document.getElementById('importResultados').innerHTML = html;
   }
+
+  (function initImportDnD() {
+    window.addEventListener('load', function () {
+      var drop = document.getElementById('importDrop');
+      var input = document.getElementById('importFile');
+      if (!drop || !input) return;
+      ['dragenter', 'dragover'].forEach(function (ev) {
+        drop.addEventListener(ev, function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          drop.classList.add('import-drop-hover');
+        });
+      });
+      ['dragleave', 'drop'].forEach(function (ev) {
+        drop.addEventListener(ev, function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          drop.classList.remove('import-drop-hover');
+        });
+      });
+      drop.addEventListener('drop', function (e) {
+        var files = e.dataTransfer && e.dataTransfer.files;
+        if (!files || !files.length) return;
+        input.files = files;
+        leerArchivo(input);
+      });
+    });
+  })();
 </script>

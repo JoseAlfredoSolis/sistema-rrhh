@@ -97,3 +97,5 @@ clasp deploy --description "RRHH v2"
 | `appsscript.json` | JSON | Manifiesto: zona horaria, web app y scopes de OAuth |
 
 > Recuerda ajustar `timeZone` en `appsscript.json` a tu país.
+> El acceso por defecto del web app es `DOMAIN` (usuarios de tu organización).
+> Si necesitas otro nivel, edita `webapp.access` en el manifiesto.

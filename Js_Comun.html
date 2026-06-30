@@ -7,6 +7,8 @@
 
   var EMPLEADOS_SELECT = [];
   var ROL_ACTUAL = 'consulta'; // 'consulta' | 'rrhh' | 'admin'
+  var SESSION_TOKEN = '';
+  var _cargandoCount = 0;
 
   var CARGADORES = {
     dashboard:      function () { cargarDashboard(); },
@@ -69,9 +71,23 @@
       if (btnC) btnC.title = 'Mostrar menú';
     }
     refrescarEmpleadosSelect(function () {
-      mostrarVista('dashboard');
-      actualizarBadge();
-      mostrarModalPin();
+      SESSION_TOKEN = sessionStorage.getItem('rrhh-token') || '';
+      if (SESSION_TOKEN) {
+        llamarBackend('renovarSesion', [SESSION_TOKEN], function (res) {
+          if (res && res.ok && res.token) {
+            guardarTokenSesion(res.token);
+            establecerRol(res.rol);
+          } else {
+            mostrarModalPin();
+          }
+          mostrarVista('dashboard');
+          actualizarBadge();
+        });
+      } else {
+        mostrarVista('dashboard');
+        actualizarBadge();
+        mostrarModalPin();
+      }
     });
   });
 
@@ -134,7 +150,10 @@
 
   function cerrarModalPin() {
     document.getElementById('modalPin').classList.add('oculto');
-    establecerRol('consulta');
+    llamarBackend('verificarPIN', [''], function (res) {
+      if (res && res.token) guardarTokenSesion(res.token);
+      establecerRol((res && res.rol) ? res.rol : 'consulta');
+    });
   }
 
   function verificarPinUI() {
@@ -145,8 +164,15 @@
         return;
       }
       document.getElementById('modalPin').classList.add('oculto');
+      if (res.token) guardarTokenSesion(res.token);
       establecerRol(res.rol);
     });
+  }
+
+  function guardarTokenSesion(token) {
+    SESSION_TOKEN = token || '';
+    if (token) sessionStorage.setItem('rrhh-token', token);
+    else sessionStorage.removeItem('rrhh-token');
   }
 
   function establecerRol(rol) {
@@ -168,6 +194,7 @@
       if (confirm('¿Cambiar de usuario?')) {
         document.getElementById('pinInput').value = '';
         document.getElementById('pinError').textContent = '';
+        guardarTokenSesion('');
         mostrarModalPin();
       }
     };
@@ -178,7 +205,9 @@
 
   // ── Indicador de carga ────────────────────────────────────
   function mostrarCargando(visible) {
-    document.getElementById('cargando').classList.toggle('oculto', !visible);
+    _cargandoCount += visible ? 1 : -1;
+    if (_cargandoCount < 0) _cargandoCount = 0;
+    document.getElementById('cargando').classList.toggle('oculto', _cargandoCount === 0);
   }
 
   // ── Mensajes ──────────────────────────────────────────────
@@ -194,7 +223,12 @@
   // ── Helpers de formato ────────────────────────────────────
   function escapar(txt) {
     return String(txt == null ? '' : txt)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function escaparAttr(txt) {
+    return escapar(txt).replace(/`/g, '&#96;');
   }
 
   function formatoDinero(n) {
@@ -246,16 +280,25 @@
   // ── Backend helper ────────────────────────────────────────
   function llamarBackend(fn, args, alExito) {
     mostrarCargando(true);
+    args = (args || []).slice();
+    if (fn !== 'verificarPIN' && fn !== 'renovarSesion') {
+      args.push(SESSION_TOKEN || sessionStorage.getItem('rrhh-token') || '');
+    }
     var runner = google.script.run
       .withSuccessHandler(function (res) {
         mostrarCargando(false);
+        if (res && res.ok === false && res.mensaje && (
+          res.mensaje.indexOf('Sesión') !== -1 || res.mensaje.indexOf('permisos') !== -1
+        )) {
+          mostrarMensaje(res.mensaje, 'error');
+        }
         alExito(res);
       })
       .withFailureHandler(function (err) {
         mostrarCargando(false);
         mostrarMensaje('Error: ' + err.message, 'error');
       });
-    runner[fn].apply(runner, args || []);
+    runner[fn].apply(runner, args);
   }
 
   // ── Exportar a Excel (SheetJS) ────────────────────────────
@@ -300,10 +343,11 @@
           dd.classList.remove('oculto'); return;
         }
         dd.innerHTML = res.map(function (r) {
-          var ico = { empleado:'👤', departamento:'🏢', capacitacion:'📚', activo:'💻' }[r.tipo] || '🔍';
-          return '<div class="sd-item" onclick="irAResultado(\''+escapar(r.tipo)+'\',\''+escapar(r.id)+'\')">'+
+          var tipo = (r.entidad || r.tipo || '').toLowerCase();
+          var ico = { empleado:'👤', departamento:'🏢', capacitacion:'📚', activo:'💻' }[tipo] || '🔍';
+          return '<div class="sd-item" onclick="irAResultado(\''+escaparAttr(r.vista||tipo)+'\',\''+escaparAttr(r.id)+'\')">'+
             '<span class="sd-ico">'+ico+'</span>'+
-            '<span class="sd-txt"><strong>'+escapar(r.nombre)+'</strong><span class="sd-sub">'+escapar(r.subtexto||r.tipo)+'</span></span>'+
+            '<span class="sd-txt"><strong>'+escapar(r.titulo||r.nombre)+'</strong><span class="sd-sub">'+escapar(r.subtitulo||r.subtexto||tipo)+'</span></span>'+
           '</div>';
         }).join('');
         dd.classList.remove('oculto');
@@ -311,11 +355,11 @@
     }, 300);
   }
 
-  function irAResultado(tipo, id) {
-    var destino = { empleado:'empleados', departamento:'departamentos', capacitacion:'capacitaciones', activo:'activos' }[tipo] || 'empleados';
+  function irAResultado(vista, id) {
     document.getElementById('searchDropdown').classList.add('oculto');
     document.getElementById('busquedaGlobal').value = '';
-    mostrarVista(destino);
+    mostrarVista(vista || 'empleados');
+    window._resultadoBusquedaId = id || '';
   }
 
   document.addEventListener('click', function (e) {

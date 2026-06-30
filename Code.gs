@@ -6,7 +6,8 @@
  * funciones CRUD que el frontend invoca con google.script.run.
  *
  * Base de datos: una hoja de Google Sheets con una pestaña por entidad.
- * Módulo implementado en esta entrega: EMPLEADOS.
+ * Módulos: empleados, departamentos, asistencia, vacaciones, nómina,
+ * reportes, alertas, capacitaciones, evaluaciones, préstamos, etc.
  * ===================================================================
  */
 
@@ -299,7 +300,10 @@ function formatearFecha(valor) {
  * @param {Object} emp  datos del formulario.
  * @return {Object} {ok:boolean, mensaje:string, id?:string}
  */
-function crearEmpleado(emp) {
+function crearEmpleado(emp, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   var error = validarEmpleado(emp);
   if (error) {
     return { ok: false, mensaje: error };
@@ -335,7 +339,10 @@ function crearEmpleado(emp) {
  * @param {Object} emp  datos del formulario (incluye emp.id).
  * @return {Object} {ok, mensaje}
  */
-function actualizarEmpleado(emp) {
+function actualizarEmpleado(emp, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   if (!emp || !emp.id) {
     return { ok: false, mensaje: 'Falta el identificador del empleado.' };
   }
@@ -372,7 +379,7 @@ function actualizarEmpleado(emp) {
 
   hoja.getRange(fila, 1, 1, valores.length).setValues([valores]);
 
-  if (salarioAnterior > 0 && salarioAnterior !== salarioNuevo) {
+  if (salarioAnterior !== salarioNuevo) {
     var hojaHist = getHoja(HOJAS.HISTORIAL_SALARIOS);
     hojaHist.appendRow([generarId('HSA'), emp.id, salarioAnterior, salarioNuevo,
       formatearFecha(new Date()), emp.notasSalario || '']);
@@ -388,7 +395,10 @@ function actualizarEmpleado(emp) {
  * @param {string} nuevoEstado  'activo' o 'inactivo'.
  * @return {Object} {ok, mensaje}
  */
-function cambiarEstadoEmpleado(id, nuevoEstado) {
+function cambiarEstadoEmpleado(id, nuevoEstado, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   if (nuevoEstado !== 'activo' && nuevoEstado !== 'inactivo') {
     return { ok: false, mensaje: 'Estado no válido.' };
   }
@@ -399,6 +409,7 @@ function cambiarEstadoEmpleado(id, nuevoEstado) {
   }
   // Columna 8 = estado.
   hoja.getRange(fila, 8).setValue(nuevoEstado);
+  registrarBitacora('actualizar', 'Empleados', id, 'Estado: ' + nuevoEstado);
   var accion = (nuevoEstado === 'activo') ? 'reactivado' : 'dado de baja';
   return { ok: true, mensaje: 'Empleado ' + accion + ' correctamente.' };
 }
@@ -446,7 +457,10 @@ function departamentoDuplicado(nombre, idExcluir) {
 }
 
 /** Crea un departamento. */
-function crearDepartamento(d) {
+function crearDepartamento(d, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   var error = validarDepartamento(d);
   if (error) return { ok: false, mensaje: error };
   if (departamentoDuplicado(d.nombre, null)) {
@@ -459,7 +473,10 @@ function crearDepartamento(d) {
 }
 
 /** Actualiza un departamento. */
-function actualizarDepartamento(d) {
+function actualizarDepartamento(d, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   if (!d || !d.id) return { ok: false, mensaje: 'Falta el identificador.' };
   var error = validarDepartamento(d);
   if (error) return { ok: false, mensaje: error };
@@ -477,7 +494,10 @@ function actualizarDepartamento(d) {
  * Elimina un departamento. No permite borrarlo si hay empleados que lo usan
  * (para no dejar registros huérfanos).
  */
-function eliminarDepartamento(id) {
+function eliminarDepartamento(id, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   var hoja = getHoja(HOJAS.DEPARTAMENTOS);
   var fila = buscarFilaPorId(hoja, id);
   if (fila === -1) return { ok: false, mensaje: 'No se encontró el departamento.' };
@@ -518,8 +538,19 @@ function calcularHoras(horaEntrada, horaSalida) {
 }
 
 /** Lista la asistencia, agregando el nombre del empleado. */
-function listarAsistencia() {
+function listarAsistencia(empleadoId, fechaDesde) {
   var registros = leerTabla(HOJAS.ASISTENCIA);
+  if (empleadoId) {
+    registros = registros.filter(function (r) {
+      return String(r.empleado_id) === String(empleadoId);
+    });
+  }
+  if (fechaDesde) {
+    var desde = formatearFecha(fechaDesde);
+    registros = registros.filter(function (r) {
+      return formatearFecha(r.fecha) >= desde;
+    });
+  }
   var nombres = mapaEmpleados();
   registros.forEach(function (r) {
     r.fecha = formatearFecha(r.fecha);
@@ -541,7 +572,10 @@ function formatearHora(valor) {
 }
 
 /** Registra un día de asistencia (entrada + salida) y calcula las horas. */
-function crearAsistencia(a) {
+function crearAsistencia(a, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   if (!a || !a.empleado_id) return { ok: false, mensaje: 'Selecciona un empleado.' };
   if (!a.fecha || isNaN(new Date(a.fecha).getTime())) {
     return { ok: false, mensaje: 'La fecha no es válida.' };
@@ -549,16 +583,28 @@ function crearAsistencia(a) {
   if (!/^\d{2}:\d{2}$/.test(a.hora_entrada || '') || !/^\d{2}:\d{2}$/.test(a.hora_salida || '')) {
     return { ok: false, mensaje: 'Las horas deben tener formato HH:mm.' };
   }
+  var fechaNorm = formatearFecha(a.fecha);
+  var duplicado = leerTabla(HOJAS.ASISTENCIA).some(function (r) {
+    return String(r.empleado_id) === String(a.empleado_id) &&
+           formatearFecha(r.fecha) === fechaNorm;
+  });
+  if (duplicado) {
+    return { ok: false, mensaje: 'Ya existe un registro de asistencia para ese empleado en esa fecha.' };
+  }
   var horas = calcularHoras(a.hora_entrada, a.hora_salida);
-  var hoja = getHoja(HOJAS.ASISTENCIA);
-  var id = generarId('ASI');
-  hoja.appendRow([id, a.empleado_id, formatearFecha(a.fecha),
-                  a.hora_entrada, a.hora_salida, horas]);
-  return { ok: true, mensaje: 'Asistencia registrada (' + horas + ' h).', id: id };
+  return conLock(function () {
+    var hoja = getHoja(HOJAS.ASISTENCIA);
+    var id = generarId('ASI');
+    hoja.appendRow([id, a.empleado_id, fechaNorm, a.hora_entrada, a.hora_salida, horas]);
+    return { ok: true, mensaje: 'Asistencia registrada (' + horas + ' h).', id: id };
+  });
 }
 
 /** Elimina un registro de asistencia. */
-function eliminarAsistencia(id) {
+function eliminarAsistencia(id, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   var hoja = getHoja(HOJAS.ASISTENCIA);
   var fila = buscarFilaPorId(hoja, id);
   if (fila === -1) return { ok: false, mensaje: 'No se encontró el registro.' };
@@ -597,7 +643,10 @@ function listarVacaciones() {
 }
 
 /** Crea una solicitud de vacaciones (nace 'pendiente'). */
-function crearVacaciones(v) {
+function crearVacaciones(v, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   if (!v || !v.empleado_id) return { ok: false, mensaje: 'Selecciona un empleado.' };
   if (!v.fecha_inicio || isNaN(new Date(v.fecha_inicio).getTime())) {
     return { ok: false, mensaje: 'La fecha de inicio no es válida.' };
@@ -609,15 +658,25 @@ function crearVacaciones(v) {
     return { ok: false, mensaje: 'La fecha de fin no puede ser anterior a la de inicio.' };
   }
   var dias = calcularDias(v.fecha_inicio, v.fecha_fin);
-  var hoja = getHoja(HOJAS.VACACIONES);
-  var id = generarId('VAC');
-  hoja.appendRow([id, v.empleado_id, formatearFecha(v.fecha_inicio),
-                  formatearFecha(v.fecha_fin), dias, 'pendiente']);
-  return { ok: true, mensaje: 'Solicitud creada (' + dias + ' días).', id: id };
+  var balance = obtenerBalanceVacaciones(v.empleado_id);
+  if (!balance.ok) return balance;
+  if (dias > balance.diasDisponibles) {
+    return { ok: false, mensaje: 'Solicitud excede días disponibles (' + balance.diasDisponibles + ').' };
+  }
+  return conLock(function () {
+    var hoja = getHoja(HOJAS.VACACIONES);
+    var id = generarId('VAC');
+    hoja.appendRow([id, v.empleado_id, formatearFecha(v.fecha_inicio),
+                    formatearFecha(v.fecha_fin), dias, 'pendiente']);
+    return { ok: true, mensaje: 'Solicitud creada (' + dias + ' días).', id: id };
+  });
 }
 
 /** Cambia el estado de una solicitud (aprobar / rechazar). */
-function cambiarEstadoVacaciones(id, nuevoEstado) {
+function cambiarEstadoVacaciones(id, nuevoEstado, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   if (['pendiente', 'aprobada', 'rechazada'].indexOf(nuevoEstado) === -1) {
     return { ok: false, mensaje: 'Estado no válido.' };
   }
@@ -658,14 +717,17 @@ function listarNomina(mesFiltro) {
  * empleado, le resta las deducciones y guarda el neto. No permite duplicar
  * la nómina del mismo empleado/mes.
  */
-function generarNomina(n) {
+function generarNomina(n, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   if (!n || !n.empleado_id) return { ok: false, mensaje: 'Selecciona un empleado.' };
   if (!/^\d{4}-\d{2}$/.test(n.mes || '')) {
     return { ok: false, mensaje: 'El mes debe tener formato AAAA-MM.' };
   }
   var deducciones = Number(n.deducciones);
-  if (isNaN(deducciones) || deducciones < 0) {
-    return { ok: false, mensaje: 'Las deducciones deben ser un número ≥ 0.' };
+  if (n.autoDeducciones || isNaN(deducciones) || deducciones < 0) {
+    deducciones = null;
   }
 
   // Evitar duplicados empleado+mes.
@@ -682,6 +744,12 @@ function generarNomina(n) {
   if (!empleado) return { ok: false, mensaje: 'Empleado no encontrado.' };
 
   var salarioBase = Number(empleado.salario) || 0;
+  if (deducciones === null) {
+    deducciones = calcularDeduccionesCR(salarioBase).total;
+  }
+  if (isNaN(deducciones) || deducciones < 0) {
+    return { ok: false, mensaje: 'Las deducciones deben ser un número ≥ 0.' };
+  }
   if (deducciones > salarioBase) {
     return { ok: false, mensaje: 'Las deducciones no pueden superar el salario base.' };
   }
@@ -694,7 +762,10 @@ function generarNomina(n) {
 }
 
 /** Elimina un registro de nómina. */
-function eliminarNomina(id) {
+function eliminarNomina(id, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   var hoja = getHoja(HOJAS.NOMINA);
   var fila = buscarFilaPorId(hoja, id);
   if (fila === -1) return { ok: false, mensaje: 'No se encontró el registro.' };
@@ -766,8 +837,10 @@ function mapaEmpleados() {
  */
 function listarEmpleadosSelect() {
   return leerTabla(HOJAS.EMPLEADOS)
-    .filter(function (e) { return String(e.estado).toLowerCase() === 'activo'; })
-    .map(function (e) { return { id: e.id, nombre: e.nombre }; });
+    .filter(function (e) { return estadoNormalizado(e.estado) === 'activo'; })
+    .map(function (e) {
+      return { id: e.id, nombre: e.nombre, salario: Number(e.salario) || 0 };
+    });
 }
 
 
@@ -866,25 +939,34 @@ var CLAVE_CONFIG_CORREO  = 'CONFIG_CORREO';
  * Devuelve la configuración del proveedor de correo.
  * Proveedores soportados: 'google' | 'sendgrid' | 'brevo'
  */
-function obtenerConfigCorreo() {
+function obtenerConfigCorreoInterno() {
   var raw = PropertiesService.getScriptProperties().getProperty(CLAVE_CONFIG_CORREO);
   var def = {
     proveedor:  'google',
     fromNombre: 'Sistema RRHH',
     fromEmail:  '',
     apiKey:     '',
-    dominio:    ''       // solo Mailgun lo requiere
+    dominio:    ''
   };
   if (!raw) return def;
   try { return Object.assign(def, JSON.parse(raw)); } catch (e) { return def; }
+}
+
+function obtenerConfigCorreo() {
+  var cfg = obtenerConfigCorreoInterno();
+  cfg.apiKey = enmascararSecreto(cfg.apiKey);
+  return cfg;
 }
 
 /**
  * Guarda la configuración del proveedor de correo.
  * Si apiKey llega vacía no sobreescribe la guardada (evita borrarla al editar).
  */
-function guardarConfigCorreo(cfg) {
-  var actual = obtenerConfigCorreo();
+function guardarConfigCorreo(cfg, token) {
+  var _authErr = requiereAdmin(token);
+  if (_authErr) return _authErr;
+
+  var actual = obtenerConfigCorreoInterno();
   if (!cfg.apiKey) cfg.apiKey = actual.apiKey; // preservar key existente si no se cambia
   PropertiesService.getScriptProperties().setProperty(CLAVE_CONFIG_CORREO, JSON.stringify(cfg));
   return { ok: true, mensaje: 'Configuración de correo guardada.' };
@@ -893,13 +975,16 @@ function guardarConfigCorreo(cfg) {
 /**
  * Envía un correo de prueba al usuario actual para verificar la config.
  */
-function probarConfigCorreo() {
+function probarConfigCorreo(token) {
+  var _authErr = requiereAdmin(token);
+  if (_authErr) return _authErr;
+
   var destino = Session.getActiveUser().getEmail();
   if (!destino) destino = obtenerConfigAlertas().destinatarios.split(',')[0].trim();
   if (!destino) return { ok: false, mensaje: 'No se pudo determinar el correo del destinatario. Configura los destinatarios en la sección Alertas.' };
 
   try {
-    var cfg = obtenerConfigCorreo();
+    var cfg = obtenerConfigCorreoInterno();
     _enviarCorreo([destino], '🧪 [PRUEBA] Configuración de correo — Sistema RRHH',
       '<p>✅ El proveedor <strong>' + cfg.proveedor + '</strong> funciona correctamente.</p>' +
       '<p>Este mensaje fue enviado desde el módulo de Configuración del Sistema RRHH.</p>');
@@ -925,7 +1010,10 @@ function obtenerConfigAlertas() {
 }
 
 /** Guarda la configuración de alertas. */
-function guardarConfigAlertas(cfg) {
+function guardarConfigAlertas(cfg, token) {
+  var _authErr = requiereAdmin(token);
+  if (_authErr) return _authErr;
+
   PropertiesService.getScriptProperties().setProperty(CLAVE_CONFIG_ALERTAS, JSON.stringify(cfg));
   return { ok: true };
 }
@@ -962,17 +1050,23 @@ function verificarAlertas() {
     var msgCump = _cuerpoProximosCumpleanios();
     if (msgCump) _enviarCorreo(emails, '🎂 Cumpleaños de empleados este mes', msgCump);
   }
+
+  var waCfg = obtenerConfigWhatsAppInterno();
+  if (waCfg.activo && waCfg.telefono && waCfg.apikey) {
+    var resumenWa = _resumenAlertaWhatsApp();
+    if (resumenWa) _enviarWhatsApp(resumenWa, waCfg);
+  }
 }
 
 /** Genera el cuerpo HTML para vacaciones pendientes. */
 function _cuerpoVacacionesPendientes() {
   var vacs      = leerTabla(HOJAS.VACACIONES);
-  var pendientes = vacs.filter(function (v) { return v.estado === 'pendiente'; });
+  var pendientes = vacs.filter(function (v) { return estadoNormalizado(v.estado) === 'pendiente'; });
   if (!pendientes.length) return null;
 
   var mapa = mapaEmpleados();
   var filas = pendientes.map(function (v) {
-    var nombre = mapa[v.empleado_id] || v.empleado_id || '—';
+    var nombre = escaparHtmlEmail(mapa[v.empleado_id] || v.empleado_id || '—');
     return '<tr>' +
       '<td style="padding:6px 10px">' + nombre + '</td>' +
       '<td style="padding:6px 10px">' + (v.fecha_inicio || '—') + '</td>' +
@@ -999,25 +1093,34 @@ function _cuerpoVacacionesPendientes() {
 /** Genera el cuerpo HTML para nómina mensual no generada. */
 function _cuerpoNominaMensual() {
   var mesActual = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM');
-  var noms      = leerTabla(HOJAS.NOMINA);
-  var yaTiene   = noms.some(function (n) { return String(n.mes) === mesActual; });
-  if (yaTiene) return null; // ya se generó la nómina este mes
+  var noms      = leerTabla(HOJAS.NOMINA).filter(function (n) { return String(n.mes) === mesActual; });
+  var activos   = leerTabla(HOJAS.EMPLEADOS).filter(function (e) {
+    return estadoNormalizado(e.estado) === 'activo';
+  });
+  if (!activos.length) return null;
+  var conNomina = {};
+  noms.forEach(function (n) { conNomina[String(n.empleado_id)] = true; });
+  var faltantes = activos.filter(function (e) { return !conNomina[String(e.id)]; });
+  if (!faltantes.length) return null;
 
-  return '<p>No se ha generado ningún registro de nómina para el mes ' +
-    '<strong>' + mesActual + '</strong>.</p>' +
-    '<p>Por favor ingresa al módulo de <strong>Nómina</strong> y genera los recibos de pago ' +
-    'para todos los empleados activos.</p>';
+  var lista = faltantes.map(function (e) {
+    return '<li>' + escaparHtmlEmail(e.nombre) + '</li>';
+  }).join('');
+
+  return '<p>Faltan <strong>' + faltantes.length + ' empleado(s) activo(s)</strong> sin nómina en ' +
+    '<strong>' + mesActual + '</strong>:</p><ul>' + lista + '</ul>' +
+    '<p>Ingresa al módulo de <strong>Nómina</strong> y genera los recibos pendientes.</p>';
 }
 
 /** Genera el cuerpo HTML del resumen semanal. */
 function _cuerpoResumenSemanal() {
   var emps    = leerTabla(HOJAS.EMPLEADOS);
-  var activos = emps.filter(function (e) { return e.estado === 'activo'; }).length;
+  var activos = emps.filter(function (e) { return estadoNormalizado(e.estado) === 'activo'; }).length;
   var inactivos = emps.length - activos;
 
   var vacs    = leerTabla(HOJAS.VACACIONES);
-  var vacPend = vacs.filter(function (v) { return v.estado === 'pendiente'; }).length;
-  var vacApro = vacs.filter(function (v) { return v.estado === 'aprobada'; }).length;
+  var vacPend = vacs.filter(function (v) { return estadoNormalizado(v.estado) === 'pendiente'; }).length;
+  var vacApro = vacs.filter(function (v) { return estadoNormalizado(v.estado) === 'aprobada'; }).length;
 
   var mesActual = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM');
   var nominaMes = leerTabla(HOJAS.NOMINA).filter(function (n) { return String(n.mes) === mesActual; });
@@ -1043,7 +1146,7 @@ function _cuerpoResumenSemanal() {
 
 /** Genera el HTML completo del correo a partir del cuerpo interior. */
 function _plantillaCorreo(cuerpoHtml) {
-  var cfg = obtenerConfigCorreo();
+  var cfg = obtenerConfigCorreoInterno();
   return '<div style="font-family:-apple-system,Arial,sans-serif;max-width:620px;margin:0 auto">' +
     '<div style="background:#2563eb;color:#fff;padding:16px 20px;border-radius:8px 8px 0 0">' +
       '<h2 style="margin:0;font-size:18px">' + (cfg.fromNombre || 'Sistema RRHH') + '</h2>' +
@@ -1062,7 +1165,7 @@ function _plantillaCorreo(cuerpoHtml) {
  * Proveedor 'google' → MailApp | 'sendgrid' → SendGrid API | 'brevo' → Brevo API
  */
 function _enviarCorreo(emails, asunto, cuerpoHtml) {
-  var cfg  = obtenerConfigCorreo();
+  var cfg  = obtenerConfigCorreoInterno();
   var html = _plantillaCorreo(cuerpoHtml);
 
   if (cfg.proveedor === 'sendgrid') {
@@ -1135,7 +1238,10 @@ function _enviarBrevo(emails, asunto, html, cfg) {
  * Envía un correo de prueba inmediato para verificar que la configuración funciona.
  * @param {string} tipo  'vacaciones' | 'nomina' | 'resumen' | 'general'
  */
-function probarAlerta(tipo) {
+function probarAlerta(tipo, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   var cfg    = obtenerConfigAlertas();
   var emails = cfg.destinatarios.split(',').map(function (e) { return e.trim(); }).filter(Boolean);
   if (!emails.length) return { ok: false, mensaje: 'Agrega al menos un destinatario antes de probar.' };
@@ -1164,7 +1270,10 @@ function probarAlerta(tipo) {
 }
 
 /** Crea (o reactiva) el trigger diario a las 8 a.m. */
-function activarTriggerAlertas() {
+function activarTriggerAlertas(token) {
+  var _authErr = requiereAdmin(token);
+  if (_authErr) return _authErr;
+
   desactivarTriggerAlertas(); // elimina duplicados
   var t = ScriptApp.newTrigger('verificarAlertas')
     .timeBased().everyDays(1).atHour(8).create();
@@ -1173,7 +1282,10 @@ function activarTriggerAlertas() {
 }
 
 /** Elimina el trigger diario si existe. */
-function desactivarTriggerAlertas() {
+function desactivarTriggerAlertas(token) {
+  var _authErr = requiereAdmin(token);
+  if (_authErr) return _authErr;
+
   ScriptApp.getProjectTriggers().forEach(function (t) {
     if (t.getHandlerFunction() === 'verificarAlertas') ScriptApp.deleteTrigger(t);
   });
@@ -1206,7 +1318,10 @@ function estadoTriggerAlertas() {
  * @param {Object[]} filas    Arreglo de objetos con los datos.
  * @return {Object}  {ok, creados, omitidos, errores:[{fila,motivo}], mensaje}
  */
-function importarDatos(entidad, filas) {
+function importarDatos(entidad, filas, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   if (!HOJAS[entidad]) {
     return { ok: false, mensaje: 'Entidad no reconocida: ' + entidad };
   }
@@ -1228,7 +1343,9 @@ function importarDatos(entidad, filas) {
           puesto:        String(fila.puesto         || '').trim(),
           fecha_ingreso: String(fila.fecha_ingreso  || '').trim(),
           salario:       fila.salario,
-          estado:        String(fila.estado || 'activo').trim().toLowerCase()
+          estado:        String(fila.estado || 'activo').trim().toLowerCase(),
+          fecha_nacimiento: String(fila.fecha_nacimiento || '').trim(),
+          telefono:      String(fila.telefono || '').trim()
         };
         if (emp.estado !== 'activo' && emp.estado !== 'inactivo') emp.estado = 'activo';
 
@@ -1238,7 +1355,9 @@ function importarDatos(entidad, filas) {
 
         hoja.appendRow([generarId('EMP'), emp.nombre, emp.cedula,
           emp.departamento, emp.puesto, formatearFecha(emp.fecha_ingreso),
-          Number(emp.salario) || 0, emp.estado]);
+          Number(emp.salario) || 0, emp.estado,
+          emp.fecha_nacimiento ? formatearFecha(emp.fecha_nacimiento) : '',
+          emp.telefono || '']);
         creados++;
 
       } else if (entidad === 'DEPARTAMENTOS') {
@@ -1331,7 +1450,10 @@ function obtenerConfiguracion() {
  * @param {string} id  ID de la hoja (la parte larga de la URL).
  * @return {Object} {ok, mensaje}
  */
-function guardarIdHoja(id) {
+function guardarIdHoja(id, token) {
+  var _authErr = requiereAdmin(token);
+  if (_authErr) return _authErr;
+
   id = String(id || '').trim();
   if (!id) {
     return { ok: false, mensaje: 'Debes indicar el ID de la hoja.' };
@@ -1358,7 +1480,10 @@ function guardarIdHoja(id) {
  * @param {string} nombre  nombre para la hoja nueva (opcional).
  * @return {Object} {ok, mensaje, url?, id?}
  */
-function crearHojaNueva(nombre) {
+function crearHojaNueva(nombre, token) {
+  var _authErr = requiereAdmin(token);
+  if (_authErr) return _authErr;
+
   nombre = String(nombre || '').trim() || 'Base RRHH';
   try {
     // 1) Crear el libro nuevo en el Drive del usuario.
@@ -1393,7 +1518,10 @@ function crearHojaNueva(nombre) {
  * Vuelve a usar la hoja ligada al proyecto (borra el ID configurado).
  * @return {Object} {ok, mensaje}
  */
-function usarHojaLigada() {
+function usarHojaLigada(token) {
+  var _authErr = requiereAdmin(token);
+  if (_authErr) return _authErr;
+
   PropertiesService.getScriptProperties().deleteProperty(CLAVE_ID_HOJA);
   var activa = SpreadsheetApp.getActiveSpreadsheet();
   if (!activa) {
@@ -1506,7 +1634,10 @@ function listarCapacitaciones(empleadoId) {
   return lista;
 }
 
-function crearCapacitacion(cap) {
+function crearCapacitacion(cap, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   if (!cap || !cap.empleado_id) return { ok: false, mensaje: 'Selecciona un empleado.' };
   if (!cap.curso || !String(cap.curso).trim()) {
     return { ok: false, mensaje: 'El nombre del curso es obligatorio.' };
@@ -1523,7 +1654,10 @@ function crearCapacitacion(cap) {
   return { ok: true, mensaje: 'Capacitación registrada.', id: id };
 }
 
-function actualizarCapacitacion(cap) {
+function actualizarCapacitacion(cap, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   if (!cap || !cap.id) return { ok: false, mensaje: 'Falta el identificador.' };
   var hoja = getHoja(HOJAS.CAPACITACIONES);
   var fila = buscarFilaPorId(hoja, cap.id);
@@ -1536,7 +1670,10 @@ function actualizarCapacitacion(cap) {
   return { ok: true, mensaje: 'Capacitación actualizada.' };
 }
 
-function eliminarCapacitacion(id) {
+function eliminarCapacitacion(id, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   var hoja = getHoja(HOJAS.CAPACITACIONES);
   var fila = buscarFilaPorId(hoja, id);
   if (fila === -1) return { ok: false, mensaje: 'No se encontró la capacitación.' };
@@ -1566,7 +1703,10 @@ function listarEvaluaciones(empleadoId) {
   return lista;
 }
 
-function crearEvaluacion(ev) {
+function crearEvaluacion(ev, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   if (!ev || !ev.empleado_id) return { ok: false, mensaje: 'Selecciona un empleado.' };
   if (!ev.periodo || !String(ev.periodo).trim()) {
     return { ok: false, mensaje: 'El período es obligatorio.' };
@@ -1584,8 +1724,15 @@ function crearEvaluacion(ev) {
   return { ok: true, mensaje: 'Evaluación registrada.', id: id };
 }
 
-function actualizarEvaluacion(ev) {
+function actualizarEvaluacion(ev, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   if (!ev || !ev.id) return { ok: false, mensaje: 'Falta el identificador.' };
+  var cal = Number(ev.calificacion);
+  if (isNaN(cal) || cal < 1 || cal > 10) {
+    return { ok: false, mensaje: 'La calificación debe ser un número entre 1 y 10.' };
+  }
   var hoja = getHoja(HOJAS.EVALUACIONES);
   var fila = buscarFilaPorId(hoja, ev.id);
   if (fila === -1) return { ok: false, mensaje: 'No se encontró la evaluación.' };
@@ -1596,7 +1743,10 @@ function actualizarEvaluacion(ev) {
   return { ok: true, mensaje: 'Evaluación actualizada.' };
 }
 
-function eliminarEvaluacion(id) {
+function eliminarEvaluacion(id, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   var hoja = getHoja(HOJAS.EVALUACIONES);
   var fila = buscarFilaPorId(hoja, id);
   if (fila === -1) return { ok: false, mensaje: 'No se encontró la evaluación.' };
@@ -1622,7 +1772,10 @@ function _getCarpetaRaizDocs() {
   return carpeta;
 }
 
-function crearCarpetaEmpleado(empleadoId) {
+function crearCarpetaEmpleado(empleadoId, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   try {
     var emp = leerTabla(HOJAS.EMPLEADOS).filter(function (e) {
       return String(e.id) === String(empleadoId);
@@ -1676,7 +1829,10 @@ function listarDocumentos(empleadoId) {
 
 var CLAVE_RESPALDO_TRIGGER = 'RESPALDO_TRIGGER_ID';
 
-function crearRespaldo() {
+function crearRespaldo(token) {
+  var _authErr = requiereAdmin(token);
+  if (_authErr) return _authErr;
+
   try {
     var libro  = getLibro();
     var fecha  = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
@@ -1688,7 +1844,10 @@ function crearRespaldo() {
   }
 }
 
-function activarRespaldoSemanal() {
+function activarRespaldoSemanal(token) {
+  var _authErr = requiereAdmin(token);
+  if (_authErr) return _authErr;
+
   desactivarRespaldoSemanal();
   var t = ScriptApp.newTrigger('crearRespaldo')
     .timeBased().everyWeeks(1).onWeekDay(ScriptApp.WeekDay.SUNDAY).atHour(2).create();
@@ -1696,7 +1855,10 @@ function activarRespaldoSemanal() {
   return { ok: true, mensaje: 'Respaldo automático semanal activado (domingos a las 2 a.m.).' };
 }
 
-function desactivarRespaldoSemanal() {
+function desactivarRespaldoSemanal(token) {
+  var _authErr = requiereAdmin(token);
+  if (_authErr) return _authErr;
+
   ScriptApp.getProjectTriggers().forEach(function (t) {
     if (t.getHandlerFunction() === 'crearRespaldo') ScriptApp.deleteTrigger(t);
   });
@@ -1713,53 +1875,39 @@ function estadoRespaldo() {
 
 
 // ===================================================================
-// MÓDULO: ROLES Y PERMISOS (basado en PIN)
-// ===================================================================
-
-var CLAVE_CONFIG_ROLES = 'CONFIG_ROLES';
-
-function obtenerConfigRoles() {
-  var raw = PropertiesService.getScriptProperties().getProperty(CLAVE_CONFIG_ROLES);
-  var def = { pinAdmin: '', pinRrhh: '' };
-  if (!raw) return def;
-  try { return Object.assign(def, JSON.parse(raw)); } catch (e) { return def; }
-}
-
-function guardarConfigRoles(cfg) {
-  PropertiesService.getScriptProperties().setProperty(CLAVE_CONFIG_ROLES, JSON.stringify(cfg));
-  return { ok: true, mensaje: 'PINs de acceso guardados.' };
-}
-
-function verificarPIN(pin) {
-  if (!pin || !String(pin).trim()) return { rol: 'consulta' };
-  var cfg = obtenerConfigRoles();
-  var p   = String(pin).trim();
-  if (cfg.pinAdmin && p === String(cfg.pinAdmin).trim()) return { rol: 'admin' };
-  if (cfg.pinRrhh  && p === String(cfg.pinRrhh).trim())  return { rol: 'rrhh' };
-  return { rol: null, mensaje: 'PIN incorrecto.' };
-}
-
-
-// ===================================================================
 // MÓDULO: NOTIFICACIONES WHATSAPP (CallMeBot)
 // ===================================================================
 
 var CLAVE_CONFIG_WHATSAPP = 'CONFIG_WHATSAPP';
 
-function obtenerConfigWhatsApp() {
+function obtenerConfigWhatsAppInterno() {
   var raw = PropertiesService.getScriptProperties().getProperty(CLAVE_CONFIG_WHATSAPP);
   var def = { telefono: '', apikey: '', activo: false };
   if (!raw) return def;
   try { return Object.assign(def, JSON.parse(raw)); } catch (e) { return def; }
 }
 
-function guardarConfigWhatsApp(cfg) {
+function obtenerConfigWhatsApp() {
+  var cfg = obtenerConfigWhatsAppInterno();
+  cfg.apikey = enmascararSecreto(cfg.apikey);
+  return cfg;
+}
+
+function guardarConfigWhatsApp(cfg, token) {
+  var _authErr = requiereAdmin(token);
+  if (_authErr) return _authErr;
+
+  var actual = obtenerConfigWhatsAppInterno();
+  if (!cfg.apikey) cfg.apikey = actual.apikey;
   PropertiesService.getScriptProperties().setProperty(CLAVE_CONFIG_WHATSAPP, JSON.stringify(cfg));
   return { ok: true, mensaje: 'Configuración de WhatsApp guardada.' };
 }
 
-function probarWhatsApp() {
-  var cfg = obtenerConfigWhatsApp();
+function probarWhatsApp(token) {
+  var _authErr = requiereAdmin(token);
+  if (_authErr) return _authErr;
+
+  var cfg = obtenerConfigWhatsAppInterno();
   if (!cfg.telefono || !cfg.apikey) {
     return { ok: false, mensaje: 'Configura el teléfono y la API Key de CallMeBot primero.' };
   }
@@ -1767,7 +1915,7 @@ function probarWhatsApp() {
 }
 
 function _enviarWhatsApp(mensaje, cfg) {
-  if (!cfg) cfg = obtenerConfigWhatsApp();
+  if (!cfg) cfg = obtenerConfigWhatsAppInterno();
   if (!cfg || !cfg.activo || !cfg.telefono || !cfg.apikey) return null;
   try {
     var url = 'https://api.callmebot.com/whatsapp.php' +
@@ -1775,10 +1923,25 @@ function _enviarWhatsApp(mensaje, cfg) {
       '&text='   + encodeURIComponent(mensaje) +
       '&apikey=' + encodeURIComponent(cfg.apikey);
     var res = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    var code = res.getResponseCode();
+    if (code >= 400) {
+      return { ok: false, mensaje: 'WhatsApp error ' + code };
+    }
     return { ok: true, mensaje: 'WhatsApp enviado.' };
   } catch (e) {
     return { ok: false, mensaje: 'Error WhatsApp: ' + e.message };
   }
+}
+
+function _resumenAlertaWhatsApp() {
+  var dash = obtenerDashboard();
+  var partes = [
+    'RRHH ' + dash.mesActual + ':',
+    dash.empleadosActivos + ' activos',
+    dash.vacacionesPendientes + ' vac. pendientes',
+    'Nómina: ' + dash.nominasMesActual + ' registros'
+  ];
+  return partes.join(' | ');
 }
 
 
@@ -1835,7 +1998,10 @@ function obtenerContadorAlertas() {
  *
  * @return {Object} {ok, mensaje, creadas:[...]}
  */
-function inicializarHojas() {
+function inicializarHojas(token) {
+  var _authErr = requiereAdmin(token);
+  if (_authErr) return _authErr;
+
   try {
     var libro = getLibro();
     var creadas = [];
@@ -2003,7 +2169,9 @@ function listarOrganigrama() {
 
 function listarResumenAsistencia(mes) {
   var registros = leerTabla(HOJAS.ASISTENCIA);
-  if (mes) registros = registros.filter(function (r) { return String(r.fecha||'').slice(0,7) === mes; });
+  if (mes) {
+    registros = registros.filter(function (r) { return mesDeFecha(r.fecha) === mes; });
+  }
   var empls = leerTabla(HOJAS.EMPLEADOS);
   var mapa = {};
   registros.forEach(function (r) {
@@ -2013,9 +2181,9 @@ function listarResumenAsistencia(mes) {
     mapa[eid].horas += Number(r.horas) || 0;
   });
   return empls.filter(function (e) { return mapa[e.id]; }).map(function (e) {
-    return { empleado_id: e.id, nombre: e.nombre, departamento: e.departamento||'-',
+    return { empleado_id: e.id, nombre: e.nombre, departamento: e.departamento || '-',
              dias: mapa[e.id].dias, horas: Math.round(mapa[e.id].horas * 10) / 10 };
-  });
+  }).sort(function (a, b) { return b.horas - a.horas; });
 }
 
 
@@ -2024,25 +2192,34 @@ function listarResumenAsistencia(mes) {
 // ===================================================================
 
 function listarPrestamos(empleadoId) {
-  var rows  = leerTabla(HOJAS.PRESTAMOS);
-  var empls = leerTabla(HOJAS.EMPLEADOS);
+  var rows = leerTabla(HOJAS.PRESTAMOS);
   if (empleadoId) rows = rows.filter(function (r) { return String(r.empleado_id) === String(empleadoId); });
-  return rows.map(function (r) {
-    var emp = empls.filter(function (e) { return String(e.id) === String(r.empleado_id); })[0] || {};
-    return Object.assign({ empleado_nombre: emp.nombre || '-' }, r);
+  return enriquecerConEmpleado(rows);
+}
+
+function crearPrestamo(datos, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
+  if (!datos || !datos.empleado_id) return { ok: false, mensaje: 'Selecciona un empleado.' };
+  var monto = Number(datos.monto);
+  var cuotas = Number(datos.cuotas);
+  if (isNaN(monto) || monto <= 0) return { ok: false, mensaje: 'El monto debe ser mayor a 0.' };
+  if (isNaN(cuotas) || cuotas <= 0) return { ok: false, mensaje: 'Las cuotas deben ser mayor a 0.' };
+  var cuota = Math.round(monto / cuotas);
+  return conLock(function () {
+    var hoja = getHoja(HOJAS.PRESTAMOS);
+    var id = generarId('PRE');
+    hoja.appendRow([id, datos.empleado_id, monto, cuotas, cuota, 0, 'activo', datos.fecha || hoy(), datos.notas || '']);
+    registrarBitacora('crear', 'Prestamo', id, 'Prestamo de ' + monto);
+    return { ok: true, mensaje: 'Préstamo registrado.' };
   });
 }
 
-function crearPrestamo(datos) {
-  var hoja  = getHoja(HOJAS.PRESTAMOS);
-  var id    = generarId();
-  var cuota = Math.round(Number(datos.monto) / Number(datos.cuotas));
-  hoja.appendRow([id, datos.empleado_id, datos.monto, datos.cuotas, cuota, 0, 'activo', datos.fecha || hoy(), datos.notas || '']);
-  registrarBitacora('crear', 'Prestamo', id, 'Prestamo de ' + datos.monto);
-  return { ok: true, mensaje: 'Préstamo registrado.' };
-}
+function actualizarPrestamo(datos, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
 
-function actualizarPrestamo(datos) {
   var hoja = getHoja(HOJAS.PRESTAMOS);
   var rows = hoja.getDataRange().getValues();
   for (var i = 1; i < rows.length; i++) {
@@ -2055,7 +2232,10 @@ function actualizarPrestamo(datos) {
   return { ok: false, mensaje: 'No encontrado.' };
 }
 
-function pagarCuotaPrestamo(id) {
+function pagarCuotaPrestamo(id, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   var hoja = getHoja(HOJAS.PRESTAMOS);
   var rows = hoja.getDataRange().getValues();
   for (var i = 1; i < rows.length; i++) {
@@ -2072,7 +2252,10 @@ function pagarCuotaPrestamo(id) {
   return { ok: false, mensaje: 'No encontrado.' };
 }
 
-function eliminarPrestamo(id) {
+function eliminarPrestamo(id, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   return eliminarFila(HOJAS.PRESTAMOS, id, 'Prestamo');
 }
 
@@ -2082,7 +2265,7 @@ function eliminarPrestamo(id) {
 // ===================================================================
 
 function listarHorasExtra(empleadoId) {
-  var rows  = leerTabla(HOJAS.HORAS_EXTRA);
+  var rows = leerTabla(HOJAS.HORAS_EXTRA);
   var empls = leerTabla(HOJAS.EMPLEADOS);
   if (empleadoId) rows = rows.filter(function (r) { return String(r.empleado_id) === String(empleadoId); });
   return rows.map(function (r) {
@@ -2095,7 +2278,10 @@ function listarHorasExtra(empleadoId) {
   });
 }
 
-function crearHoraExtra(datos) {
+function crearHoraExtra(datos, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   var hoja  = getHoja(HOJAS.HORAS_EXTRA);
   var empls = leerTabla(HOJAS.EMPLEADOS);
   var emp   = empls.filter(function (e) { return String(e.id) === String(datos.empleado_id); })[0] || {};
@@ -2110,7 +2296,10 @@ function crearHoraExtra(datos) {
   return { ok: true, mensaje: 'Horas extra registradas.' };
 }
 
-function actualizarHoraExtra(datos) {
+function actualizarHoraExtra(datos, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   var hoja = getHoja(HOJAS.HORAS_EXTRA);
   var rows = hoja.getDataRange().getValues();
   for (var i = 1; i < rows.length; i++) {
@@ -2122,7 +2311,10 @@ function actualizarHoraExtra(datos) {
   return { ok: false, mensaje: 'No encontrado.' };
 }
 
-function eliminarHoraExtra(id) {
+function eliminarHoraExtra(id, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   return eliminarFila(HOJAS.HORAS_EXTRA, id, 'HoraExtra');
 }
 
@@ -2132,16 +2324,15 @@ function eliminarHoraExtra(id) {
 // ===================================================================
 
 function listarActivos(empleadoId) {
-  var rows  = leerTabla(HOJAS.ACTIVOS);
-  var empls = leerTabla(HOJAS.EMPLEADOS);
+  var rows = leerTabla(HOJAS.ACTIVOS);
   if (empleadoId) rows = rows.filter(function (r) { return String(r.empleado_id) === String(empleadoId); });
-  return rows.map(function (r) {
-    var emp = empls.filter(function (e) { return String(e.id) === String(r.empleado_id); })[0] || {};
-    return Object.assign({ empleado_nombre: emp.nombre || '-' }, r);
-  });
+  return enriquecerConEmpleado(rows);
 }
 
-function crearActivo(datos) {
+function crearActivo(datos, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   var hoja = getHoja(HOJAS.ACTIVOS);
   var id   = generarId();
   hoja.appendRow([id, datos.empleado_id, datos.nombre, datos.categoria||'', datos.serial||'', datos.fecha_entrega||hoy(), datos.fecha_devolucion||'', datos.estado||'asignado', datos.notas||'']);
@@ -2149,7 +2340,10 @@ function crearActivo(datos) {
   return { ok: true, mensaje: 'Activo registrado.' };
 }
 
-function actualizarActivo(datos) {
+function actualizarActivo(datos, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   var hoja = getHoja(HOJAS.ACTIVOS);
   var rows = hoja.getDataRange().getValues();
   for (var i = 1; i < rows.length; i++) {
@@ -2161,7 +2355,10 @@ function actualizarActivo(datos) {
   return { ok: false, mensaje: 'No encontrado.' };
 }
 
-function eliminarActivo(id) {
+function eliminarActivo(id, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   return eliminarFila(HOJAS.ACTIVOS, id, 'Activo');
 }
 
@@ -2180,7 +2377,10 @@ function listarTurnos(semana) {
   });
 }
 
-function guardarTurno(datos) {
+function guardarTurno(datos, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   var hoja = getHoja(HOJAS.TURNOS);
   var rows = hoja.getDataRange().getValues();
   for (var i = 1; i < rows.length; i++) {
@@ -2198,7 +2398,10 @@ function guardarTurno(datos) {
   return { ok: true, mensaje: 'Turno guardado.' };
 }
 
-function eliminarTurno(id) {
+function eliminarTurno(id, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   return eliminarFila(HOJAS.TURNOS, id, 'Turno');
 }
 

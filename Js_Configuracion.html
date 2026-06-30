@@ -125,16 +125,18 @@
   function cargarConfigRoles() {
     if (!esAdmin()) return;
     llamarBackend('obtenerConfigRoles', [], function (cfg) {
+      if (!cfg || cfg.ok === false) return;
       var pa = document.getElementById('pinAdmin');
       var pr = document.getElementById('pinRrhh');
-      if (pa) pa.placeholder = cfg.pinAdmin ? '••••  (configurado)' : 'PIN de admin';
-      if (pr) pr.placeholder = cfg.pinRrhh  ? '••••  (configurado)' : 'PIN de RRHH';
+      if (pa) pa.placeholder = cfg.tienePinAdmin ? '••••  (configurado)' : 'PIN de admin';
+      if (pr) pr.placeholder = cfg.tienePinRrhh  ? '••••  (configurado)' : 'PIN de RRHH';
       if (pa) pa.value = '';
       if (pr) pr.value = '';
     });
   }
 
   function guardarRoles() {
+    if (!esAdmin()) { mostrarMensaje('Solo administradores pueden cambiar los PINs.', 'error'); return; }
     var pa = document.getElementById('pinAdmin').value.trim();
     var pr = document.getElementById('pinRrhh').value.trim();
     if (!pa && !pr) { mostrarMensaje('Escribe al menos un PIN para actualizar.', 'error'); return; }

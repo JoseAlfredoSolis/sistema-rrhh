@@ -13,19 +13,21 @@
       document.getElementById('sinDeptos').classList.toggle('oculto', DEPARTAMENTOS.length > 0);
       DEPARTAMENTOS.forEach(function (d) {
         var tr = document.createElement('tr');
+        var acciones = puedeEditar()
+          ? '<button class="btn-mini" onclick="editarDepto(\'' + escaparAttr(d.id) + '\')">Editar</button>' +
+            '<button class="btn-mini peligro" onclick="eliminarDepto(\'' + escaparAttr(d.id) + '\')">Eliminar</button>'
+          : '—';
         tr.innerHTML =
           '<td>' + escapar(d.nombre) + '</td>' +
           '<td>' + escapar(d.responsable || '—') + '</td>' +
-          '<td>' +
-            '<button class="btn-mini" onclick="editarDepto(\'' + d.id + '\')">Editar</button>' +
-            '<button class="btn-mini peligro" onclick="eliminarDepto(\'' + d.id + '\')">Eliminar</button>' +
-          '</td>';
+          '<td class="no-print">' + acciones + '</td>';
         cuerpo.appendChild(tr);
       });
     });
   }
 
   function abrirFormDepto() {
+    if (!puedeEditar()) { mostrarMensaje('Sin permisos para editar departamentos.', 'error'); return; }
     document.getElementById('formDepto').reset();
     document.getElementById('depId').value = '';
     document.getElementById('errDepNombre').textContent = '';
@@ -48,6 +50,7 @@
 
   function guardarDepto(evento) {
     evento.preventDefault();
+    if (!puedeEditar()) { mostrarMensaje('Sin permisos.', 'error'); return; }
     var datos = {
       id: document.getElementById('depId').value,
       nombre: document.getElementById('depNombre').value,
@@ -60,25 +63,20 @@
     var btn = document.getElementById('btnGuardarDepto');
     btn.disabled = true; btn.textContent = 'Guardando...';
     var fn = datos.id ? 'actualizarDepartamento' : 'crearDepartamento';
-    google.script.run
-      .withSuccessHandler(function (res) {
-        btn.disabled = false; btn.textContent = 'Guardar';
-        if (res.ok) {
-          cerrarModalDepto();
-          mostrarMensaje(res.mensaje, 'exito');
-          cargarDepartamentos();
-        } else {
-          mostrarMensaje(res.mensaje, 'error');
-        }
-      })
-      .withFailureHandler(function (err) {
-        btn.disabled = false; btn.textContent = 'Guardar';
-        mostrarMensaje('Error: ' + err.message, 'error');
-      })
-      [fn](datos);
+    llamarBackend(fn, [datos], function (res) {
+      btn.disabled = false; btn.textContent = 'Guardar';
+      if (res.ok) {
+        cerrarModalDepto();
+        mostrarMensaje(res.mensaje, 'exito');
+        cargarDepartamentos();
+      } else {
+        mostrarMensaje(res.mensaje, 'error');
+      }
+    });
   }
 
   function eliminarDepto(id) {
+    if (!puedeEditar()) { mostrarMensaje('Sin permisos.', 'error'); return; }
     if (!confirm('¿Eliminar este departamento?')) return;
     llamarBackend('eliminarDepartamento', [id], function (res) {
       mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
