@@ -685,6 +685,17 @@ function cambiarEstadoVacaciones(id, nuevoEstado, token) {
   var fila = buscarFilaPorId(hoja, id);
   if (fila === -1) return { ok: false, mensaje: 'No se encontró la solicitud.' };
   hoja.getRange(fila, 6).setValue(nuevoEstado); // columna 6 = estado
+  if (nuevoEstado === 'aprobada' || nuevoEstado === 'rechazada') {
+    var filaDatos = hoja.getRange(fila, 1, 1, 5).getValues()[0];
+    try {
+      _notificarWhatsAppVacacionDecidida({
+        empleado_id: filaDatos[1],
+        fecha_inicio: filaDatos[2],
+        fecha_fin: filaDatos[3],
+        dias: filaDatos[4]
+      }, nuevoEstado);
+    } catch (e) {}
+  }
   return { ok: true, mensaje: 'Solicitud ' + nuevoEstado + '.' };
 }
 
@@ -759,6 +770,9 @@ function generarNomina(n, token) {
   var hoja = getHoja(HOJAS.NOMINA);
   var id = generarId('NOM');
   hoja.appendRow([id, n.empleado_id, n.mes, salarioBase, deducciones, neto]);
+  try {
+    _notificarWhatsAppNominaGenerada(empleado, n.mes, salarioBase, deducciones, neto);
+  } catch (e) {}
   return { ok: true, mensaje: 'Nómina generada (neto: ' + neto + ').', id: id };
 }
 
@@ -1892,7 +1906,9 @@ function _defConfigWhatsApp() {
     alertaNomina: true,
     alertaResumen: false,
     alertaCumpleanios: true,
-    notificarNuevaVacacion: true
+    notificarNuevaVacacion: true,
+    notificarVacacionDecidida: false,
+    notificarNominaGenerada: false
   };
 }
 
@@ -2068,9 +2084,14 @@ function _enviarAlertasWhatsApp(cfgAlertas, waCfg) {
   }
 }
 
+function _whatsappEventoActivo(cfg, flag) {
+  if (!cfg || !cfg.activo || !cfg.telefono || !cfg.apikey) return false;
+  return cfg[flag] !== false;
+}
+
 function _notificarWhatsAppNuevaVacacion(v, dias) {
   var waCfg = obtenerConfigWhatsAppInterno();
-  if (!waCfg.activo || waCfg.notificarNuevaVacacion === false) return;
+  if (!_whatsappEventoActivo(waCfg, 'notificarNuevaVacacion')) return;
   var mapa = mapaEmpleados();
   var nombre = mapa[v.empleado_id] || v.empleado_id;
   var msg = '🏖 *Nueva solicitud de vacaciones*\n' +
@@ -2078,6 +2099,33 @@ function _notificarWhatsAppNuevaVacacion(v, dias) {
     'Desde: ' + formatearFecha(v.fecha_inicio) + '\n' +
     'Hasta: ' + formatearFecha(v.fecha_fin) + '\n' +
     'Días: ' + dias + '\n\nRevisa el sistema para aprobar.';
+  _enviarWhatsApp(msg, waCfg);
+}
+
+function _notificarWhatsAppVacacionDecidida(v, nuevoEstado) {
+  var waCfg = obtenerConfigWhatsAppInterno();
+  if (!_whatsappEventoActivo(waCfg, 'notificarVacacionDecidida')) return;
+  var mapa = mapaEmpleados();
+  var nombre = mapa[v.empleado_id] || v.empleado_id;
+  var icono = nuevoEstado === 'aprobada' ? '✅' : '❌';
+  var etiqueta = nuevoEstado === 'aprobada' ? 'APROBADA' : 'RECHAZADA';
+  var msg = icono + ' *Vacaciones ' + etiqueta + '*\n' +
+    'Empleado: ' + nombre + '\n' +
+    'Desde: ' + formatearFecha(v.fecha_inicio) + '\n' +
+    'Hasta: ' + formatearFecha(v.fecha_fin) + '\n' +
+    'Días: ' + (v.dias || '—');
+  _enviarWhatsApp(msg, waCfg);
+}
+
+function _notificarWhatsAppNominaGenerada(empleado, mes, salarioBase, deducciones, neto) {
+  var waCfg = obtenerConfigWhatsAppInterno();
+  if (!_whatsappEventoActivo(waCfg, 'notificarNominaGenerada')) return;
+  var msg = '💰 *Nómina generada*\n' +
+    'Empleado: ' + (empleado.nombre || empleado.id) + '\n' +
+    'Mes: ' + mes + '\n' +
+    'Salario base: ₡' + (Number(salarioBase) || 0).toLocaleString() + '\n' +
+    'Deducciones: ₡' + (Number(deducciones) || 0).toLocaleString() + '\n' +
+    'Neto: ₡' + (Number(neto) || 0).toLocaleString();
   _enviarWhatsApp(msg, waCfg);
 }
 
@@ -2102,6 +2150,10 @@ function probarWhatsApp(tipo, token) {
     mensaje = _textoResumenSemanal();
   } else if (tipo === 'cumpleanios') {
     mensaje = _textoCumpleanios() || '✅ No hay cumpleaños registrados este mes.';
+  } else if (tipo === 'vacacion_decidida') {
+    mensaje = '✅ *Vacaciones APROBADA*\nEmpleado: (ejemplo)\nDesde: 2026-07-01\nHasta: 2026-07-05\nDías: 5';
+  } else if (tipo === 'nomina_generada') {
+    mensaje = '💰 *Nómina generada*\nEmpleado: (ejemplo)\nMes: 2026-06\nSalario base: ₡500,000\nDeducciones: ₡80,000\nNeto: ₡420,000';
   } else {
     mensaje = '🧪 Prueba del Sistema RRHH\nWhatsApp configurado correctamente via CallMeBot.';
   }

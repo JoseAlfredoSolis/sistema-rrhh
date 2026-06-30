@@ -75,6 +75,8 @@
       document.getElementById('wpAlertaResumen').checked  = !!cfg.alertaResumen;
       document.getElementById('wpAlertaCumple').checked    = cfg.alertaCumpleanios !== false;
       document.getElementById('wpNotifNuevaVac').checked   = cfg.notificarNuevaVacacion !== false;
+      document.getElementById('wpNotifVacDecidida').checked = !!cfg.notificarVacacionDecidida;
+      document.getElementById('wpNotifNominaGen').checked  = !!cfg.notificarNominaGenerada;
       document.getElementById('wpApiKey').placeholder =
         cfg.apikey ? '••••••••  (ya configurada)' : 'Tu API Key de CallMeBot';
     });
@@ -90,7 +92,9 @@
       alertaNomina:          document.getElementById('wpAlertaNom').checked,
       alertaResumen:         document.getElementById('wpAlertaResumen').checked,
       alertaCumpleanios:     document.getElementById('wpAlertaCumple').checked,
-      notificarNuevaVacacion: document.getElementById('wpNotifNuevaVac').checked
+      notificarNuevaVacacion: document.getElementById('wpNotifNuevaVac').checked,
+      notificarVacacionDecidida: document.getElementById('wpNotifVacDecidida').checked,
+      notificarNominaGenerada: document.getElementById('wpNotifNominaGen').checked
     };
   }
 
