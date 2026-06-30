@@ -1,0 +1,89 @@
+<script>
+  /* ============================================================
+     MÓDULO PRÉSTAMOS — v10
+     ============================================================ */
+  var PRESTAMOS = [];
+
+  function cargarPrestamos() {
+    llenarSelectEmpleadosFiltro('filtroEmpPre');
+    var empId = (document.getElementById('filtroEmpPre')||{}).value || '';
+    llamarBackend('listarPrestamos', [empId||null], function(lista) {
+      PRESTAMOS = lista || [];
+      _pintarPrestamos();
+    });
+  }
+
+  function _pintarPrestamos() {
+    var cuerpo = document.getElementById('cuerpoPrestamos');
+    cuerpo.innerHTML = '';
+    document.getElementById('sinPrestamos').classList.toggle('oculto', PRESTAMOS.length > 0);
+    PRESTAMOS.forEach(function(p) {
+      var pct = Number(p.cuotas) > 0 ? Math.round((Number(p.cuotas_pagadas)||0) / Number(p.cuotas) * 100) : 0;
+      var estadoClass = p.estado === 'saldado' ? 'activo' : (p.estado === 'activo' ? 'pendiente' : 'inactivo');
+      var acciones = puedeEditar()
+        ? '<button class="btn-mini" onclick="pagarCuota(\''+p.id+'\')">✓ Cuota</button>' +
+          '<button class="btn-mini peligro" onclick="eliminarPrestamoUI(\''+p.id+'\')">Eliminar</button>'
+        : '<span style="color:var(--txt-3);font-size:12px">Solo lectura</span>';
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td>'+escapar(p.empleado_nombre)+'</td>'+
+        '<td>'+formatoDinero(p.monto)+'</td>'+
+        '<td style="text-align:center">'+escapar(p.cuotas)+'</td>'+
+        '<td>'+formatoDinero(p.cuota_mensual)+'</td>'+
+        '<td style="text-align:center">'+
+          '<span style="font-weight:600">'+(p.cuotas_pagadas||0)+'/'+p.cuotas+'</span> '+
+          '<small style="color:var(--txt-3)">('+pct+'%)</small></td>'+
+        '<td>'+badge(p.estado||'activo', estadoClass)+'</td>'+
+        '<td>'+escapar(p.fecha||'—')+'</td>'+
+        '<td class="no-print">'+acciones+'</td>';
+      cuerpo.appendChild(tr);
+    });
+  }
+
+  function abrirFormPrestamo() {
+    if (!puedeEditar()) { mostrarMensaje('Sin permisos.', 'error'); return; }
+    document.getElementById('formPrestamo').reset();
+    document.getElementById('preId').value = '';
+    document.getElementById('preFecha').value = new Date().toISOString().slice(0,10);
+    document.getElementById('modalPreTitulo').textContent = 'Nuevo préstamo';
+    llenarSelectEmpleados('preEmpleado');
+    document.getElementById('modalPrestamo').classList.remove('oculto');
+  }
+
+  function cerrarModalPrestamo() { document.getElementById('modalPrestamo').classList.add('oculto'); }
+
+  function guardarPrestamo(e) {
+    e.preventDefault();
+    var datos = {
+      id: document.getElementById('preId').value,
+      empleado_id: document.getElementById('preEmpleado').value,
+      monto: document.getElementById('preMonto').value,
+      cuotas: document.getElementById('preCuotas').value,
+      fecha: document.getElementById('preFecha').value,
+      notas: document.getElementById('preNotas').value
+    };
+    if (!datos.empleado_id) { mostrarMensaje('Selecciona un empleado.', 'error'); return; }
+    var fn = datos.id ? 'actualizarPrestamo' : 'crearPrestamo';
+    llamarBackend(fn, [datos], function(res) {
+      if (res.ok) { cerrarModalPrestamo(); mostrarMensaje(res.mensaje,'exito'); cargarPrestamos(); }
+      else mostrarMensaje(res.mensaje,'error');
+    });
+  }
+
+  function pagarCuota(id) {
+    if (!puedeEditar()) { mostrarMensaje('Sin permisos.', 'error'); return; }
+    if (!confirm('¿Registrar una cuota pagada para este préstamo?')) return;
+    llamarBackend('pagarCuotaPrestamo', [id], function(res) {
+      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+      if (res.ok) cargarPrestamos();
+    });
+  }
+
+  function eliminarPrestamoUI(id) {
+    if (!confirm('¿Eliminar este préstamo?')) return;
+    llamarBackend('eliminarPrestamo', [id], function(res) {
+      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+      if (res.ok) cargarPrestamos();
+    });
+  }
+</script>

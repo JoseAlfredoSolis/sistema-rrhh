@@ -48,6 +48,9 @@
       </button>
 
       <span class="nav-sep">Personal</span>
+      <button class="nav-item" data-vista="expediente"     data-tooltip="Expediente 360°" onclick="mostrarVista('expediente')">
+        <span class="nav-icon">🪪</span><span class="nav-label">Expediente</span>
+      </button>
       <button class="nav-item" data-vista="capacitaciones" data-tooltip="Capacitaciones" onclick="mostrarVista('capacitaciones')">
         <span class="nav-icon">📚</span><span class="nav-label">Capacitaciones</span>
       </button>
@@ -56,6 +59,26 @@
       </button>
       <button class="nav-item" data-vista="documentos"     data-tooltip="Documentos"     onclick="mostrarVista('documentos')">
         <span class="nav-icon">📁</span><span class="nav-label">Documentos</span>
+      </button>
+      <button class="nav-item" data-vista="prestamos"      data-tooltip="Préstamos"      onclick="mostrarVista('prestamos')">
+        <span class="nav-icon">💳</span><span class="nav-label">Préstamos</span>
+      </button>
+      <button class="nav-item" data-vista="horasextra"     data-tooltip="Horas Extra"    onclick="mostrarVista('horasextra')">
+        <span class="nav-icon">⏰</span><span class="nav-label">Horas Extra</span>
+      </button>
+      <button class="nav-item" data-vista="activos"        data-tooltip="Activos"        onclick="mostrarVista('activos')">
+        <span class="nav-icon">🖥️</span><span class="nav-label">Activos</span>
+      </button>
+      <button class="nav-item" data-vista="turnos"         data-tooltip="Turnos"         onclick="mostrarVista('turnos')">
+        <span class="nav-icon">🗓️</span><span class="nav-label">Turnos</span>
+      </button>
+
+      <span class="nav-sep">Análisis</span>
+      <button class="nav-item" data-vista="calendario"     data-tooltip="Calendario"     onclick="mostrarVista('calendario')">
+        <span class="nav-icon">📅</span><span class="nav-label">Calendario</span>
+      </button>
+      <button class="nav-item" data-vista="organigrama"    data-tooltip="Organigrama"    onclick="mostrarVista('organigrama')">
+        <span class="nav-icon">🏗️</span><span class="nav-label">Organigrama</span>
       </button>
 
       <span class="nav-sep">Sistema</span>
@@ -83,6 +106,10 @@
     <header class="topbar">
       <button class="topbar-toggle" onclick="toggleSidebar()">☰</button>
       <span class="topbar-titulo" id="topbarTitulo">Dashboard</span>
+      <div class="topbar-search-wrap">
+        <input type="text" id="busquedaGlobal" class="topbar-search" placeholder="🔍 Buscar…" oninput="busquedaGlobalUI(this.value)" autocomplete="off">
+        <div id="searchDropdown" class="search-dropdown oculto"></div>
+      </div>
       <div class="topbar-right">
         <div id="cargando" class="cargando oculto"><span class="spinner"></span> Cargando...</div>
       </div>
@@ -659,6 +686,111 @@
 
     </section>
 
+    <!-- ====== VISTA: EXPEDIENTE COMPLETO ====== -->
+    <section id="vista-expediente" class="vista oculto">
+      <div class="barra-acciones">
+        <h2 class="titulo-vista">Expediente de empleado</h2>
+        <select id="filtroEmpExp" onchange="cargarExpediente()" style="min-width:200px"><option value="">— Selecciona empleado —</option></select>
+      </div>
+      <div id="expedientePanel" class="oculto">
+        <div class="exp-header" id="expHeader"></div>
+        <div class="exp-secciones" id="expSecciones"></div>
+      </div>
+    </section>
+
+    <!-- ====== VISTA: PRÉSTAMOS ====== -->
+    <section id="vista-prestamos" class="vista oculto">
+      <div class="barra-acciones">
+        <h2 class="titulo-vista">Préstamos a empleados</h2>
+        <select id="filtroEmpPre" onchange="cargarPrestamos()" style="min-width:180px"><option value="">Todos</option></select>
+        <button class="btn btn-primario" onclick="abrirFormPrestamo()">+ Nuevo préstamo</button>
+        <button class="btn" onclick="exportarTabla('tablaPrestamos','Prestamos')">⬇ Excel</button>
+      </div>
+      <div class="tabla-envoltorio">
+        <table class="tabla" id="tablaPrestamos">
+          <thead><tr><th>Empleado</th><th>Monto</th><th>Cuotas</th><th>Cuota/mes</th><th>Pagadas</th><th>Estado</th><th>Fecha</th><th class="no-print">Acciones</th></tr></thead>
+          <tbody id="cuerpoPrestamos"></tbody>
+        </table>
+        <p id="sinPrestamos" class="sin-datos oculto">No hay préstamos registrados.</p>
+      </div>
+    </section>
+
+    <!-- ====== VISTA: HORAS EXTRA ====== -->
+    <section id="vista-horasextra" class="vista oculto">
+      <div class="barra-acciones">
+        <h2 class="titulo-vista">Horas extra</h2>
+        <select id="filtroEmpHex" onchange="cargarHorasExtra()" style="min-width:180px"><option value="">Todos</option></select>
+        <button class="btn btn-primario" onclick="abrirFormHoraExtra()">+ Registrar</button>
+        <button class="btn" onclick="exportarTabla('tablaHorasExtra','HorasExtra')">⬇ Excel</button>
+      </div>
+      <div class="tabla-envoltorio">
+        <table class="tabla" id="tablaHorasExtra">
+          <thead><tr><th>Empleado</th><th>Fecha</th><th>Horas</th><th>Tipo</th><th>Monto</th><th>Aprobado</th><th class="no-print">Acciones</th></tr></thead>
+          <tbody id="cuerpoHorasExtra"></tbody>
+        </table>
+        <p id="sinHorasExtra" class="sin-datos oculto">No hay horas extra registradas.</p>
+      </div>
+    </section>
+
+    <!-- ====== VISTA: ACTIVOS ====== -->
+    <section id="vista-activos" class="vista oculto">
+      <div class="barra-acciones">
+        <h2 class="titulo-vista">Activos asignados</h2>
+        <select id="filtroEmpAct" onchange="cargarActivos()" style="min-width:180px"><option value="">Todos</option></select>
+        <button class="btn btn-primario" onclick="abrirFormActivo()">+ Registrar activo</button>
+        <button class="btn" onclick="exportarTabla('tablaActivos','Activos')">⬇ Excel</button>
+      </div>
+      <div class="tabla-envoltorio">
+        <table class="tabla" id="tablaActivos">
+          <thead><tr><th>Empleado</th><th>Activo</th><th>Categoría</th><th>Serial</th><th>Entrega</th><th>Estado</th><th class="no-print">Acciones</th></tr></thead>
+          <tbody id="cuerpoActivos"></tbody>
+        </table>
+        <p id="sinActivos" class="sin-datos oculto">No hay activos registrados.</p>
+      </div>
+    </section>
+
+    <!-- ====== VISTA: TURNOS ====== -->
+    <section id="vista-turnos" class="vista oculto">
+      <div class="barra-acciones">
+        <h2 class="titulo-vista">Gestión de turnos</h2>
+        <input type="week" id="filtroSemana" onchange="cargarTurnos()" style="min-width:160px">
+        <button class="btn btn-primario" onclick="abrirFormTurno()">+ Asignar turno</button>
+        <button class="btn" onclick="exportarTabla('tablaTurnos','Turnos')">⬇ Excel</button>
+      </div>
+      <div class="tabla-envoltorio">
+        <table class="tabla" id="tablaTurnos">
+          <thead><tr><th>Empleado</th><th>Semana</th><th>Lun</th><th>Mar</th><th>Mié</th><th>Jue</th><th>Vie</th><th>Sáb</th><th>Dom</th><th class="no-print">Acciones</th></tr></thead>
+          <tbody id="cuerpoTurnos"></tbody>
+        </table>
+        <p id="sinTurnos" class="sin-datos oculto">No hay turnos registrados.</p>
+      </div>
+    </section>
+
+    <!-- ====== VISTA: CALENDARIO ====== -->
+    <section id="vista-calendario" class="vista oculto">
+      <div class="barra-acciones">
+        <h2 class="titulo-vista">Calendario de eventos</h2>
+        <button class="btn" onclick="mesAnterior()">‹ Anterior</button>
+        <span id="labelMesCalendario" style="font-weight:600;min-width:140px;text-align:center"></span>
+        <button class="btn" onclick="mesSiguiente()">Siguiente ›</button>
+      </div>
+      <div id="calendarioGrid" class="calendario-grid"></div>
+      <div class="cal-leyenda">
+        <span class="cal-dot" style="background:#ec4899"></span> Cumpleaños &nbsp;
+        <span class="cal-dot" style="background:#10b981"></span> Vacaciones &nbsp;
+        <span class="cal-dot" style="background:#f59e0b"></span> Horas extra
+      </div>
+    </section>
+
+    <!-- ====== VISTA: ORGANIGRAMA ====== -->
+    <section id="vista-organigrama" class="vista oculto">
+      <div class="barra-acciones">
+        <h2 class="titulo-vista">Organigrama</h2>
+        <button class="btn" onclick="cargarOrganigrama()">↺ Actualizar</button>
+      </div>
+      <div id="organigramaContenido" class="org-grid"></div>
+    </section>
+
   </main>
   </div><!-- /main-area -->
 </div><!-- /app-layout -->
@@ -849,6 +981,78 @@
     </div>
   </div>
 
+  <!-- Modal Préstamo -->
+  <div id="modalPrestamo" class="modal oculto">
+    <div class="modal-contenido">
+      <div class="modal-cabecera"><h2 id="modalPreTitulo">Nuevo préstamo</h2><button class="cerrar" onclick="cerrarModalPrestamo()">&times;</button></div>
+      <form id="formPrestamo" onsubmit="guardarPrestamo(event)">
+        <input type="hidden" id="preId">
+        <div class="campo"><label>Empleado *</label><select id="preEmpleado" required></select></div>
+        <div class="campo"><label>Monto (₡) *</label><input type="number" id="preMonto" required min="1" placeholder="500000"></div>
+        <div class="campo"><label>Número de cuotas *</label><input type="number" id="preCuotas" required min="1" max="60" placeholder="12"></div>
+        <div class="campo"><label>Fecha</label><input type="date" id="preFecha"></div>
+        <div class="campo"><label>Notas</label><input type="text" id="preNotas" maxlength="100"></div>
+        <div class="modal-pie"><button type="button" class="btn btn-secundario" onclick="cerrarModalPrestamo()">Cancelar</button><button type="submit" class="btn btn-primario" id="btnGuardarPre">Guardar</button></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal Hora Extra -->
+  <div id="modalHoraExtra" class="modal oculto">
+    <div class="modal-contenido">
+      <div class="modal-cabecera"><h2 id="modalHexTitulo">Registrar horas extra</h2><button class="cerrar" onclick="cerrarModalHoraExtra()">&times;</button></div>
+      <form id="formHoraExtra" onsubmit="guardarHoraExtra(event)">
+        <input type="hidden" id="hexId">
+        <div class="campo"><label>Empleado *</label><select id="hexEmpleado" required></select></div>
+        <div class="campo"><label>Fecha *</label><input type="date" id="hexFecha" required></div>
+        <div class="campo"><label>Horas *</label><input type="number" id="hexHoras" required min="0.5" max="24" step="0.5" placeholder="2"></div>
+        <div class="campo"><label>Tipo</label><select id="hexTipo"><option value="normal">Normal (50%)</option><option value="nocturna">Nocturna (75%)</option><option value="feriado">Feriado (100%)</option></select></div>
+        <div class="campo"><label>Estado aprobación</label><select id="hexAprobado"><option value="pendiente">Pendiente</option><option value="aprobado">Aprobado</option><option value="rechazado">Rechazado</option></select></div>
+        <div class="campo"><label>Notas</label><input type="text" id="hexNotas" maxlength="100"></div>
+        <div class="modal-pie"><button type="button" class="btn btn-secundario" onclick="cerrarModalHoraExtra()">Cancelar</button><button type="submit" class="btn btn-primario" id="btnGuardarHex">Guardar</button></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal Activo -->
+  <div id="modalActivo" class="modal oculto">
+    <div class="modal-contenido">
+      <div class="modal-cabecera"><h2 id="modalActTitulo">Registrar activo</h2><button class="cerrar" onclick="cerrarModalActivo()">&times;</button></div>
+      <form id="formActivo" onsubmit="guardarActivo(event)">
+        <input type="hidden" id="actId">
+        <div class="campo"><label>Empleado *</label><select id="actEmpleado" required></select></div>
+        <div class="campo"><label>Nombre del activo *</label><input type="text" id="actNombre" required maxlength="80" placeholder="Laptop Dell, Uniforme, etc."></div>
+        <div class="campo"><label>Categoría</label><select id="actCategoria"><option value="equipo">Equipo de cómputo</option><option value="uniforme">Uniforme</option><option value="herramienta">Herramienta</option><option value="vehiculo">Vehículo</option><option value="otro">Otro</option></select></div>
+        <div class="campo"><label>Serial / Código</label><input type="text" id="actSerial" maxlength="50"></div>
+        <div class="campo"><label>Fecha de entrega</label><input type="date" id="actFechaEntrega"></div>
+        <div class="campo"><label>Estado</label><select id="actEstado"><option value="asignado">Asignado</option><option value="devuelto">Devuelto</option><option value="dañado">Dañado</option><option value="perdido">Perdido</option></select></div>
+        <div class="campo"><label>Notas</label><input type="text" id="actNotas" maxlength="100"></div>
+        <div class="modal-pie"><button type="button" class="btn btn-secundario" onclick="cerrarModalActivo()">Cancelar</button><button type="submit" class="btn btn-primario" id="btnGuardarAct">Guardar</button></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal Turno -->
+  <div id="modalTurno" class="modal oculto">
+    <div class="modal-contenido">
+      <div class="modal-cabecera"><h2>Asignar turno</h2><button class="cerrar" onclick="cerrarModalTurno()">&times;</button></div>
+      <form id="formTurno" onsubmit="guardarTurnoUI(event)">
+        <div class="campo"><label>Empleado *</label><select id="turEmpleado" required></select></div>
+        <div class="campo"><label>Semana *</label><input type="week" id="turSemana" required></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="campo"><label>Lunes</label><input type="text" id="turLun" placeholder="07:00-16:00" maxlength="20"></div>
+          <div class="campo"><label>Martes</label><input type="text" id="turMar" placeholder="07:00-16:00" maxlength="20"></div>
+          <div class="campo"><label>Miércoles</label><input type="text" id="turMie" placeholder="07:00-16:00" maxlength="20"></div>
+          <div class="campo"><label>Jueves</label><input type="text" id="turJue" placeholder="07:00-16:00" maxlength="20"></div>
+          <div class="campo"><label>Viernes</label><input type="text" id="turVie" placeholder="07:00-16:00" maxlength="20"></div>
+          <div class="campo"><label>Sábado</label><input type="text" id="turSab" placeholder="Libre" maxlength="20"></div>
+          <div class="campo"><label>Domingo</label><input type="text" id="turDom" placeholder="Libre" maxlength="20"></div>
+        </div>
+        <div class="modal-pie"><button type="button" class="btn btn-secundario" onclick="cerrarModalTurno()">Cancelar</button><button type="submit" class="btn btn-primario">Guardar</button></div>
+      </form>
+    </div>
+  </div>
+
   <!-- Modal PIN de acceso -->
   <div id="modalPin" class="modal oculto">
     <div class="modal-contenido" style="max-width:360px">
@@ -884,6 +1088,13 @@
   <?!= include('Js_Evaluaciones'); ?>
   <?!= include('Js_Documentos'); ?>
   <?!= include('Js_Bitacora'); ?>
+  <?!= include('Js_Prestamos'); ?>
+  <?!= include('Js_HorasExtra'); ?>
+  <?!= include('Js_Activos'); ?>
+  <?!= include('Js_Turnos'); ?>
+  <?!= include('Js_Expediente'); ?>
+  <?!= include('Js_Calendario'); ?>
+  <?!= include('Js_Organigrama'); ?>
 
 </body>
 </html>

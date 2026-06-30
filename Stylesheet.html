@@ -980,4 +980,250 @@ body.dark .guia-nota          { color: #93c5fd; }
   .vista { display: block !important; }
   section.vista:not(.oculto) { display: block !important; }
 }
+
+/* ── Búsqueda global (topbar) ────────────────────────────── */
+.topbar-search-wrap { position: relative; }
+.topbar-search {
+  padding: 7px 14px 7px 36px;
+  border: 1.5px solid var(--border);
+  border-radius: 20px;
+  font-size: 13.5px;
+  font-family: inherit;
+  background: var(--bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E") no-repeat 12px center;
+  color: var(--txt);
+  width: 240px;
+  transition: border-color .15s, box-shadow .15s, width .2s;
+}
+.topbar-search:focus { outline: none; border-color: var(--p); box-shadow: 0 0 0 3px var(--p-ring); width: 300px; }
+.search-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: max(100%, 320px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-l);
+  z-index: 500;
+  overflow: hidden;
+  animation: fadeModal .1s ease;
+}
+.sd-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background .12s;
+}
+.sd-item:hover  { background: var(--bg); }
+.sd-ico         { font-size: 16px; flex-shrink: 0; }
+.sd-txt         { display: flex; flex-direction: column; gap: 1px; }
+.sd-txt strong  { font-size: 13.5px; font-weight: 600; color: var(--txt); }
+.sd-sub         { font-size: 11.5px; color: var(--txt-3); }
+.sd-empty       { padding: 20px; text-align: center; color: var(--txt-3); font-size: 13px; }
+
+/* ── Dashboard: gráficas ─────────────────────────────────── */
+.dash-chart-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 18px 20px;
+  box-shadow: var(--sh-s);
+}
+.dash-chart-titulo {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--txt-2);
+  margin-bottom: 14px;
+}
+
+/* ── Paginación ──────────────────────────────────────────── */
+.paginacion {
+  display: flex; justify-content: center; align-items: center;
+  gap: 4px; padding: 14px 0 4px;
+}
+.btn-pag {
+  min-width: 32px; height: 32px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--txt-2);
+  border-radius: var(--r);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background .12s, border-color .12s, color .12s;
+  padding: 0 6px;
+}
+.btn-pag:hover:not(:disabled) { border-color: var(--p); color: var(--p); }
+.btn-pag.activo { background: var(--p); color: #fff; border-color: var(--p); font-weight: 700; }
+.btn-pag:disabled { opacity: .4; cursor: default; }
+.pag-dots { color: var(--txt-3); padding: 0 4px; line-height: 32px; }
+
+/* ── Ordenar columnas ────────────────────────────────────── */
+.tabla thead th { user-select: none; }
+.tabla thead th.sort-asc::after  { content: ' ▲'; color: var(--p); font-size: 10px; }
+.tabla thead th.sort-desc::after { content: ' ▼'; color: var(--p); font-size: 10px; }
+
+/* ── Calendario de eventos ───────────────────────────────── */
+.cal-controls {
+  display: flex; align-items: center; gap: 14px; margin-bottom: 16px;
+}
+.cal-label {
+  font-size: 16px; font-weight: 700; color: var(--txt); min-width: 180px; text-align: center;
+}
+.calendarioGrid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+.cal-header-dia {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--txt-3);
+  padding: 6px 0;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.cal-celda {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  min-height: 80px;
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  transition: border-color .14s;
+}
+.cal-celda:hover { border-color: var(--p); }
+.cal-vacia  { background: transparent; border-color: transparent; }
+.cal-hoy    { border-color: var(--p); background: var(--p-light); }
+.cal-hoy .cal-num { color: var(--p); font-weight: 700; }
+.cal-num    { font-size: 13px; font-weight: 600; color: var(--txt-2); }
+.cal-evento {
+  font-size: 10.5px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+.cal-dot    { display: inline-block; width: 7px; height: 7px; border-radius: 50%; }
+@media (max-width: 680px) {
+  .cal-celda { min-height: 50px; padding: 4px; }
+  .cal-evento { display: none; }
+  .cal-num { font-size: 11px; }
+}
+
+/* ── Organigrama ─────────────────────────────────────────── */
+.org-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+.org-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-s);
+  overflow: hidden;
+}
+.org-card-header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.org-icon {
+  width: 36px; height: 36px;
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+.org-card-nombre { font-size: 14px; font-weight: 700; color: var(--txt); }
+.org-card-resp   { font-size: 12px; color: var(--txt-3); margin-top: 2px; }
+.org-card-count  {
+  margin-left: auto; font-size: 12px; font-weight: 700;
+  padding: 3px 10px; border-radius: 999px;
+}
+.org-emp-lista  { padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.org-emp        { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: var(--r); background: var(--bg); }
+.org-emp-avatar {
+  width: 30px; height: 30px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700; flex-shrink: 0;
+}
+.org-emp-info           { display: flex; flex-direction: column; gap: 1px; }
+.org-emp-info strong    { font-size: 13px; color: var(--txt); }
+.org-emp-info span      { font-size: 11.5px; color: var(--txt-3); }
+
+/* ── Expediente 360° ─────────────────────────────────────── */
+.exp-header {
+  display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 20px 24px;
+  box-shadow: var(--sh-s);
+  margin-bottom: 16px;
+}
+.exp-avatar {
+  width: 64px; height: 64px; border-radius: 50%;
+  background: var(--p); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 28px; font-weight: 700; flex-shrink: 0;
+}
+.exp-datos { flex: 1; min-width: 180px; }
+.exp-datos h2  { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+.exp-datos p   { font-size: 13px; color: var(--txt-2); line-height: 1.5; }
+.exp-kpis {
+  display: flex; gap: 16px; flex-wrap: wrap;
+}
+.exp-kpi {
+  display: flex; flex-direction: column; gap: 2px;
+  background: var(--bg); border-radius: var(--r); padding: 10px 16px;
+  text-align: center; min-width: 100px;
+}
+.exp-kpi-num { font-size: 18px; font-weight: 700; color: var(--txt); }
+.exp-kpi-lbl { font-size: 11px; color: var(--txt-3); text-transform: uppercase; letter-spacing: .05em; }
+.exp-seccion {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-lg); overflow: hidden;
+  box-shadow: var(--sh-s); margin-bottom: 12px;
+}
+.exp-sec-titulo {
+  font-size: 13.5px; font-weight: 700;
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+  background: var(--bg); color: var(--txt);
+}
+.exp-sec-titulo + * { padding: 0; }
+
+/* ── Desglose de deducciones (nómina / expediente) ───────── */
+.ded-grid {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 14px 16px;
+}
+.ded-item { display: flex; justify-content: space-between; align-items: center; }
+.ded-lbl  { font-size: 13px; color: var(--txt-2); }
+.ded-val  { font-size: 14px; font-weight: 600; color: var(--txt); }
+.ded-preview {
+  display: flex; gap: 16px; flex-wrap: wrap; align-items: center;
+  background: var(--bg); border-radius: var(--r);
+  padding: 10px 14px; margin-top: 8px; font-size: 13px;
+}
+.ded-preview span { color: var(--txt-2); }
+
+/* ── Módulos: badges adicionales ─────────────────────────── */
+.badge.saldado     { background: var(--info-bg); color: #1e40af; }
+.badge.saldado::before   { background: var(--info); }
+.badge.asignado    { background: var(--ok-bg); color: var(--ok-txt); }
+.badge.asignado::before  { background: var(--ok); }
+.badge.devuelto    { background: #f1f5f9; color: var(--txt-2); }
+.badge.devuelto::before  { background: var(--txt-3); }
+.badge.aprobado    { background: var(--ok-bg); color: var(--ok-txt); }
+.badge.aprobado::before  { background: var(--ok); }
+.badge.rechazado   { background: var(--err-bg); color: var(--err-txt); }
+.badge.rechazado::before { background: var(--err); }
 </style>

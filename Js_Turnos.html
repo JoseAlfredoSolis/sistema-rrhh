@@ -1,0 +1,95 @@
+<script>
+  /* ============================================================
+     MÓDULO TURNOS — v10
+     ============================================================ */
+  var TURNOS = [];
+  var DIAS_SEMANA = ['lunes','martes','miercoles','jueves','viernes','sabado','domingo'];
+
+  function cargarTurnos() {
+    var semana = (document.getElementById('filtroSemana')||{}).value || '';
+    llamarBackend('listarTurnos', [semana||null], function(lista) {
+      TURNOS = lista || [];
+      _pintarTurnos();
+    });
+  }
+
+  function _pintarTurnos() {
+    var cuerpo = document.getElementById('cuerpoTurnos');
+    cuerpo.innerHTML = '';
+    document.getElementById('sinTurnos').classList.toggle('oculto', TURNOS.length > 0);
+    TURNOS.forEach(function(t) {
+      var acciones = puedeEditar()
+        ? '<button class="btn-mini" onclick="editarTurnoUI(\''+t.id+'\')">Editar</button>'+
+          '<button class="btn-mini peligro" onclick="eliminarTurnoUI(\''+t.id+'\')">Eliminar</button>'
+        : '';
+      var tr = document.createElement('tr');
+      var celdas = DIAS_SEMANA.map(function(d) {
+        var val = t[d]||'';
+        return '<td style="font-size:11px;text-align:center;color:'+(val?'var(--txt-1)':'var(--txt-3)')+'">'+
+          (val || '—')+'</td>';
+      }).join('');
+      tr.innerHTML =
+        '<td>'+escapar(t.empleado_nombre)+'</td>'+
+        '<td>'+escapar(t.semana||'—')+'</td>'+
+        celdas+
+        '<td class="no-print">'+acciones+'</td>';
+      cuerpo.appendChild(tr);
+    });
+  }
+
+  function abrirFormTurno() {
+    if (!puedeEditar()) { mostrarMensaje('Sin permisos.', 'error'); return; }
+    document.getElementById('formTurno').reset();
+    llenarSelectEmpleados('turEmpleado');
+    document.getElementById('modalTurno').classList.remove('oculto');
+  }
+
+  function editarTurnoUI(id) {
+    if (!puedeEditar()) return;
+    var t = TURNOS.filter(function(x){ return String(x.id)===String(id); })[0];
+    if (!t) return;
+    llenarSelectEmpleados('turEmpleado');
+    setTimeout(function(){
+      document.getElementById('turEmpleado').value = t.empleado_id;
+      document.getElementById('turSemana').value   = t.semana||'';
+      document.getElementById('turLun').value  = t.lunes||'';
+      document.getElementById('turMar').value  = t.martes||'';
+      document.getElementById('turMie').value  = t.miercoles||'';
+      document.getElementById('turJue').value  = t.jueves||'';
+      document.getElementById('turVie').value  = t.viernes||'';
+      document.getElementById('turSab').value  = t.sabado||'';
+      document.getElementById('turDom').value  = t.domingo||'';
+    }, 80);
+    document.getElementById('modalTurno').classList.remove('oculto');
+  }
+
+  function cerrarModalTurno() { document.getElementById('modalTurno').classList.add('oculto'); }
+
+  function guardarTurnoUI(e) {
+    e.preventDefault();
+    var datos = {
+      empleado_id: document.getElementById('turEmpleado').value,
+      semana:      document.getElementById('turSemana').value,
+      lunes:       document.getElementById('turLun').value,
+      martes:      document.getElementById('turMar').value,
+      miercoles:   document.getElementById('turMie').value,
+      jueves:      document.getElementById('turJue').value,
+      viernes:     document.getElementById('turVie').value,
+      sabado:      document.getElementById('turSab').value,
+      domingo:     document.getElementById('turDom').value
+    };
+    if (!datos.empleado_id || !datos.semana) { mostrarMensaje('Empleado y semana son obligatorios.', 'error'); return; }
+    llamarBackend('guardarTurno', [datos], function(res) {
+      if (res.ok) { cerrarModalTurno(); mostrarMensaje(res.mensaje,'exito'); cargarTurnos(); }
+      else mostrarMensaje(res.mensaje,'error');
+    });
+  }
+
+  function eliminarTurnoUI(id) {
+    if (!confirm('¿Eliminar este turno?')) return;
+    llamarBackend('eliminarTurno', [id], function(res) {
+      mostrarMensaje(res.mensaje, res.ok?'exito':'error');
+      if (res.ok) cargarTurnos();
+    });
+  }
+</script>

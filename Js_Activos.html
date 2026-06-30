@@ -1,0 +1,96 @@
+<script>
+  /* ============================================================
+     MÓDULO ACTIVOS ASIGNADOS — v10
+     ============================================================ */
+  var ACTIVOS = [];
+
+  function cargarActivos() {
+    llenarSelectEmpleadosFiltro('filtroEmpAct');
+    var empId = (document.getElementById('filtroEmpAct')||{}).value || '';
+    llamarBackend('listarActivos', [empId||null], function(lista) {
+      ACTIVOS = lista || [];
+      _pintarActivos();
+    });
+  }
+
+  function _pintarActivos() {
+    var cuerpo = document.getElementById('cuerpoActivos');
+    cuerpo.innerHTML = '';
+    document.getElementById('sinActivos').classList.toggle('oculto', ACTIVOS.length > 0);
+    ACTIVOS.forEach(function(a) {
+      var estClass = a.estado === 'asignado' ? 'activo' : (a.estado === 'devuelto' ? 'inactivo' : 'pendiente');
+      var acciones = puedeEditar()
+        ? '<button class="btn-mini" onclick="editarActivoUI(\''+a.id+'\')">Editar</button>'+
+          '<button class="btn-mini peligro" onclick="eliminarActivoUI(\''+a.id+'\')">Eliminar</button>'
+        : '';
+      var iconos = { equipo:'💻', uniforme:'👕', herramienta:'🔧', vehiculo:'🚗', otro:'📦' };
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td>'+escapar(a.empleado_nombre)+'</td>'+
+        '<td><strong>'+(iconos[a.categoria]||'📦')+' '+escapar(a.nombre)+'</strong></td>'+
+        '<td>'+escapar(a.categoria||'—')+'</td>'+
+        '<td style="font-family:monospace;font-size:12px">'+escapar(a.serial||'—')+'</td>'+
+        '<td>'+escapar(a.fecha_entrega||'—')+'</td>'+
+        '<td>'+badge(a.estado||'asignado', estClass)+'</td>'+
+        '<td class="no-print">'+acciones+'</td>';
+      cuerpo.appendChild(tr);
+    });
+  }
+
+  function abrirFormActivo() {
+    if (!puedeEditar()) { mostrarMensaje('Sin permisos.', 'error'); return; }
+    document.getElementById('formActivo').reset();
+    document.getElementById('actId').value = '';
+    document.getElementById('actFechaEntrega').value = new Date().toISOString().slice(0,10);
+    document.getElementById('modalActTitulo').textContent = 'Registrar activo';
+    llenarSelectEmpleados('actEmpleado');
+    document.getElementById('modalActivo').classList.remove('oculto');
+  }
+
+  function editarActivoUI(id) {
+    if (!puedeEditar()) return;
+    var a = ACTIVOS.filter(function(x){ return String(x.id)===String(id); })[0];
+    if (!a) return;
+    document.getElementById('actId').value           = a.id;
+    document.getElementById('actNombre').value       = a.nombre||'';
+    document.getElementById('actCategoria').value    = a.categoria||'equipo';
+    document.getElementById('actSerial').value       = a.serial||'';
+    document.getElementById('actFechaEntrega').value = a.fecha_entrega||'';
+    document.getElementById('actEstado').value       = a.estado||'asignado';
+    document.getElementById('actNotas').value        = a.notas||'';
+    document.getElementById('modalActTitulo').textContent = 'Editar activo';
+    llenarSelectEmpleados('actEmpleado');
+    setTimeout(function(){ document.getElementById('actEmpleado').value = a.empleado_id; }, 100);
+    document.getElementById('modalActivo').classList.remove('oculto');
+  }
+
+  function cerrarModalActivo() { document.getElementById('modalActivo').classList.add('oculto'); }
+
+  function guardarActivo(e) {
+    e.preventDefault();
+    var datos = {
+      id:            document.getElementById('actId').value,
+      empleado_id:   document.getElementById('actEmpleado').value,
+      nombre:        document.getElementById('actNombre').value,
+      categoria:     document.getElementById('actCategoria').value,
+      serial:        document.getElementById('actSerial').value,
+      fecha_entrega: document.getElementById('actFechaEntrega').value,
+      estado:        document.getElementById('actEstado').value,
+      notas:         document.getElementById('actNotas').value
+    };
+    if (!datos.empleado_id) { mostrarMensaje('Selecciona un empleado.', 'error'); return; }
+    var fn = datos.id ? 'actualizarActivo' : 'crearActivo';
+    llamarBackend(fn, [datos], function(res) {
+      if (res.ok) { cerrarModalActivo(); mostrarMensaje(res.mensaje,'exito'); cargarActivos(); }
+      else mostrarMensaje(res.mensaje,'error');
+    });
+  }
+
+  function eliminarActivoUI(id) {
+    if (!confirm('¿Eliminar este activo?')) return;
+    llamarBackend('eliminarActivo', [id], function(res) {
+      mostrarMensaje(res.mensaje, res.ok?'exito':'error');
+      if (res.ok) cargarActivos();
+    });
+  }
+</script>

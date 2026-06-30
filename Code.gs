@@ -25,7 +25,11 @@ var HOJAS = {
   HISTORIAL_SALARIOS:'HistorialSalarios',
   CAPACITACIONES:    'Capacitaciones',
   EVALUACIONES:      'Evaluaciones',
-  BITACORA:          'Bitacora'
+  BITACORA:          'Bitacora',
+  PRESTAMOS:         'Prestamos',
+  HORAS_EXTRA:       'HorasExtra',
+  ACTIVOS:           'Activos',
+  TURNOS:            'Turnos'
 };
 
 /**
@@ -41,7 +45,11 @@ var ENCABEZADOS = {
   HistorialSalarios: ['id', 'empleado_id', 'salario_anterior', 'salario_nuevo', 'fecha', 'notas'],
   Capacitaciones:    ['id', 'empleado_id', 'curso', 'institucion', 'fecha_inicio', 'fecha_fin', 'estado', 'certificado_url'],
   Evaluaciones:      ['id', 'empleado_id', 'periodo', 'calificacion', 'comentarios', 'evaluador', 'fecha'],
-  Bitacora:          ['id', 'fecha', 'usuario', 'accion', 'entidad', 'entidad_id', 'resumen']
+  Bitacora:          ['id', 'fecha', 'usuario', 'accion', 'entidad', 'entidad_id', 'resumen'],
+  Prestamos:         ['id', 'empleado_id', 'monto', 'cuotas', 'cuota_mensual', 'cuotas_pagadas', 'estado', 'fecha', 'notas'],
+  HorasExtra:        ['id', 'empleado_id', 'fecha', 'horas', 'tipo', 'aprobado', 'monto', 'notas'],
+  Activos:           ['id', 'empleado_id', 'nombre', 'categoria', 'serial', 'fecha_entrega', 'fecha_devolucion', 'estado', 'notas'],
+  Turnos:            ['id', 'empleado_id', 'semana', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo']
 };
 
 
@@ -1863,3 +1871,377 @@ function migrarColumnas(hoja, columnasEsperadas) {
     });
   }
 }
+
+
+// ===================================================================
+// MÓDULO: CÁLCULO DE DEDUCCIONES COSTA RICA
+// ===================================================================
+
+function calcularDeduccionesCR(salario) {
+  var sal = Number(salario) || 0;
+  var ccss = Math.round(sal * 0.1067);
+  var renta = 0;
+  if      (sal <= 929000)  renta = 0;
+  else if (sal <= 1364000) renta = Math.round((sal - 929000) * 0.10);
+  else if (sal <= 2388000) renta = Math.round(43500 + (sal - 1364000) * 0.15);
+  else if (sal <= 4775000) renta = Math.round(197100 + (sal - 2388000) * 0.20);
+  else                     renta = Math.round(674500 + (sal - 4775000) * 0.25);
+  var total = ccss + renta;
+  var neto  = sal - total;
+  return { salario: sal, ccss: ccss, renta: renta, total: total, neto: neto };
+}
+
+function obtenerDeduccionesCR(empleadoId) {
+  var filas = leerTabla(HOJAS.EMPLEADOS);
+  var emp   = filas.filter(function (e) { return String(e.id) === String(empleadoId); })[0];
+  if (!emp) return { ok: false, mensaje: 'Empleado no encontrado.' };
+  var d = calcularDeduccionesCR(emp.salario);
+  return Object.assign({ ok: true }, d);
+}
+
+
+// ===================================================================
+// MÓDULO: BÚSQUEDA GLOBAL
+// ===================================================================
+
+function buscarGlobal(query) {
+  if (!query || !query.trim()) return [];
+  var q = String(query).toLowerCase().trim();
+  var resultados = [];
+
+  function agregar(entidad, id, titulo, subtitulo, vista) {
+    resultados.push({ entidad: entidad, id: id, titulo: titulo, subtitulo: subtitulo, vista: vista });
+  }
+
+  leerTabla(HOJAS.EMPLEADOS).forEach(function (e) {
+    if (String(e.nombre||'').toLowerCase().indexOf(q) !== -1 ||
+        String(e.cedula||'').toLowerCase().indexOf(q) !== -1) {
+      agregar('Empleado', e.id, e.nombre, e.departamento||'', 'empleados');
+    }
+  });
+  leerTabla(HOJAS.CAPACITACIONES).forEach(function (c) {
+    if (String(c.curso||'').toLowerCase().indexOf(q) !== -1) {
+      agregar('Capacitacion', c.id, c.curso, c.institucion||'', 'capacitaciones');
+    }
+  });
+  leerTabla(HOJAS.DEPARTAMENTOS).forEach(function (d) {
+    if (String(d.nombre||'').toLowerCase().indexOf(q) !== -1) {
+      agregar('Departamento', d.id, d.nombre, d.responsable||'', 'departamentos');
+    }
+  });
+  leerTabla(HOJAS.ACTIVOS).forEach(function (a) {
+    if (String(a.nombre||'').toLowerCase().indexOf(q) !== -1 ||
+        String(a.serial||'').toLowerCase().indexOf(q) !== -1) {
+      agregar('Activo', a.id, a.nombre, 'Serial: ' + (a.serial||'-'), 'activos');
+    }
+  });
+  return resultados.slice(0, 25);
+}
+
+
+// ===================================================================
+// MÓDULO: CALENDARIO DE EVENTOS
+// ===================================================================
+
+function listarEventosCalendario(mes, anio) {
+  var m = parseInt(mes, 10);
+  var y = parseInt(anio, 10);
+  var eventos = [];
+
+  leerTabla(HOJAS.EMPLEADOS).forEach(function (e) {
+    if (!e.fecha_nacimiento || String(e.estado||'').toLowerCase() !== 'activo') return;
+    var fn = new Date(e.fecha_nacimiento);
+    if (isNaN(fn.getTime())) return;
+    if ((fn.getMonth() + 1) === m) {
+      eventos.push({ tipo: 'cumpleanos', dia: fn.getDate(), titulo: e.nombre, color: '#ec4899' });
+    }
+  });
+
+  leerTabla(HOJAS.VACACIONES).forEach(function (v) {
+    if (String(v.estado||'').toLowerCase() !== 'aprobada') return;
+    var ini = new Date(v.fecha_inicio);
+    if (isNaN(ini.getTime())) return;
+    if ((ini.getMonth() + 1) === m && ini.getFullYear() === y) {
+      eventos.push({ tipo: 'vacaciones', dia: ini.getDate(), titulo: 'Vacaciones', color: '#10b981' });
+    }
+  });
+
+  leerTabla(HOJAS.HORAS_EXTRA).forEach(function (h) {
+    var fd = new Date(h.fecha);
+    if (isNaN(fd.getTime())) return;
+    if ((fd.getMonth() + 1) === m && fd.getFullYear() === y) {
+      eventos.push({ tipo: 'horasextra', dia: fd.getDate(), titulo: 'Horas extra', color: '#f59e0b' });
+    }
+  });
+
+  return eventos;
+}
+
+
+// ===================================================================
+// MÓDULO: ORGANIGRAMA
+// ===================================================================
+
+function listarOrganigrama() {
+  var deptos = leerTabla(HOJAS.DEPARTAMENTOS);
+  var empls  = leerTabla(HOJAS.EMPLEADOS).filter(function (e) {
+    return String(e.estado||'').toLowerCase() === 'activo';
+  });
+  return deptos.map(function (d) {
+    return {
+      id: d.id, nombre: d.nombre, responsable: d.responsable || '',
+      empleados: empls.filter(function (e) { return e.departamento === d.nombre; })
+                      .map(function (e) { return { id: e.id, nombre: e.nombre, puesto: e.puesto || '' }; })
+    };
+  });
+}
+
+
+// ===================================================================
+// MÓDULO: RESUMEN DE ASISTENCIA
+// ===================================================================
+
+function listarResumenAsistencia(mes) {
+  var registros = leerTabla(HOJAS.ASISTENCIA);
+  if (mes) registros = registros.filter(function (r) { return String(r.fecha||'').slice(0,7) === mes; });
+  var empls = leerTabla(HOJAS.EMPLEADOS);
+  var mapa = {};
+  registros.forEach(function (r) {
+    var eid = String(r.empleado_id);
+    if (!mapa[eid]) mapa[eid] = { dias: 0, horas: 0 };
+    mapa[eid].dias++;
+    mapa[eid].horas += Number(r.horas) || 0;
+  });
+  return empls.filter(function (e) { return mapa[e.id]; }).map(function (e) {
+    return { empleado_id: e.id, nombre: e.nombre, departamento: e.departamento||'-',
+             dias: mapa[e.id].dias, horas: Math.round(mapa[e.id].horas * 10) / 10 };
+  });
+}
+
+
+// ===================================================================
+// MÓDULO: PRÉSTAMOS A EMPLEADOS
+// ===================================================================
+
+function listarPrestamos(empleadoId) {
+  var rows  = leerTabla(HOJAS.PRESTAMOS);
+  var empls = leerTabla(HOJAS.EMPLEADOS);
+  if (empleadoId) rows = rows.filter(function (r) { return String(r.empleado_id) === String(empleadoId); });
+  return rows.map(function (r) {
+    var emp = empls.filter(function (e) { return String(e.id) === String(r.empleado_id); })[0] || {};
+    return Object.assign({ empleado_nombre: emp.nombre || '-' }, r);
+  });
+}
+
+function crearPrestamo(datos) {
+  var hoja  = getHoja(HOJAS.PRESTAMOS);
+  var id    = generarId();
+  var cuota = Math.round(Number(datos.monto) / Number(datos.cuotas));
+  hoja.appendRow([id, datos.empleado_id, datos.monto, datos.cuotas, cuota, 0, 'activo', datos.fecha || hoy(), datos.notas || '']);
+  registrarBitacora('crear', 'Prestamo', id, 'Prestamo de ' + datos.monto);
+  return { ok: true, mensaje: 'Préstamo registrado.' };
+}
+
+function actualizarPrestamo(datos) {
+  var hoja = getHoja(HOJAS.PRESTAMOS);
+  var rows = hoja.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]) === String(datos.id)) {
+      var cuota = Math.round(Number(datos.monto) / Number(datos.cuotas));
+      hoja.getRange(i+1, 1, 1, 9).setValues([[datos.id, datos.empleado_id, datos.monto, datos.cuotas, cuota, datos.cuotas_pagadas||0, datos.estado||'activo', datos.fecha||hoy(), datos.notas||'']]);
+      return { ok: true, mensaje: 'Préstamo actualizado.' };
+    }
+  }
+  return { ok: false, mensaje: 'No encontrado.' };
+}
+
+function pagarCuotaPrestamo(id) {
+  var hoja = getHoja(HOJAS.PRESTAMOS);
+  var rows = hoja.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]) === String(id)) {
+      var pagadas = (Number(rows[i][5]) || 0) + 1;
+      var total   = Number(rows[i][3]) || 1;
+      var estado  = pagadas >= total ? 'saldado' : 'activo';
+      hoja.getRange(i+1, 6).setValue(pagadas);
+      hoja.getRange(i+1, 7).setValue(estado);
+      registrarBitacora('actualizar', 'Prestamo', id, 'Cuota pagada ' + pagadas + '/' + total);
+      return { ok: true, mensaje: 'Cuota registrada (' + pagadas + '/' + total + ').' };
+    }
+  }
+  return { ok: false, mensaje: 'No encontrado.' };
+}
+
+function eliminarPrestamo(id) {
+  return eliminarFila(HOJAS.PRESTAMOS, id, 'Prestamo');
+}
+
+
+// ===================================================================
+// MÓDULO: HORAS EXTRA
+// ===================================================================
+
+function listarHorasExtra(empleadoId) {
+  var rows  = leerTabla(HOJAS.HORAS_EXTRA);
+  var empls = leerTabla(HOJAS.EMPLEADOS);
+  if (empleadoId) rows = rows.filter(function (r) { return String(r.empleado_id) === String(empleadoId); });
+  return rows.map(function (r) {
+    var emp = empls.filter(function (e) { return String(e.id) === String(r.empleado_id); })[0] || {};
+    if (!r.monto && emp.salario) {
+      var valorHora = Number(emp.salario) / 240;
+      r.monto = Math.round(valorHora * 1.5 * Number(r.horas));
+    }
+    return Object.assign({ empleado_nombre: emp.nombre || '-' }, r);
+  });
+}
+
+function crearHoraExtra(datos) {
+  var hoja  = getHoja(HOJAS.HORAS_EXTRA);
+  var empls = leerTabla(HOJAS.EMPLEADOS);
+  var emp   = empls.filter(function (e) { return String(e.id) === String(datos.empleado_id); })[0] || {};
+  var monto = datos.monto || 0;
+  if (!monto && emp.salario) {
+    var vh = Number(emp.salario) / 240;
+    monto  = Math.round(vh * 1.5 * Number(datos.horas));
+  }
+  var id = generarId();
+  hoja.appendRow([id, datos.empleado_id, datos.fecha||hoy(), datos.horas, datos.tipo||'normal', datos.aprobado||'pendiente', monto, datos.notas||'']);
+  registrarBitacora('crear', 'HoraExtra', id, datos.horas + ' hrs extra');
+  return { ok: true, mensaje: 'Horas extra registradas.' };
+}
+
+function actualizarHoraExtra(datos) {
+  var hoja = getHoja(HOJAS.HORAS_EXTRA);
+  var rows = hoja.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]) === String(datos.id)) {
+      hoja.getRange(i+1, 1, 1, 8).setValues([[datos.id, datos.empleado_id, datos.fecha||hoy(), datos.horas, datos.tipo||'normal', datos.aprobado||'pendiente', datos.monto||0, datos.notas||'']]);
+      return { ok: true, mensaje: 'Actualizado.' };
+    }
+  }
+  return { ok: false, mensaje: 'No encontrado.' };
+}
+
+function eliminarHoraExtra(id) {
+  return eliminarFila(HOJAS.HORAS_EXTRA, id, 'HoraExtra');
+}
+
+
+// ===================================================================
+// MÓDULO: ACTIVOS ASIGNADOS
+// ===================================================================
+
+function listarActivos(empleadoId) {
+  var rows  = leerTabla(HOJAS.ACTIVOS);
+  var empls = leerTabla(HOJAS.EMPLEADOS);
+  if (empleadoId) rows = rows.filter(function (r) { return String(r.empleado_id) === String(empleadoId); });
+  return rows.map(function (r) {
+    var emp = empls.filter(function (e) { return String(e.id) === String(r.empleado_id); })[0] || {};
+    return Object.assign({ empleado_nombre: emp.nombre || '-' }, r);
+  });
+}
+
+function crearActivo(datos) {
+  var hoja = getHoja(HOJAS.ACTIVOS);
+  var id   = generarId();
+  hoja.appendRow([id, datos.empleado_id, datos.nombre, datos.categoria||'', datos.serial||'', datos.fecha_entrega||hoy(), datos.fecha_devolucion||'', datos.estado||'asignado', datos.notas||'']);
+  registrarBitacora('crear', 'Activo', id, datos.nombre + ' asignado');
+  return { ok: true, mensaje: 'Activo registrado.' };
+}
+
+function actualizarActivo(datos) {
+  var hoja = getHoja(HOJAS.ACTIVOS);
+  var rows = hoja.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]) === String(datos.id)) {
+      hoja.getRange(i+1, 1, 1, 9).setValues([[datos.id, datos.empleado_id, datos.nombre, datos.categoria||'', datos.serial||'', datos.fecha_entrega||hoy(), datos.fecha_devolucion||'', datos.estado||'asignado', datos.notas||'']]);
+      return { ok: true, mensaje: 'Activo actualizado.' };
+    }
+  }
+  return { ok: false, mensaje: 'No encontrado.' };
+}
+
+function eliminarActivo(id) {
+  return eliminarFila(HOJAS.ACTIVOS, id, 'Activo');
+}
+
+
+// ===================================================================
+// MÓDULO: TURNOS
+// ===================================================================
+
+function listarTurnos(semana) {
+  var rows  = leerTabla(HOJAS.TURNOS);
+  var empls = leerTabla(HOJAS.EMPLEADOS);
+  if (semana) rows = rows.filter(function (r) { return String(r.semana) === String(semana); });
+  return rows.map(function (r) {
+    var emp = empls.filter(function (e) { return String(e.id) === String(r.empleado_id); })[0] || {};
+    return Object.assign({ empleado_nombre: emp.nombre || '-' }, r);
+  });
+}
+
+function guardarTurno(datos) {
+  var hoja = getHoja(HOJAS.TURNOS);
+  var rows = hoja.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][1]) === String(datos.empleado_id) && String(rows[i][2]) === String(datos.semana)) {
+      hoja.getRange(i+1, 1, 1, 10).setValues([[rows[i][0], datos.empleado_id, datos.semana,
+        datos.lunes||'', datos.martes||'', datos.miercoles||'', datos.jueves||'',
+        datos.viernes||'', datos.sabado||'', datos.domingo||'']]);
+      return { ok: true, mensaje: 'Turno actualizado.' };
+    }
+  }
+  var id = generarId();
+  hoja.appendRow([id, datos.empleado_id, datos.semana,
+    datos.lunes||'', datos.martes||'', datos.miercoles||'', datos.jueves||'',
+    datos.viernes||'', datos.sabado||'', datos.domingo||'']);
+  return { ok: true, mensaje: 'Turno guardado.' };
+}
+
+function eliminarTurno(id) {
+  return eliminarFila(HOJAS.TURNOS, id, 'Turno');
+}
+
+
+// ===================================================================
+// MÓDULO: EXPEDIENTE COMPLETO
+// ===================================================================
+
+function obtenerExpediente(empleadoId) {
+  var emp = leerTabla(HOJAS.EMPLEADOS).filter(function (e) { return String(e.id) === String(empleadoId); })[0];
+  if (!emp) return { ok: false, mensaje: 'Empleado no encontrado.' };
+  var balance = obtenerBalanceVacaciones(empleadoId);
+  return {
+    ok: true, empleado: emp, balance: balance,
+    historialSalarios: leerTabla(HOJAS.HISTORIAL_SALARIOS).filter(function (h) { return String(h.empleado_id) === String(empleadoId); }),
+    capacitaciones:    leerTabla(HOJAS.CAPACITACIONES).filter(function (c) { return String(c.empleado_id) === String(empleadoId); }),
+    evaluaciones:      leerTabla(HOJAS.EVALUACIONES).filter(function (e) { return String(e.empleado_id) === String(empleadoId); }),
+    vacaciones:        leerTabla(HOJAS.VACACIONES).filter(function (v) { return String(v.empleado_id) === String(empleadoId); }),
+    prestamos:         leerTabla(HOJAS.PRESTAMOS).filter(function (p) { return String(p.empleado_id) === String(empleadoId); }),
+    activos:           leerTabla(HOJAS.ACTIVOS).filter(function (a) { return String(a.empleado_id) === String(empleadoId); }),
+    horasExtra:        leerTabla(HOJAS.HORAS_EXTRA).filter(function (h) { return String(h.empleado_id) === String(empleadoId); })
+  };
+}
+
+
+// ===================================================================
+// UTILIDAD: eliminar fila genérica
+// ===================================================================
+
+function eliminarFila(nombreHoja, id, entidad) {
+  var hoja = getHoja(nombreHoja);
+  var rows = hoja.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]) === String(id)) {
+      hoja.deleteRow(i + 1);
+      registrarBitacora('eliminar', entidad, id, entidad + ' eliminado');
+      return { ok: true, mensaje: entidad + ' eliminado.' };
+    }
+  }
+  return { ok: false, mensaje: 'Registro no encontrado.' };
+}
+
+function hoy() {
+  return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+}
+

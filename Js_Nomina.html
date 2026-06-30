@@ -1,27 +1,27 @@
 <script>
   /* ============================================================
-     MÓDULO NÓMINA BÁSICA (frontend)
+     MÓDULO NÓMINA — v10 (+ deducciones CR automáticas)
      ============================================================ */
 
   function cargarNomina() {
     var mes = document.getElementById('filtroMes').value || '';
-    llamarBackend('listarNomina', [mes], function (lista) {
+    llamarBackend('listarNomina', [mes], function(lista) {
       lista = lista || [];
       var cuerpo = document.getElementById('cuerpoNomina');
       cuerpo.innerHTML = '';
       document.getElementById('sinNomina').classList.toggle('oculto', lista.length > 0);
-
       var total = 0;
-      lista.forEach(function (n) {
+      lista.forEach(function(n) {
         total += Number(n.neto) || 0;
         var tr = document.createElement('tr');
         tr.innerHTML =
-          '<td>' + escapar(n.empleado_nombre) + '</td>' +
-          '<td>' + escapar(n.mes) + '</td>' +
-          '<td>' + formatoDinero(n.salario_base) + '</td>' +
-          '<td>' + formatoDinero(n.deducciones) + '</td>' +
-          '<td>' + formatoDinero(n.neto) + '</td>' +
-          '<td><button class="btn-mini peligro" onclick="eliminarNom(\'' + n.id + '\')">Eliminar</button></td>';
+          '<td>'+escapar(n.empleado_nombre)+'</td>'+
+          '<td>'+escapar(n.mes)+'</td>'+
+          '<td>'+formatoDinero(n.salario_base)+'</td>'+
+          '<td>'+formatoDinero(n.deducciones)+'</td>'+
+          '<td style="font-weight:600;color:var(--ok)">'+formatoDinero(n.neto)+'</td>'+
+          '<td class="no-print"><button class="btn-mini" onclick="verDesgloseCR(\''+n.empleado_id+'\',\''+escapar(n.empleado_nombre)+'\')">Desglose</button>'+
+            '<button class="btn-mini peligro" onclick="eliminarNom(\''+n.id+'\')">Eliminar</button></td>';
         cuerpo.appendChild(tr);
       });
       document.getElementById('totalNomina').textContent = formatoDinero(total);
@@ -32,17 +32,56 @@
     document.getElementById('formNomina').reset();
     document.getElementById('errNomDed').textContent = '';
     document.getElementById('nomSalarioBase').value = '';
+    document.getElementById('nomDesglose').innerHTML = '';
     llenarSelectEmpleados('nomEmpleado');
-    // Mes actual por defecto (yyyy-MM).
     document.getElementById('nomMes').value = new Date().toISOString().slice(0, 7);
     document.getElementById('modalNomina').classList.remove('oculto');
   }
 
-  // El salario base se toma del empleado en el backend; aquí solo informamos.
   function mostrarSalarioBase() {
     var sel = document.getElementById('nomEmpleado');
-    document.getElementById('nomSalarioBase').value =
-      sel.value ? 'Se tomará del empleado seleccionado' : '';
+    if (!sel.value) { document.getElementById('nomSalarioBase').value = ''; document.getElementById('nomDesglose').innerHTML = ''; return; }
+    var emp = EMPLEADOS_SELECT.filter(function(e){ return String(e.id) === sel.value; })[0];
+    if (!emp || !emp.salario) { document.getElementById('nomSalarioBase').value = 'Se tomará del empleado'; return; }
+    document.getElementById('nomSalarioBase').value = 'Salario bruto: '+formatoDinero(emp.salario);
+    _mostrarDesgloseCR(emp.salario);
+  }
+
+  function _mostrarDesgloseCR(sal) {
+    var d = _calcDed(sal);
+    document.getElementById('nomDesglose').innerHTML =
+      '<div class="ded-preview">'+
+        '<span>CCSS (10.67%): <strong style="color:var(--err)">-'+formatoDinero(d.ccss)+'</strong></span>'+
+        '<span>Imp. Renta: <strong style="color:var(--err)">-'+formatoDinero(d.renta)+'</strong></span>'+
+        '<span>Neto estimado: <strong style="color:var(--ok)">'+formatoDinero(d.neto)+'</strong></span>'+
+      '</div>';
+    // Pre-llenar deducciones totales
+    var dedInput = document.getElementById('nomDeducciones');
+    if (dedInput && !dedInput.value) dedInput.value = d.total;
+  }
+
+  function _calcDed(sal) {
+    sal = Number(sal)||0;
+    var ccss = Math.round(sal*0.1067);
+    var renta = 0;
+    if      (sal<=929000)  renta=0;
+    else if (sal<=1364000) renta=Math.round((sal-929000)*0.10);
+    else if (sal<=2388000) renta=Math.round(43500+(sal-1364000)*0.15);
+    else if (sal<=4775000) renta=Math.round(197100+(sal-2388000)*0.20);
+    else                   renta=Math.round(674500+(sal-4775000)*0.25);
+    return { ccss:ccss, renta:renta, total:ccss+renta, neto:sal-ccss-renta };
+  }
+
+  function verDesgloseCR(empId, nombre) {
+    llamarBackend('obtenerDeduccionesCR', [empId], function(res) {
+      if (!res.ok) { mostrarMensaje(res.mensaje,'error'); return; }
+      alert('Desglose salarial: '+nombre+
+        '\nSalario bruto: '+formatoDinero(res.salario)+
+        '\nCCSS (10.67%): -'+formatoDinero(res.ccss)+
+        '\nImp. Renta: -'+formatoDinero(res.renta)+
+        '\nTotal deducido: -'+formatoDinero(res.total)+
+        '\nSalario neto: '+formatoDinero(res.neto));
+    });
   }
 
   function cerrarModalNomina() { document.getElementById('modalNomina').classList.add('oculto'); }
@@ -51,39 +90,34 @@
     evento.preventDefault();
     document.getElementById('errNomDed').textContent = '';
     var datos = {
-      empleado_id: document.getElementById('nomEmpleado').value,
-      mes: document.getElementById('nomMes').value,
-      deducciones: document.getElementById('nomDeducciones').value
+      empleado_id:  document.getElementById('nomEmpleado').value,
+      mes:          document.getElementById('nomMes').value,
+      deducciones:  document.getElementById('nomDeducciones').value
     };
     if (!datos.empleado_id) { mostrarMensaje('Selecciona un empleado.', 'error'); return; }
     var ded = Number(datos.deducciones);
     if (datos.deducciones === '' || isNaN(ded) || ded < 0) {
-      document.getElementById('errNomDed').textContent = 'Las deducciones deben ser un número ≥ 0.';
-      return;
+      document.getElementById('errNomDed').textContent = 'Las deducciones deben ser ≥ 0.'; return;
     }
-
     var btn = document.getElementById('btnGuardarNomina');
     btn.disabled = true; btn.textContent = 'Generando...';
     google.script.run
-      .withSuccessHandler(function (res) {
+      .withSuccessHandler(function(res) {
         btn.disabled = false; btn.textContent = 'Generar';
-        if (res.ok) {
-          cerrarModalNomina();
-          mostrarMensaje(res.mensaje, 'exito');
-          cargarNomina();
-        } else { mostrarMensaje(res.mensaje, 'error'); }
+        if (res.ok) { cerrarModalNomina(); mostrarMensaje(res.mensaje,'exito'); cargarNomina(); }
+        else mostrarMensaje(res.mensaje,'error');
       })
-      .withFailureHandler(function (err) {
+      .withFailureHandler(function(err) {
         btn.disabled = false; btn.textContent = 'Generar';
-        mostrarMensaje('Error: ' + err.message, 'error');
+        mostrarMensaje('Error: '+err.message,'error');
       })
       .generarNomina(datos);
   }
 
   function eliminarNom(id) {
     if (!confirm('¿Eliminar este registro de nómina?')) return;
-    llamarBackend('eliminarNomina', [id], function (res) {
-      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+    llamarBackend('eliminarNomina', [id], function(res) {
+      mostrarMensaje(res.mensaje, res.ok?'exito':'error');
       if (res.ok) cargarNomina();
     });
   }

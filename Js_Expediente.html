@@ -1,0 +1,114 @@
+<script>
+  /* ============================================================
+     MÓDULO EXPEDIENTE COMPLETO 360° — v10
+     ============================================================ */
+
+  function cargarExpediente() {
+    llenarSelectEmpleadosFiltro('filtroEmpExp');
+    var empId = (document.getElementById('filtroEmpExp')||{}).value || '';
+    var panel = document.getElementById('expedientePanel');
+    if (!empId) { panel.classList.add('oculto'); return; }
+    llamarBackend('obtenerExpediente', [empId], function(res) {
+      if (!res.ok) { mostrarMensaje(res.mensaje,'error'); return; }
+      panel.classList.remove('oculto');
+      _pintarExpHeader(res.empleado, res.balance);
+      _pintarExpSecciones(res);
+    });
+  }
+
+  function _pintarExpHeader(e, bal) {
+    var d = calcularDeduccionesCliente(e.salario);
+    document.getElementById('expHeader').innerHTML =
+      '<div class="exp-avatar">'+escapar((e.nombre||'?').charAt(0).toUpperCase())+'</div>'+
+      '<div class="exp-datos">'+
+        '<h2>'+escapar(e.nombre)+'</h2>'+
+        '<p>'+escapar(e.puesto||'Sin puesto')+' · '+escapar(e.departamento||'Sin departamento')+'</p>'+
+        '<p>Cédula: '+escapar(e.cedula||'—')+' · Ingreso: '+escapar(e.fecha_ingreso||'—')+'</p>'+
+      '</div>'+
+      '<div class="exp-kpis">'+
+        '<div class="exp-kpi"><span class="exp-kpi-num">'+formatoDinero(e.salario)+'</span><span class="exp-kpi-lbl">Salario bruto</span></div>'+
+        '<div class="exp-kpi"><span class="exp-kpi-num">'+formatoDinero(d.neto)+'</span><span class="exp-kpi-lbl">Salario neto</span></div>'+
+        '<div class="exp-kpi"><span class="exp-kpi-num">'+(bal&&bal.ok?bal.diasDisponibles:'—')+'</span><span class="exp-kpi-lbl">Días vacac. disp.</span></div>'+
+      '</div>';
+  }
+
+  function calcularDeduccionesCliente(salario) {
+    var sal = Number(salario)||0;
+    var ccss = Math.round(sal*0.1067);
+    var renta = 0;
+    if      (sal<=929000)  renta=0;
+    else if (sal<=1364000) renta=Math.round((sal-929000)*0.10);
+    else if (sal<=2388000) renta=Math.round(43500+(sal-1364000)*0.15);
+    else if (sal<=4775000) renta=Math.round(197100+(sal-2388000)*0.20);
+    else                   renta=Math.round(674500+(sal-4775000)*0.25);
+    return { ccss:ccss, renta:renta, total:ccss+renta, neto:sal-ccss-renta };
+  }
+
+  function _pintarExpSecciones(res) {
+    var html = '';
+
+    // Deducciones
+    var d = calcularDeduccionesCliente(res.empleado.salario);
+    html += _expSeccion('💰 Desglose salarial', '<div class="ded-grid">'+
+      '<div class="ded-item"><span class="ded-lbl">Salario bruto</span><span class="ded-val">'+formatoDinero(res.empleado.salario)+'</span></div>'+
+      '<div class="ded-item"><span class="ded-lbl">CCSS (10.67%)</span><span class="ded-val" style="color:var(--err)">-'+formatoDinero(d.ccss)+'</span></div>'+
+      '<div class="ded-item"><span class="ded-lbl">Imp. Renta</span><span class="ded-val" style="color:var(--err)">-'+formatoDinero(d.renta)+'</span></div>'+
+      '<div class="ded-item" style="border-top:1px solid var(--border);padding-top:8px"><span class="ded-lbl"><strong>Salario neto</strong></span><span class="ded-val" style="color:var(--ok);font-size:18px;font-weight:700">'+formatoDinero(d.neto)+'</span></div>'+
+    '</div>');
+
+    // Historial salarios
+    var hsSal = (res.historialSalarios||[]).map(function(h){
+      return '<tr><td>'+escapar(h.fecha)+'</td><td>'+formatoDinero(h.salario_anterior)+'</td><td>'+formatoDinero(h.salario_nuevo)+'</td><td>'+escapar(h.notas||'—')+'</td></tr>';
+    }).join('');
+    html += _expSeccion('📈 Historial de salarios', hsSal ?
+      '<table class="tabla" style="margin:0"><thead><tr><th>Fecha</th><th>Anterior</th><th>Nuevo</th><th>Notas</th></tr></thead><tbody>'+hsSal+'</tbody></table>'
+      : '<p class="sin-datos" style="margin:0">Sin cambios de salario.</p>');
+
+    // Vacaciones
+    var vacRows = (res.vacaciones||[]).map(function(v){
+      return '<tr><td>'+escapar(v.fecha_inicio)+'</td><td>'+escapar(v.fecha_fin)+'</td><td>'+escapar(v.dias)+'</td><td>'+badge(v.estado||'pendiente')+'</td></tr>';
+    }).join('');
+    html += _expSeccion('🌴 Vacaciones ('+( res.vacaciones||[]).length+')', vacRows ?
+      '<table class="tabla" style="margin:0"><thead><tr><th>Inicio</th><th>Fin</th><th>Días</th><th>Estado</th></tr></thead><tbody>'+vacRows+'</tbody></table>'
+      : '<p class="sin-datos" style="margin:0">Sin solicitudes.</p>');
+
+    // Capacitaciones
+    var capRows = (res.capacitaciones||[]).map(function(c){
+      return '<tr><td>'+escapar(c.curso)+'</td><td>'+escapar(c.institucion||'—')+'</td><td>'+badge(c.estado||'')+'</td></tr>';
+    }).join('');
+    html += _expSeccion('📚 Capacitaciones ('+(res.capacitaciones||[]).length+')', capRows ?
+      '<table class="tabla" style="margin:0"><thead><tr><th>Curso</th><th>Institución</th><th>Estado</th></tr></thead><tbody>'+capRows+'</tbody></table>'
+      : '<p class="sin-datos" style="margin:0">Sin capacitaciones.</p>');
+
+    // Evaluaciones
+    var evaRows = (res.evaluaciones||[]).map(function(e){
+      var c=Number(e.calificacion); var col=c>=7?'var(--ok)':c>=5?'var(--warn)':'var(--err)';
+      return '<tr><td>'+escapar(e.periodo)+'</td><td style="color:'+col+';font-weight:700">'+c.toFixed(1)+'/10</td><td>'+escapar(e.evaluador||'—')+'</td><td>'+escapar(e.fecha||'—')+'</td></tr>';
+    }).join('');
+    html += _expSeccion('⭐ Evaluaciones ('+(res.evaluaciones||[]).length+')', evaRows ?
+      '<table class="tabla" style="margin:0"><thead><tr><th>Período</th><th>Cal.</th><th>Evaluador</th><th>Fecha</th></tr></thead><tbody>'+evaRows+'</tbody></table>'
+      : '<p class="sin-datos" style="margin:0">Sin evaluaciones.</p>');
+
+    // Préstamos
+    var preRows = (res.prestamos||[]).map(function(p){
+      return '<tr><td>'+formatoDinero(p.monto)+'</td><td>'+escapar(p.cuotas_pagadas||0)+'/'+escapar(p.cuotas)+'</td><td>'+badge(p.estado||'activo')+'</td><td>'+escapar(p.fecha||'—')+'</td></tr>';
+    }).join('');
+    html += _expSeccion('💳 Préstamos ('+(res.prestamos||[]).length+')', preRows ?
+      '<table class="tabla" style="margin:0"><thead><tr><th>Monto</th><th>Cuotas</th><th>Estado</th><th>Fecha</th></tr></thead><tbody>'+preRows+'</tbody></table>'
+      : '<p class="sin-datos" style="margin:0">Sin préstamos.</p>');
+
+    // Activos
+    var actRows = (res.activos||[]).map(function(a){
+      return '<tr><td>'+escapar(a.nombre)+'</td><td>'+escapar(a.categoria||'—')+'</td><td>'+badge(a.estado||'asignado')+'</td></tr>';
+    }).join('');
+    html += _expSeccion('🖥️ Activos asignados ('+(res.activos||[]).length+')', actRows ?
+      '<table class="tabla" style="margin:0"><thead><tr><th>Activo</th><th>Categoría</th><th>Estado</th></tr></thead><tbody>'+actRows+'</tbody></table>'
+      : '<p class="sin-datos" style="margin:0">Sin activos asignados.</p>');
+
+    document.getElementById('expSecciones').innerHTML = html;
+  }
+
+  function _expSeccion(titulo, contenido) {
+    return '<div class="exp-seccion"><h3 class="exp-sec-titulo">'+titulo+'</h3>'+contenido+'</div>';
+  }
+</script>

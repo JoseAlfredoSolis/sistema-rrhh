@@ -1,0 +1,69 @@
+<script>
+  /* ============================================================
+     MÓDULO CALENDARIO DE EVENTOS — v10
+     ============================================================ */
+  var _calMes  = new Date().getMonth() + 1;
+  var _calAnio = new Date().getFullYear();
+
+  function cargarCalendario() {
+    _renderCalendario(_calMes, _calAnio);
+  }
+
+  function mesAnterior() {
+    _calMes--;
+    if (_calMes < 1) { _calMes = 12; _calAnio--; }
+    _renderCalendario(_calMes, _calAnio);
+  }
+
+  function mesSiguiente() {
+    _calMes++;
+    if (_calMes > 12) { _calMes = 1; _calAnio++; }
+    _renderCalendario(_calMes, _calAnio);
+  }
+
+  function _renderCalendario(mes, anio) {
+    var nombres = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                   'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    var label = document.getElementById('labelMesCalendario');
+    if (label) label.textContent = nombres[mes-1] + ' ' + anio;
+
+    llamarBackend('listarEventosCalendario', [mes, anio], function(eventos) {
+      var mapa = {};
+      (eventos||[]).forEach(function(ev) {
+        if (!mapa[ev.dia]) mapa[ev.dia] = [];
+        mapa[ev.dia].push(ev);
+      });
+
+      var primerDia = new Date(anio, mes-1, 1).getDay();
+      var diasEnMes = new Date(anio, mes, 0).getDate();
+      primerDia = (primerDia + 6) % 7; // convertir domingo=0 a lunes=0
+
+      var dias = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+      var html = dias.map(function(d) {
+        return '<div class="cal-header-dia">'+d+'</div>';
+      }).join('');
+
+      for (var i = 0; i < primerDia; i++) {
+        html += '<div class="cal-celda cal-vacia"></div>';
+      }
+
+      var hoy = new Date();
+      for (var dia = 1; dia <= diasEnMes; dia++) {
+        var esHoy = hoy.getDate()===dia && hoy.getMonth()+1===mes && hoy.getFullYear()===anio;
+        var evsDia = mapa[dia] || [];
+        var puntitos = evsDia.map(function(ev) {
+          return '<span class="cal-dot" style="background:'+ev.color+'" title="'+escapar(ev.titulo)+'"></span>';
+        }).join('');
+        var evTexto = evsDia.slice(0,2).map(function(ev) {
+          return '<div class="cal-evento" style="background:'+ev.color+'20;color:'+ev.color+';border-left:2px solid '+ev.color+'">'+escapar(ev.titulo.slice(0,18))+'</div>';
+        }).join('');
+        html += '<div class="cal-celda'+(esHoy?' cal-hoy':'')+'">'+
+          '<span class="cal-num">'+dia+'</span>'+
+          (evsDia.length ? evTexto : '')+
+        '</div>';
+      }
+
+      document.getElementById('calendarioGrid').innerHTML = html;
+    });
+  }
+</script>

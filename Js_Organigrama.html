@@ -1,0 +1,44 @@
+<script>
+  /* ============================================================
+     MÓDULO ORGANIGRAMA — v10
+     ============================================================ */
+
+  function cargarOrganigrama() {
+    llamarBackend('listarOrganigrama', [], function(deptos) {
+      var cont = document.getElementById('organigramaContenido');
+      if (!deptos || !deptos.length) {
+        cont.innerHTML = '<p class="sin-datos">No hay departamentos configurados.</p>';
+        return;
+      }
+      var COLORES = ['#6366f1','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#84cc16'];
+      cont.innerHTML = deptos.map(function(d, idx) {
+        var color = COLORES[idx % COLORES.length];
+        var empCards = (d.empleados||[]).map(function(e) {
+          return '<div class="org-emp">'+
+            '<div class="org-emp-avatar" style="background:'+color+'22;color:'+color+'">'+
+              escapar((e.nombre||'?').charAt(0).toUpperCase())+
+            '</div>'+
+            '<div class="org-emp-info">'+
+              '<strong>'+escapar(e.nombre)+'</strong>'+
+              '<span>'+escapar(e.puesto||'Sin puesto')+'</span>'+
+            '</div>'+
+          '</div>';
+        }).join('') || '<p style="color:var(--txt-3);font-size:12px;padding:8px 0">Sin empleados asignados</p>';
+
+        return '<div class="org-card">'+
+          '<div class="org-card-header" style="border-top:3px solid '+color+'">'+
+            '<div class="org-icon" style="background:'+color+'22;color:'+color+'">🏢</div>'+
+            '<div>'+
+              '<div class="org-card-nombre">'+escapar(d.nombre)+'</div>'+
+              (d.responsable ? '<div class="org-card-resp">👤 '+escapar(d.responsable)+'</div>' : '')+
+            '</div>'+
+            '<div class="org-card-count" style="background:'+color+'22;color:'+color+'">'+
+              (d.empleados||[]).length+' emp.'+
+            '</div>'+
+          '</div>'+
+          '<div class="org-emp-lista">'+empCards+'</div>'+
+        '</div>';
+      }).join('');
+    });
+  }
+</script>

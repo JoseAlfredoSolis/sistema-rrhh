@@ -1,0 +1,93 @@
+<script>
+  /* ============================================================
+     MÓDULO HORAS EXTRA — v10
+     ============================================================ */
+  var HORAS_EXTRA = [];
+
+  function cargarHorasExtra() {
+    llenarSelectEmpleadosFiltro('filtroEmpHex');
+    var empId = (document.getElementById('filtroEmpHex')||{}).value || '';
+    llamarBackend('listarHorasExtra', [empId||null], function(lista) {
+      HORAS_EXTRA = lista || [];
+      _pintarHorasExtra();
+    });
+  }
+
+  function _pintarHorasExtra() {
+    var cuerpo = document.getElementById('cuerpoHorasExtra');
+    cuerpo.innerHTML = '';
+    document.getElementById('sinHorasExtra').classList.toggle('oculto', HORAS_EXTRA.length > 0);
+    HORAS_EXTRA.forEach(function(h) {
+      var apClass = h.aprobado === 'aprobado' ? 'activo' : (h.aprobado === 'rechazado' ? 'inactivo' : 'pendiente');
+      var acciones = puedeEditar()
+        ? '<button class="btn-mini" onclick="editarHoraExtra(\''+h.id+'\')">Editar</button>'+
+          '<button class="btn-mini peligro" onclick="eliminarHexUI(\''+h.id+'\')">Eliminar</button>'
+        : '';
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td>'+escapar(h.empleado_nombre)+'</td>'+
+        '<td>'+escapar(h.fecha||'—')+'</td>'+
+        '<td style="font-weight:600;text-align:center">'+escapar(h.horas)+'h</td>'+
+        '<td>'+escapar(h.tipo||'normal')+'</td>'+
+        '<td>'+formatoDinero(h.monto)+'</td>'+
+        '<td>'+badge(h.aprobado||'pendiente', apClass)+'</td>'+
+        '<td class="no-print">'+acciones+'</td>';
+      cuerpo.appendChild(tr);
+    });
+  }
+
+  function abrirFormHoraExtra() {
+    if (!puedeEditar()) { mostrarMensaje('Sin permisos.', 'error'); return; }
+    document.getElementById('formHoraExtra').reset();
+    document.getElementById('hexId').value = '';
+    document.getElementById('hexFecha').value = new Date().toISOString().slice(0,10);
+    document.getElementById('modalHexTitulo').textContent = 'Registrar horas extra';
+    llenarSelectEmpleados('hexEmpleado');
+    document.getElementById('modalHoraExtra').classList.remove('oculto');
+  }
+
+  function editarHoraExtra(id) {
+    if (!puedeEditar()) return;
+    var h = HORAS_EXTRA.filter(function(x){ return String(x.id)===String(id); })[0];
+    if (!h) return;
+    document.getElementById('hexId').value       = h.id;
+    document.getElementById('hexFecha').value    = h.fecha||'';
+    document.getElementById('hexHoras').value    = h.horas||'';
+    document.getElementById('hexTipo').value     = h.tipo||'normal';
+    document.getElementById('hexAprobado').value = h.aprobado||'pendiente';
+    document.getElementById('hexNotas').value    = h.notas||'';
+    document.getElementById('modalHexTitulo').textContent = 'Editar horas extra';
+    llenarSelectEmpleados('hexEmpleado');
+    setTimeout(function(){ document.getElementById('hexEmpleado').value = h.empleado_id; }, 100);
+    document.getElementById('modalHoraExtra').classList.remove('oculto');
+  }
+
+  function cerrarModalHoraExtra() { document.getElementById('modalHoraExtra').classList.add('oculto'); }
+
+  function guardarHoraExtra(e) {
+    e.preventDefault();
+    var datos = {
+      id:          document.getElementById('hexId').value,
+      empleado_id: document.getElementById('hexEmpleado').value,
+      fecha:       document.getElementById('hexFecha').value,
+      horas:       document.getElementById('hexHoras').value,
+      tipo:        document.getElementById('hexTipo').value,
+      aprobado:    document.getElementById('hexAprobado').value,
+      notas:       document.getElementById('hexNotas').value
+    };
+    if (!datos.empleado_id) { mostrarMensaje('Selecciona un empleado.', 'error'); return; }
+    var fn = datos.id ? 'actualizarHoraExtra' : 'crearHoraExtra';
+    llamarBackend(fn, [datos], function(res) {
+      if (res.ok) { cerrarModalHoraExtra(); mostrarMensaje(res.mensaje,'exito'); cargarHorasExtra(); }
+      else mostrarMensaje(res.mensaje,'error');
+    });
+  }
+
+  function eliminarHexUI(id) {
+    if (!confirm('¿Eliminar este registro?')) return;
+    llamarBackend('eliminarHoraExtra', [id], function(res) {
+      mostrarMensaje(res.mensaje, res.ok?'exito':'error');
+      if (res.ok) cargarHorasExtra();
+    });
+  }
+</script>

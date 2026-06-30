@@ -1,7 +1,8 @@
 <script>
   /* ============================================================
-     FUNCIONES COMUNES — v9
+     FUNCIONES COMUNES — v10
      Navegación · Mensajes · Formato · Dark mode · Export · Roles
+     Búsqueda global · Paginación · Orden de columnas
      ============================================================ */
 
   var EMPLEADOS_SELECT = [];
@@ -20,7 +21,14 @@
     capacitaciones: function () { cargarCapacitaciones(); },
     evaluaciones:   function () { cargarEvaluaciones(); },
     documentos:     function () { cargarDocumentos(); },
-    bitacora:       function () { cargarBitacora(); }
+    bitacora:       function () { cargarBitacora(); },
+    prestamos:      function () { cargarPrestamos(); },
+    horasextra:     function () { cargarHorasExtra(); },
+    activos:        function () { cargarActivos(); },
+    turnos:         function () { cargarTurnos(); },
+    expediente:     function () { cargarExpediente(); },
+    calendario:     function () { cargarCalendario(); },
+    organigrama:    function () { cargarOrganigrama(); }
   };
 
   var TITULOS = {
@@ -36,7 +44,14 @@
     capacitaciones: 'Capacitaciones',
     evaluaciones:   'Evaluaciones de desempeño',
     documentos:     'Documentos',
-    bitacora:       'Bitácora de cambios'
+    bitacora:       'Bitácora de cambios',
+    prestamos:      'Préstamos a empleados',
+    horasextra:     'Horas extra',
+    activos:        'Activos asignados',
+    turnos:         'Gestión de turnos',
+    expediente:     'Expediente 360°',
+    calendario:     'Calendario de eventos',
+    organigrama:    'Organigrama'
   };
 
   window.addEventListener('load', function () {
@@ -271,4 +286,109 @@
 
   // ── Imprimir nómina ───────────────────────────────────────
   function imprimirNomina() { window.print(); }
+
+  // ── Búsqueda global ───────────────────────────────────────
+  var _busTimer = null;
+  function busquedaGlobalUI(q) {
+    clearTimeout(_busTimer);
+    var dd = document.getElementById('searchDropdown');
+    if (!q || q.trim().length < 2) { dd.classList.add('oculto'); dd.innerHTML = ''; return; }
+    _busTimer = setTimeout(function () {
+      llamarBackend('buscarGlobal', [q.trim()], function (res) {
+        if (!res || !res.length) {
+          dd.innerHTML = '<div class="sd-empty">Sin resultados para "'+escapar(q)+'"</div>';
+          dd.classList.remove('oculto'); return;
+        }
+        dd.innerHTML = res.map(function (r) {
+          var ico = { empleado:'👤', departamento:'🏢', capacitacion:'📚', activo:'💻' }[r.tipo] || '🔍';
+          return '<div class="sd-item" onclick="irAResultado(\''+escapar(r.tipo)+'\',\''+escapar(r.id)+'\')">'+
+            '<span class="sd-ico">'+ico+'</span>'+
+            '<span class="sd-txt"><strong>'+escapar(r.nombre)+'</strong><span class="sd-sub">'+escapar(r.subtexto||r.tipo)+'</span></span>'+
+          '</div>';
+        }).join('');
+        dd.classList.remove('oculto');
+      });
+    }, 300);
+  }
+
+  function irAResultado(tipo, id) {
+    var destino = { empleado:'empleados', departamento:'departamentos', capacitacion:'capacitaciones', activo:'activos' }[tipo] || 'empleados';
+    document.getElementById('searchDropdown').classList.add('oculto');
+    document.getElementById('busquedaGlobal').value = '';
+    mostrarVista(destino);
+  }
+
+  document.addEventListener('click', function (e) {
+    var dd = document.getElementById('searchDropdown');
+    if (dd && !dd.contains(e.target) && e.target.id !== 'busquedaGlobal') dd.classList.add('oculto');
+  });
+
+  // ── Paginación ────────────────────────────────────────────
+  function paginarTabla(tablaId, pagActual, porPagina) {
+    var tabla = document.getElementById(tablaId);
+    if (!tabla) return;
+    var filas = tabla.querySelectorAll('tbody tr:not(.fila-total)');
+    var total = filas.length;
+    var inicio = (pagActual - 1) * porPagina;
+    var fin    = inicio + porPagina;
+    filas.forEach(function (f, i) {
+      f.style.display = (i >= inicio && i < fin) ? '' : 'none';
+    });
+    return { total: total, paginas: Math.ceil(total / porPagina) };
+  }
+
+  function renderPaginacion(contId, pagActual, totalPag, onCambio) {
+    var cont = document.getElementById(contId);
+    if (!cont || totalPag <= 1) { if (cont) cont.innerHTML = ''; return; }
+    var html = '';
+    html += '<button class="btn-pag" '+(pagActual===1?'disabled':'')+' onclick="('+onCambio+')('+Math.max(1,pagActual-1)+')">‹</button>';
+    for (var i = 1; i <= totalPag; i++) {
+      if (totalPag > 7 && i > 2 && i < totalPag-1 && Math.abs(i-pagActual) > 1) {
+        if (i === 3 || i === totalPag-2) html += '<span class="pag-dots">…</span>';
+        continue;
+      }
+      html += '<button class="btn-pag'+(i===pagActual?' activo':'')+'" onclick="('+onCambio+')('+i+')">'+i+'</button>';
+    }
+    html += '<button class="btn-pag" '+(pagActual===totalPag?'disabled':'')+' onclick="('+onCambio+')('+Math.min(totalPag,pagActual+1)+')">›</button>';
+    cont.innerHTML = html;
+  }
+
+  // ── Ordenar columnas ──────────────────────────────────────
+  var _sortEstado = {};
+
+  function ordenarTabla(tablaId, colIdx) {
+    var tabla = document.getElementById(tablaId);
+    if (!tabla) return;
+    var key = tablaId + '_' + colIdx;
+    var asc = _sortEstado[key] !== true;
+    _sortEstado[key] = asc;
+
+    var tbody = tabla.querySelector('tbody');
+    var filas = Array.prototype.slice.call(tbody.querySelectorAll('tr:not(.fila-total)'));
+    filas.sort(function (a, b) {
+      var va = (a.cells[colIdx] || {}).textContent || '';
+      var vb = (b.cells[colIdx] || {}).textContent || '';
+      var na = parseFloat(va.replace(/[^\d.-]/g,''));
+      var nb = parseFloat(vb.replace(/[^\d.-]/g,''));
+      if (!isNaN(na) && !isNaN(nb)) return asc ? na-nb : nb-na;
+      return asc ? va.localeCompare(vb, 'es') : vb.localeCompare(va, 'es');
+    });
+    filas.forEach(function (f) { tbody.appendChild(f); });
+
+    // Indicadores visuales
+    tabla.querySelectorAll('thead th').forEach(function (th, i) {
+      th.classList.remove('sort-asc', 'sort-desc');
+      if (i === colIdx) th.classList.add(asc ? 'sort-asc' : 'sort-desc');
+    });
+  }
+
+  function hacerOrdenable(tablaId) {
+    var tabla = document.getElementById(tablaId);
+    if (!tabla) return;
+    tabla.querySelectorAll('thead th').forEach(function (th, i) {
+      th.style.cursor = 'pointer';
+      th.title = 'Haz clic para ordenar';
+      th.onclick = function () { ordenarTabla(tablaId, i); };
+    });
+  }
 </script>
