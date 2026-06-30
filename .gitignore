@@ -1,0 +1,5 @@
+# Credenciales y configuración local
+.clasp.json
+
+# Archivos de sesión de Claude
+.claude/

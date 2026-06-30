@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <!-- Librería de gráficos de Google -->
+  <script src="https://www.gstatic.com/charts/loader.js"></script>
+  <!-- SheetJS: parsea .xlsx/.xls/.csv en el cliente, sin servidor -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <?!= include('Stylesheet'); ?>
+</head>
+<body>
+<div class="app-layout">
+
+  <!-- ═══════════ SIDEBAR ═══════════ -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <div class="sb-icon">👥</div>
+      <div class="sb-brand-text">
+        <span class="sb-brand-name">Sistema RRHH</span>
+        <span class="sb-brand-sub">Recursos Humanos</span>
+      </div>
+      <button class="btn-colapsar" id="btnColapsar" onclick="toggleSidebarCollapse()" title="Ocultar menú">&#8249;</button>
+    </div>
+
+    <nav class="sidebar-nav">
+      <span class="nav-sep">Principal</span>
+      <button class="nav-item activo" data-vista="dashboard"     data-tooltip="Dashboard"     onclick="mostrarVista('dashboard')">
+        <span class="nav-icon">📊</span><span class="nav-label">Dashboard</span>
+      </button>
+      <button class="nav-item"        data-vista="empleados"     data-tooltip="Empleados"     onclick="mostrarVista('empleados')">
+        <span class="nav-icon">👤</span><span class="nav-label">Empleados</span>
+      </button>
+      <button class="nav-item"        data-vista="departamentos" data-tooltip="Departamentos" onclick="mostrarVista('departamentos')">
+        <span class="nav-icon">🏢</span><span class="nav-label">Departamentos</span>
+      </button>
+      <button class="nav-item"        data-vista="asistencia"    data-tooltip="Asistencia"    onclick="mostrarVista('asistencia')">
+        <span class="nav-icon">🕐</span><span class="nav-label">Asistencia</span>
+      </button>
+      <button class="nav-item"        data-vista="vacaciones"    data-tooltip="Vacaciones"    onclick="mostrarVista('vacaciones')">
+        <span class="nav-icon">🌴</span><span class="nav-label">Vacaciones</span>
+      </button>
+      <button class="nav-item"        data-vista="nomina"        data-tooltip="Nómina"        onclick="mostrarVista('nomina')">
+        <span class="nav-icon">💰</span><span class="nav-label">Nómina</span>
+      </button>
+      <button class="nav-item"        data-vista="reportes"      data-tooltip="Reportes"      onclick="mostrarVista('reportes')">
+        <span class="nav-icon">📈</span><span class="nav-label">Reportes</span>
+      </button>
+
+      <span class="nav-sep">Personal</span>
+      <button class="nav-item" data-vista="capacitaciones" data-tooltip="Capacitaciones" onclick="mostrarVista('capacitaciones')">
+        <span class="nav-icon">📚</span><span class="nav-label">Capacitaciones</span>
+      </button>
+      <button class="nav-item" data-vista="evaluaciones"   data-tooltip="Evaluaciones"   onclick="mostrarVista('evaluaciones')">
+        <span class="nav-icon">⭐</span><span class="nav-label">Evaluaciones</span>
+      </button>
+      <button class="nav-item" data-vista="documentos"     data-tooltip="Documentos"     onclick="mostrarVista('documentos')">
+        <span class="nav-icon">📁</span><span class="nav-label">Documentos</span>
+      </button>
+
+      <span class="nav-sep">Sistema</span>
+      <button class="nav-item" data-vista="alertas"        data-tooltip="Alertas"        onclick="mostrarVista('alertas')">
+        <span class="nav-icon">🔔</span><span class="nav-label">Alertas<span id="badgeAlertas" class="nav-badge oculto">0</span></span>
+      </button>
+      <button class="nav-item" data-vista="bitacora"       data-tooltip="Bitácora"       onclick="mostrarVista('bitacora')">
+        <span class="nav-icon">📋</span><span class="nav-label">Bitácora</span>
+      </button>
+      <button class="nav-item" data-vista="configuracion"  data-tooltip="Configuración"  onclick="mostrarVista('configuracion')">
+        <span class="nav-icon">⚙️</span><span class="nav-label">Configuración</span>
+      </button>
+    </nav>
+
+    <div class="sidebar-footer">
+      <button class="btn-darkmode" id="btnDarkMode" onclick="toggleDarkMode()" title="Modo oscuro">🌙</button>
+      <span>v9 · Google Apps Script</span>
+    </div>
+  </aside>
+
+  <!-- ═══════════ ÁREA PRINCIPAL ═══════════ -->
+  <div class="main-area">
+
+    <!-- Topbar -->
+    <header class="topbar">
+      <button class="topbar-toggle" onclick="toggleSidebar()">☰</button>
+      <span class="topbar-titulo" id="topbarTitulo">Dashboard</span>
+      <div class="topbar-right">
+        <div id="cargando" class="cargando oculto"><span class="spinner"></span> Cargando...</div>
+      </div>
+    </header>
+
+    <!-- Notificaciones -->
+    <div class="msg-wrapper">
+      <div id="mensaje" class="mensaje oculto"></div>
+    </div>
+
+    <!-- Vistas -->
+    <main class="contenido">
+
+    <!-- ============== VISTA: DASHBOARD ============== -->
+    <section id="vista-dashboard" class="vista">
+      <h2 class="titulo-vista">Resumen general</h2>
+      <div class="tarjetas" id="tarjetasDashboard">
+        <!-- Tarjetas generadas por JS -->
+      </div>
+
+      <!-- GUÍA DE USO -->
+      <div class="guia">
+        <h3 class="guia-titulo">📖 Guía de uso rápida</h3>
+        <p class="guia-intro">
+          Bienvenido al Sistema de RRHH. Usa la barra superior para moverte entre
+          los módulos. Te recomendamos seguir este orden la primera vez:
+        </p>
+        <ol class="guia-pasos">
+          <li>
+            <strong>⚙️ Configuración</strong>: conecta tu Google Sheet (o usa la
+            ligada) y pulsa <em>“Crear/verificar pestañas”</em> para preparar la
+            base de datos.
+          </li>
+          <li>
+            <strong>🏢 Departamentos</strong>: crea los departamentos de tu
+            empresa. Luego aparecerán al registrar empleados.
+          </li>
+          <li>
+            <strong>👤 Empleados</strong>: da de alta a tu personal. Puedes editar,
+            buscar y dar de baja (baja lógica: no se borra, solo se inactiva).
+          </li>
+          <li>
+            <strong>🕒 Asistencia</strong>: registra entrada y salida; las horas se
+            calculan solas.
+          </li>
+          <li>
+            <strong>🌴 Vacaciones</strong>: registra solicitudes y apruébalas o
+            recházalas. Los días se calculan automáticamente.
+          </li>
+          <li>
+            <strong>💵 Nómina</strong>: genera la nómina del mes; toma el salario
+            del empleado, resta deducciones y calcula el neto.
+          </li>
+          <li>
+            <strong>📊 Dashboard</strong>: vuelve aquí para ver los totales
+            actualizados.
+          </li>
+        </ol>
+        <p class="guia-nota">
+          💡 <strong>Consejo:</strong> los botones <span class="chip">+</span> de
+          cada módulo abren el formulario de alta. Los campos con
+          <span class="chip">*</span> son obligatorios y se validan antes de
+          guardar.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============== VISTA: EMPLEADOS ============== -->
+    <section id="vista-empleados" class="vista oculto">
+      <div class="barra-acciones">
+        <button class="btn btn-primario" onclick="abrirFormularioNuevo()">+ Nuevo empleado</button>
+        <button class="btn btn-secundario" onclick="abrirModalImportar('EMPLEADOS')">📥 Importar</button>
+        <button class="btn btn-secundario" onclick="exportarTabla('tablaEmpleados','Empleados')">📊 Exportar Excel</button>
+        <button class="btn btn-secundario" onclick="window.print()">🖨️ Imprimir</button>
+        <div class="filtros">
+          <input type="text" id="buscador" placeholder="Buscar por nombre o cédula..." oninput="filtrarTabla()">
+          <select id="filtroDeptEmp" onchange="filtrarTabla()" style="max-width:160px">
+            <option value="">Todos los departamentos</option>
+          </select>
+          <label class="check-activos"><input type="checkbox" id="soloActivos" onchange="cargarEmpleados()"> Solo activos</label>
+        </div>
+      </div>
+      <div class="tabla-envoltorio">
+        <table class="tabla" id="tablaEmpleados">
+          <thead><tr>
+            <th>Nombre</th><th>Cédula</th><th>Departamento</th><th>Puesto</th>
+            <th>Ingreso</th><th>Salario</th><th>Estado</th><th class="no-print">Acciones</th>
+          </tr></thead>
+          <tbody id="cuerpoTabla"></tbody>
+        </table>
+        <p id="sinDatos" class="sin-datos oculto">No hay empleados para mostrar.</p>
+      </div>
+    </section>
+
+    <!-- ============== VISTA: DEPARTAMENTOS ============== -->
+    <section id="vista-departamentos" class="vista oculto">
+      <div class="barra-acciones">
+        <button class="btn btn-primario" onclick="abrirFormDepto()">+ Nuevo departamento</button>
+        <button class="btn btn-secundario" onclick="abrirModalImportar('DEPARTAMENTOS')">📥 Importar</button>
+        <button class="btn btn-secundario" onclick="exportarTabla('tablaDeptos','Departamentos')">📊 Exportar Excel</button>
+      </div>
+      <div class="tabla-envoltorio">
+        <table class="tabla" id="tablaDeptos">
+          <thead><tr><th>Nombre</th><th>Responsable</th><th class="no-print">Acciones</th></tr></thead>
+          <tbody id="cuerpoDeptos"></tbody>
+        </table>
+        <p id="sinDeptos" class="sin-datos oculto">No hay departamentos.</p>
+      </div>
+    </section>
+
+    <!-- ============== VISTA: ASISTENCIA ============== -->
+    <section id="vista-asistencia" class="vista oculto">
+      <div class="barra-acciones">
+        <button class="btn btn-primario" onclick="abrirFormAsistencia()">+ Registrar asistencia</button>
+        <button class="btn btn-secundario" onclick="exportarTabla('tablaAsistencia','Asistencia')">📊 Exportar Excel</button>
+        <div class="filtros">
+          <select id="filtroEmpAsi" onchange="cargarAsistencia()" style="max-width:180px">
+            <option value="">Todos los empleados</option>
+          </select>
+          <input type="date" id="filtroFechaAsi" onchange="cargarAsistencia()" title="Filtrar desde esta fecha">
+        </div>
+      </div>
+      <div class="tabla-envoltorio">
+        <table class="tabla" id="tablaAsistencia">
+          <thead><tr><th>Empleado</th><th>Fecha</th><th>Entrada</th><th>Salida</th><th>Horas</th><th class="no-print">Acciones</th></tr></thead>
+          <tbody id="cuerpoAsistencia"></tbody>
+        </table>
+        <p id="sinAsistencia" class="sin-datos oculto">No hay registros de asistencia.</p>
+      </div>
+    </section>
+
+    <!-- ============== VISTA: VACACIONES ============== -->
+    <section id="vista-vacaciones" class="vista oculto">
+      <div class="barra-acciones">
+        <button class="btn btn-primario" onclick="abrirFormVacaciones()">+ Nueva solicitud</button>
+        <button class="btn btn-secundario" onclick="exportarTabla('tablaVacaciones','Vacaciones')">📊 Exportar Excel</button>
+        <div class="filtros">
+          <select id="filtroEmpVac" onchange="consultarBalanceVacaciones()" style="max-width:200px">
+            <option value="">— Ver balance de empleado —</option>
+          </select>
+        </div>
+      </div>
+      <div id="balanceVacPanel" class="balance-vac-panel oculto">
+        <div class="balance-vac-grid">
+          <div class="balance-item"><span class="balance-num" id="balAcum">0</span><span class="balance-lab">Días acumulados</span></div>
+          <div class="balance-item balance-usado"><span class="balance-num" id="balUsado">0</span><span class="balance-lab">Días utilizados</span></div>
+          <div class="balance-item balance-disp"><span class="balance-num" id="balDisp">0</span><span class="balance-lab">Días disponibles</span></div>
+        </div>
+      </div>
+      <div class="tabla-envoltorio">
+        <table class="tabla" id="tablaVacaciones">
+          <thead><tr><th>Empleado</th><th>Inicio</th><th>Fin</th><th>Días</th><th>Estado</th><th class="no-print">Acciones</th></tr></thead>
+          <tbody id="cuerpoVacaciones"></tbody>
+        </table>
+        <p id="sinVacaciones" class="sin-datos oculto">No hay solicitudes.</p>
+      </div>
+    </section>
+
+    <!-- ============== VISTA: NÓMINA ============== -->
+    <section id="vista-nomina" class="vista oculto">
+      <div class="barra-acciones">
+        <button class="btn btn-primario" onclick="abrirFormNomina()">+ Generar nómina</button>
+        <button class="btn btn-secundario" onclick="exportarTabla('tablaNomina','Nomina')">📊 Exportar Excel</button>
+        <button class="btn btn-secundario" onclick="imprimirNomina()">🖨️ Imprimir recibos</button>
+        <div class="filtros">
+          <label class="check-activos">Mes:
+            <input type="month" id="filtroMes" onchange="cargarNomina()">
+          </label>
+        </div>
+      </div>
+      <div class="tabla-envoltorio">
+        <table class="tabla" id="tablaNomina">
+          <thead><tr><th>Empleado</th><th>Mes</th><th>Salario base</th><th>Deducciones</th><th>Neto</th><th class="no-print">Acciones</th></tr></thead>
+          <tbody id="cuerpoNomina"></tbody>
+          <tfoot><tr class="fila-total"><td colspan="4">Total neto del mes</td><td id="totalNomina">₡0.00</td><td></td></tr></tfoot>
+        </table>
+        <p id="sinNomina" class="sin-datos oculto">No hay registros de nómina.</p>
+      </div>
+    </section>
+
+    <!-- ============== VISTA: REPORTES ============== -->
+    <section id="vista-reportes" class="vista oculto">
+      <div class="barra-acciones">
+        <h2 class="titulo-vista">Reportes y gráficos</h2>
+        <button class="btn btn-secundario" onclick="cargarReportes()">🔄 Actualizar</button>
+        <button class="btn btn-secundario" onclick="window.print()">🖨️ Imprimir</button>
+      </div>
+
+      <div class="reportes-grid">
+        <div class="reporte-card">
+          <h3>Empleados activos por departamento</h3>
+          <div id="grafDepartamentos" class="grafico"></div>
+          <p class="grafico-vacio oculto" data-for="grafDepartamentos">Sin datos.</p>
+        </div>
+
+        <div class="reporte-card">
+          <h3>Empleados por estado</h3>
+          <div id="grafEstado" class="grafico"></div>
+          <p class="grafico-vacio oculto" data-for="grafEstado">Sin datos.</p>
+        </div>
+
+        <div class="reporte-card reporte-ancho">
+          <h3>Nómina: neto pagado por mes</h3>
+          <div id="grafNomina" class="grafico"></div>
+          <p class="grafico-vacio oculto" data-for="grafNomina">Sin datos de nómina aún.</p>
+        </div>
+
+        <div class="reporte-card reporte-ancho">
+          <h3>Horas de asistencia por empleado</h3>
+          <div id="grafHoras" class="grafico"></div>
+          <p class="grafico-vacio oculto" data-for="grafHoras">Sin registros de asistencia aún.</p>
+        </div>
+
+        <div class="reporte-card">
+          <h3>Vacaciones por estado</h3>
+          <div id="grafVacaciones" class="grafico"></div>
+          <p class="grafico-vacio oculto" data-for="grafVacaciones">Sin solicitudes aún.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============== VISTA: ALERTAS ============== -->
+    <section id="vista-alertas" class="vista oculto">
+      <h2 class="titulo-vista">Alertas por correo electrónico</h2>
+
+      <!-- Destinatarios -->
+      <div class="config-bloque">
+        <h3>📧 Destinatarios</h3>
+        <p class="config-ayuda">Correos que recibirán las alertas. Puedes poner varios separados por coma.</p>
+        <div class="campo">
+          <label for="alertaEmails">Correos electrónicos</label>
+          <input type="text" id="alertaEmails" placeholder="admin@empresa.com, rrhh@empresa.com">
+        </div>
+      </div>
+
+      <!-- Alertas configurables -->
+      <div class="config-bloque">
+        <h3>🔔 Alertas configurables</h3>
+
+        <div class="alerta-fila">
+          <div class="alerta-info">
+            <strong>Vacaciones pendientes</strong>
+            <span>Notifica cuando haya solicitudes de vacaciones esperando aprobación.</span>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="alertaVacActiva">
+            <span class="toggle-pista"></span>
+          </label>
+        </div>
+
+        <div class="alerta-fila">
+          <div class="alerta-info">
+            <strong>Nómina mensual no generada</strong>
+            <span>Avisa si llegado el día indicado aún no se ha procesado la nómina del mes.</span>
+          </div>
+          <div class="alerta-extra">
+            <label style="font-size:13px">Alertar desde el día</label>
+            <input type="number" id="alertaNomDia" min="1" max="28" style="width:60px;padding:5px 8px;border:1px solid var(--color-borde);border-radius:6px;font-size:13px">
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="alertaNomActiva">
+            <span class="toggle-pista"></span>
+          </label>
+        </div>
+
+        <div class="alerta-fila">
+          <div class="alerta-info">
+            <strong>Resumen semanal</strong>
+            <span>Cada lunes envía un resumen con empleados activos, vacaciones pendientes y nómina del mes.</span>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="alertaResumenActivo">
+            <span class="toggle-pista"></span>
+          </label>
+        </div>
+
+        <div class="alerta-fila">
+          <div class="alerta-info">
+            <strong>🎂 Cumpleaños del mes</strong>
+            <span>El 1° de cada mes avisa qué empleados cumplen años ese mes. Requiere tener la fecha de nacimiento en el perfil.</span>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="alertaCumpleaniosActiva">
+            <span class="toggle-pista"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- WhatsApp -->
+      <div class="config-bloque">
+        <h3>📱 Notificaciones por WhatsApp (CallMeBot)</h3>
+        <p class="config-ayuda">Recibe alertas también en WhatsApp. Requiere activar el bot primero: envía el mensaje <code>/start</code> al número <strong>+34 644 60 99 76</strong> por WhatsApp y guarda la API Key que te devuelven.</p>
+        <label class="toggle" style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+          <input type="checkbox" id="wpActivo" onchange="guardarConfigWhatsApp()">
+          <span class="toggle-pista"></span>
+          <span style="font-size:13px">Activar notificaciones WhatsApp</span>
+        </label>
+        <div class="smtp-fila">
+          <div class="campo smtp-campo">
+            <label for="wpTelefono">Tu número (con código de país)</label>
+            <input type="text" id="wpTelefono" placeholder="+50688887777">
+          </div>
+          <div class="campo smtp-campo">
+            <label for="wpApiKey">API Key de CallMeBot</label>
+            <input type="password" id="wpApiKey" placeholder="••••••••">
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-primario" onclick="guardarConfigWhatsApp()">Guardar</button>
+          <button class="btn btn-secundario" onclick="probarWhatsApp()">🧪 Enviar prueba</button>
+        </div>
+        <div id="wpEstado" style="margin-top:8px;font-size:13px"></div>
+      </div>
+
+      <!-- Guardar configuración -->
+      <div style="margin-bottom:16px">
+        <button class="btn btn-primario" onclick="guardarConfigAlertas()">Guardar configuración</button>
+      </div>
+
+      <!-- Trigger automático -->
+      <div class="config-bloque">
+        <h3>⏰ Verificación automática diaria</h3>
+        <p class="config-ayuda">Activa el envío automático de alertas todos los días a las 8 a.m. Requiere que al menos un destinatario esté configurado.</p>
+        <div id="estadoTrigger" class="config-estado" style="margin-bottom:12px">Verificando...</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-primario" onclick="activarTrigger()">▶ Activar envío diario</button>
+          <button class="btn btn-secundario" onclick="desactivarTrigger()">⏹ Desactivar</button>
+        </div>
+      </div>
+
+      <!-- Probar alertas -->
+      <div class="config-bloque">
+        <h3>🧪 Probar alertas ahora</h3>
+        <p class="config-ayuda">Envía un correo de prueba inmediatamente para verificar que la configuración es correcta.</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-secundario" onclick="probarAlerta('general')">Prueba general</button>
+          <button class="btn btn-secundario" onclick="probarAlerta('vacaciones')">Vacaciones pendientes</button>
+          <button class="btn btn-secundario" onclick="probarAlerta('nomina')">Nómina mensual</button>
+          <button class="btn btn-secundario" onclick="probarAlerta('resumen')">Resumen semanal</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============== VISTA: CAPACITACIONES ============== -->
+    <section id="vista-capacitaciones" class="vista oculto">
+      <div class="barra-acciones">
+        <button class="btn btn-primario" onclick="abrirFormCapacitacion()">+ Nueva capacitación</button>
+        <button class="btn btn-secundario" onclick="exportarTabla('tablaCapacitaciones','Capacitaciones')">📊 Exportar Excel</button>
+        <div class="filtros">
+          <select id="filtroEmpCap" onchange="cargarCapacitaciones()" style="max-width:200px">
+            <option value="">Todos los empleados</option>
+          </select>
+          <select id="filtroEstadoCap" onchange="cargarCapacitaciones()" style="max-width:150px">
+            <option value="">Todos los estados</option>
+            <option value="en progreso">En progreso</option>
+            <option value="completado">Completado</option>
+            <option value="cancelado">Cancelado</option>
+          </select>
+        </div>
+      </div>
+      <div class="tabla-envoltorio">
+        <table class="tabla" id="tablaCapacitaciones">
+          <thead><tr><th>Empleado</th><th>Curso</th><th>Institución</th><th>Inicio</th><th>Fin</th><th>Estado</th><th>Certificado</th><th class="no-print">Acciones</th></tr></thead>
+          <tbody id="cuerpoCapacitaciones"></tbody>
+        </table>
+        <p id="sinCapacitaciones" class="sin-datos oculto">No hay capacitaciones registradas.</p>
+      </div>
+    </section>
+
+    <!-- ============== VISTA: EVALUACIONES ============== -->
+    <section id="vista-evaluaciones" class="vista oculto">
+      <div class="barra-acciones">
+        <button class="btn btn-primario" onclick="abrirFormEvaluacion()">+ Nueva evaluación</button>
+        <button class="btn btn-secundario" onclick="exportarTabla('tablaEvaluaciones','Evaluaciones')">📊 Exportar Excel</button>
+        <div class="filtros">
+          <select id="filtroEmpEva" onchange="cargarEvaluaciones()" style="max-width:200px">
+            <option value="">Todos los empleados</option>
+          </select>
+        </div>
+      </div>
+      <div class="tabla-envoltorio">
+        <table class="tabla" id="tablaEvaluaciones">
+          <thead><tr><th>Empleado</th><th>Período</th><th>Calificación</th><th>Evaluador</th><th>Fecha</th><th>Comentarios</th><th class="no-print">Acciones</th></tr></thead>
+          <tbody id="cuerpoEvaluaciones"></tbody>
+        </table>
+        <p id="sinEvaluaciones" class="sin-datos oculto">No hay evaluaciones registradas.</p>
+      </div>
+    </section>
+
+    <!-- ============== VISTA: DOCUMENTOS ============== -->
+    <section id="vista-documentos" class="vista oculto">
+      <h2 class="titulo-vista">Documentos por empleado</h2>
+      <p class="config-ayuda" style="margin-bottom:16px">Cada empleado tiene una carpeta en Google Drive donde puedes guardar contratos, cédulas y certificados. Selecciona un empleado para ver o abrir su carpeta.</p>
+      <div class="barra-acciones">
+        <select id="filtroEmpDoc" onchange="cargarDocumentos()" style="max-width:280px">
+          <option value="">— Selecciona un empleado —</option>
+        </select>
+        <button class="btn btn-primario" id="btnCrearCarpeta" onclick="crearCarpetaDoc()" style="display:none">📂 Crear / abrir carpeta en Drive</button>
+      </div>
+      <div id="docPanel" class="oculto" style="margin-top:16px">
+        <div class="config-bloque">
+          <h3 id="docTituloEmp">Documentos</h3>
+          <p><a id="docLinkCarpeta" href="#" target="_blank" class="btn btn-secundario" style="display:inline-flex;align-items:center;gap:6px">📂 Abrir carpeta en Drive ↗</a></p>
+          <div class="tabla-envoltorio" style="margin-top:14px">
+            <table class="tabla" id="tablaDocumentos">
+              <thead><tr><th>Nombre del archivo</th><th>Última modificación</th><th>Ver</th></tr></thead>
+              <tbody id="cuerpoDocumentos"></tbody>
+            </table>
+            <p id="sinDocumentos" class="sin-datos oculto">No hay archivos en esta carpeta aún. Súbelos directamente desde Google Drive.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============== VISTA: BITÁCORA ============== -->
+    <section id="vista-bitacora" class="vista oculto">
+      <div class="barra-acciones">
+        <h2 class="titulo-vista">Bitácora de cambios</h2>
+        <button class="btn btn-secundario" onclick="cargarBitacora()">🔄 Actualizar</button>
+        <button class="btn btn-secundario" onclick="exportarTabla('tablaBitacora','Bitacora')">📊 Exportar</button>
+      </div>
+      <div class="tabla-envoltorio">
+        <table class="tabla" id="tablaBitacora">
+          <thead><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Módulo</th><th>ID</th><th>Detalle</th></tr></thead>
+          <tbody id="cuerpoBitacora"></tbody>
+        </table>
+        <p id="sinBitacora" class="sin-datos oculto">No hay registros en la bitácora.</p>
+      </div>
+    </section>
+
+    <!-- ============== VISTA: CONFIGURACIÓN ============== -->
+    <section id="vista-configuracion" class="vista oculto">
+      <h2 class="titulo-vista">Configuración de los archivos de Google</h2>
+
+      <!-- Estado de la conexión -->
+      <div class="config-bloque">
+        <h3>Hoja conectada</h3>
+        <div id="estadoConexion" class="config-estado">Cargando estado...</div>
+      </div>
+
+      <!-- Conectar por ID -->
+      <div class="config-bloque">
+        <h3>Conectar una hoja por ID</h3>
+        <p class="config-ayuda">
+          Pega el <strong>ID</strong> o la <strong>URL completa</strong> de tu
+          Google Sheet. El ID es la parte larga de la URL, entre <code>/d/</code>
+          y <code>/edit</code>. Útil si el proyecto no está ligado a una hoja.
+        </p>
+        <div class="config-fila">
+          <input type="text" id="cfgIdHoja" placeholder="ID o URL de la hoja...">
+          <button class="btn btn-primario" onclick="guardarHoja()">Conectar</button>
+        </div>
+        <button class="btn btn-secundario" onclick="volverHojaLigada()">
+          Usar la hoja ligada al proyecto
+        </button>
+      </div>
+
+      <!-- Crear una hoja nueva -->
+      <div class="config-bloque">
+        <h3>¿No tienes una hoja todavía?</h3>
+        <p class="config-ayuda">
+          Crea una hoja de Google nueva en tu Drive, ya con todas las pestañas y
+          encabezados listos, y queda conectada automáticamente.
+        </p>
+        <div class="config-fila">
+          <input type="text" id="cfgNombreHoja" placeholder="Nombre de la hoja (ej: Base RRHH)">
+          <button class="btn btn-primario" onclick="crearHoja()">Crear hoja nueva</button>
+        </div>
+      </div>
+
+      <!-- Inicializar pestañas -->
+      <div class="config-bloque">
+        <h3>Pestañas de la base de datos</h3>
+        <p class="config-ayuda">
+          Crea automáticamente las pestañas que falten, con sus encabezados.
+          Puedes ejecutarlo cuando quieras; no borra datos existentes.
+        </p>
+        <button class="btn btn-primario" onclick="inicializarPestanas()">
+          Crear / verificar pestañas
+        </button>
+        <div class="tabla-envoltorio" style="margin-top:14px;">
+          <table class="tabla">
+            <thead><tr><th>Pestaña</th><th>Estado</th><th>Registros</th><th>Columnas</th></tr></thead>
+            <tbody id="cuerpoPestanas"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ──────────── Configuración de correo ──────────── -->
+      <div class="config-bloque">
+        <h3>📤 Configuración de envío de correo</h3>
+        <p class="config-ayuda">
+          Elige el proveedor con el que se enviarán las alertas. Puedes usar tu cuenta de Google
+          sin configurar nada, o conectar un servicio externo (SendGrid, Brevo) para enviar desde
+          tu propio dominio con mayor control y estadísticas.
+        </p>
+
+        <div class="campo">
+          <label for="correoProveedor">Proveedor</label>
+          <select id="correoProveedor" onchange="cambiarProveedorCorreo()">
+            <option value="google">Google Gmail (sin configuración extra)</option>
+            <option value="sendgrid">SendGrid</option>
+            <option value="brevo">Brevo (Sendinblue)</option>
+          </select>
+        </div>
+
+        <!-- Campos comunes (nombre remitente + reply-to) -->
+        <div class="smtp-fila">
+          <div class="campo smtp-campo">
+            <label for="correoFromNombre">Nombre del remitente</label>
+            <input type="text" id="correoFromNombre" placeholder="Sistema RRHH">
+          </div>
+          <div class="campo smtp-campo">
+            <label for="correoFromEmail">Correo del remitente / reply-to</label>
+            <input type="email" id="correoFromEmail" placeholder="rrhh@tuempresa.com">
+          </div>
+        </div>
+
+        <!-- Campos solo para proveedores externos -->
+        <div id="smtpExterno" class="oculto">
+          <div class="campo">
+            <label for="correoApiKey">API Key <span id="correoApiKeyHint" style="font-weight:400;color:var(--color-suave)"></span></label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input type="password" id="correoApiKey" placeholder="Pega aquí tu API Key" style="flex:1">
+              <button type="button" class="btn btn-secundario" style="padding:8px 12px;font-size:13px"
+                onclick="toggleApiKey()">👁</button>
+            </div>
+            <small style="color:var(--color-suave);font-size:12px;margin-top:4px;display:block">
+              La API Key se guarda de forma segura en el servidor y nunca se expone al navegador.
+              Deja el campo vacío para mantener la key guardada actualmente.
+            </small>
+          </div>
+
+          <div id="smtpAyudaLinks" class="smtp-ayuda"></div>
+        </div>
+
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px">
+          <button class="btn btn-primario" onclick="guardarConfigCorreo()">Guardar configuración</button>
+          <button class="btn btn-secundario" onclick="probarConfigCorreo()">🧪 Enviar correo de prueba</button>
+        </div>
+        <div id="correoEstado" style="margin-top:10px"></div>
+      </div>
+
+      <!-- ──────────── Respaldo automático ──────────── -->
+      <div class="config-bloque">
+        <h3>💾 Respaldo automático de datos</h3>
+        <p class="config-ayuda">Crea una copia completa de tu hoja de datos en Google Drive. El respaldo automático se genera cada domingo a las 2 a.m.</p>
+        <div id="estadoRespaldo" class="config-estado" style="margin-bottom:12px">Verificando...</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-primario" onclick="hacerRespaldoAhora()">💾 Respaldar ahora</button>
+          <button class="btn btn-secundario" onclick="activarRespaldo()">▶ Activar respaldo semanal</button>
+          <button class="btn btn-secundario" onclick="desactivarRespaldo()">⏹ Desactivar</button>
+        </div>
+        <div id="respaldoEstado" style="margin-top:10px;font-size:13px"></div>
+      </div>
+
+      <!-- ──────────── Roles y permisos ──────────── -->
+      <div class="config-bloque">
+        <h3>🔒 Roles y permisos (PIN)</h3>
+        <p class="config-ayuda">Define PINs de acceso por nivel. <strong>Admin</strong>: acceso total incluyendo configuración. <strong>RRHH</strong>: puede crear y editar pero no cambiar la configuración del sistema. Sin PIN: modo solo lectura.</p>
+        <div class="smtp-fila">
+          <div class="campo smtp-campo">
+            <label for="pinAdmin">PIN de Administrador</label>
+            <input type="password" id="pinAdmin" placeholder="Deja vacío para sin restricción" maxlength="20">
+          </div>
+          <div class="campo smtp-campo">
+            <label for="pinRrhh">PIN de Recursos Humanos</label>
+            <input type="password" id="pinRrhh" placeholder="Deja vacío para desactivar" maxlength="20">
+          </div>
+        </div>
+        <button class="btn btn-primario" onclick="guardarRoles()">Guardar PINs</button>
+        <div id="rolesEstado" style="margin-top:10px;font-size:13px"></div>
+      </div>
+
+    </section>
+
+  </main>
+  </div><!-- /main-area -->
+</div><!-- /app-layout -->
+
+<!-- Overlay móvil -->
+<div class="sidebar-overlay oculto" id="sidebarOverlay" onclick="cerrarSidebar()"></div>
+
+  <!-- ===================== MODALES ===================== -->
+
+  <!-- Modal Empleado -->
+  <div id="modal" class="modal oculto">
+    <div class="modal-contenido">
+      <div class="modal-cabecera"><h2 id="modalTitulo">Nuevo empleado</h2><button class="cerrar" onclick="cerrarModal()">&times;</button></div>
+      <form id="formEmpleado" onsubmit="guardarEmpleado(event)">
+        <input type="hidden" id="id">
+        <div class="campo"><label for="nombre">Nombre completo *</label><input type="text" id="nombre" required maxlength="80"><small class="error" id="errNombre"></small></div>
+        <div class="campo"><label for="cedula">Cédula *</label><input type="text" id="cedula" required placeholder="Solo números y guiones"><small class="error" id="errCedula"></small></div>
+        <div class="campo"><label for="departamento">Departamento</label><select id="departamento"><option value="">— Sin asignar —</option></select></div>
+        <div class="campo"><label for="puesto">Puesto</label><input type="text" id="puesto" maxlength="60"></div>
+        <div class="campo"><label for="fecha_ingreso">Fecha de ingreso *</label><input type="date" id="fecha_ingreso" required><small class="error" id="errFecha"></small></div>
+        <div class="campo"><label for="salario">Salario *</label><input type="number" id="salario" required min="0" step="0.01" placeholder="0.00"><small class="error" id="errSalario"></small></div>
+        <div class="campo"><label for="fecha_nacimiento">Fecha de nacimiento</label><input type="date" id="fecha_nacimiento"></div>
+        <div class="campo"><label for="telefono">Teléfono</label><input type="text" id="telefono" placeholder="+506 8888-7777" maxlength="25"></div>
+        <div class="modal-pie"><button type="button" class="btn btn-secundario" onclick="cerrarModal()">Cancelar</button><button type="submit" class="btn btn-primario" id="btnGuardar">Guardar</button></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal Departamento -->
+  <div id="modalDepto" class="modal oculto">
+    <div class="modal-contenido">
+      <div class="modal-cabecera"><h2 id="modalDeptoTitulo">Nuevo departamento</h2><button class="cerrar" onclick="cerrarModalDepto()">&times;</button></div>
+      <form id="formDepto" onsubmit="guardarDepto(event)">
+        <input type="hidden" id="depId">
+        <div class="campo"><label for="depNombre">Nombre *</label><input type="text" id="depNombre" required maxlength="60"><small class="error" id="errDepNombre"></small></div>
+        <div class="campo"><label for="depResponsable">Responsable</label><input type="text" id="depResponsable" maxlength="80"></div>
+        <div class="modal-pie"><button type="button" class="btn btn-secundario" onclick="cerrarModalDepto()">Cancelar</button><button type="submit" class="btn btn-primario" id="btnGuardarDepto">Guardar</button></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal Asistencia -->
+  <div id="modalAsistencia" class="modal oculto">
+    <div class="modal-contenido">
+      <div class="modal-cabecera"><h2>Registrar asistencia</h2><button class="cerrar" onclick="cerrarModalAsistencia()">&times;</button></div>
+      <form id="formAsistencia" onsubmit="guardarAsistencia(event)">
+        <div class="campo"><label for="asiEmpleado">Empleado *</label><select id="asiEmpleado" required></select></div>
+        <div class="campo"><label for="asiFecha">Fecha *</label><input type="date" id="asiFecha" required></div>
+        <div class="campo"><label for="asiEntrada">Hora de entrada *</label><input type="time" id="asiEntrada" required></div>
+        <div class="campo"><label for="asiSalida">Hora de salida *</label><input type="time" id="asiSalida" required></div>
+        <div class="modal-pie"><button type="button" class="btn btn-secundario" onclick="cerrarModalAsistencia()">Cancelar</button><button type="submit" class="btn btn-primario" id="btnGuardarAsistencia">Guardar</button></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal Vacaciones -->
+  <div id="modalVacaciones" class="modal oculto">
+    <div class="modal-contenido">
+      <div class="modal-cabecera"><h2>Nueva solicitud de vacaciones</h2><button class="cerrar" onclick="cerrarModalVacaciones()">&times;</button></div>
+      <form id="formVacaciones" onsubmit="guardarVacaciones(event)">
+        <div class="campo"><label for="vacEmpleado">Empleado *</label><select id="vacEmpleado" required></select></div>
+        <div class="campo"><label for="vacInicio">Fecha inicio *</label><input type="date" id="vacInicio" required></div>
+        <div class="campo"><label for="vacFin">Fecha fin *</label><input type="date" id="vacFin" required></div>
+        <div class="modal-pie"><button type="button" class="btn btn-secundario" onclick="cerrarModalVacaciones()">Cancelar</button><button type="submit" class="btn btn-primario" id="btnGuardarVacaciones">Solicitar</button></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal Nómina -->
+  <div id="modalNomina" class="modal oculto">
+    <div class="modal-contenido">
+      <div class="modal-cabecera"><h2>Generar nómina</h2><button class="cerrar" onclick="cerrarModalNomina()">&times;</button></div>
+      <form id="formNomina" onsubmit="guardarNomina(event)">
+        <div class="campo"><label for="nomEmpleado">Empleado *</label><select id="nomEmpleado" required onchange="mostrarSalarioBase()"></select></div>
+        <div class="campo"><label for="nomMes">Mes *</label><input type="month" id="nomMes" required></div>
+        <div class="campo"><label>Salario base</label><input type="text" id="nomSalarioBase" disabled placeholder="Se toma del empleado"></div>
+        <div class="campo"><label for="nomDeducciones">Deducciones *</label><input type="number" id="nomDeducciones" required min="0" step="0.01" value="0"><small class="error" id="errNomDed"></small></div>
+        <div class="modal-pie"><button type="button" class="btn btn-secundario" onclick="cerrarModalNomina()">Cancelar</button><button type="submit" class="btn btn-primario" id="btnGuardarNomina">Generar</button></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal Importar -->
+  <div id="modalImportar" class="modal oculto">
+    <div class="modal-contenido modal-grande">
+      <div class="modal-cabecera">
+        <h2 id="importTitulo">Importar datos</h2>
+        <button class="cerrar" onclick="cerrarModalImportar()">&times;</button>
+      </div>
+
+      <!-- Paso 1: seleccionar archivo -->
+      <div id="importPaso1" class="import-paso">
+        <div class="campo" style="padding:16px 20px 0">
+          <label for="importEntidad">¿Qué datos vas a importar?</label>
+          <select id="importEntidad">
+            <option value="EMPLEADOS">Empleados</option>
+            <option value="DEPARTAMENTOS">Departamentos</option>
+          </select>
+        </div>
+        <div class="import-drop" id="importDrop" onclick="document.getElementById('importFile').click()">
+          <div class="import-drop-icon">📂</div>
+          <p class="import-drop-texto">Haz clic aquí o arrastra tu archivo</p>
+          <p class="import-drop-sub">Formatos aceptados: .xlsx · .xls · .csv</p>
+          <p id="importNombreArchivo" class="import-nombre"></p>
+          <input type="file" id="importFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="leerArchivo(this)">
+        </div>
+      </div>
+
+      <!-- Paso 2: mapeo de columnas + vista previa -->
+      <div id="importPaso2" class="import-paso oculto">
+        <div style="padding:14px 20px 0">
+          <p class="config-ayuda">Verifica que cada campo del sistema esté asignado a la columna correcta de tu archivo. Luego pulsa <strong>Importar</strong>.</p>
+          <div id="importMappingTable"></div>
+          <div id="importPreviewTable"></div>
+        </div>
+        <div class="modal-pie">
+          <button class="btn btn-secundario" onclick="mostrarPasoImport(1)">← Volver</button>
+          <button class="btn btn-primario" id="btnEjecutarImport" onclick="ejecutarImport()">Importar</button>
+        </div>
+      </div>
+
+      <!-- Paso 3: resultados -->
+      <div id="importPaso3" class="import-paso oculto">
+        <div id="importResultados" style="padding:16px 20px"></div>
+        <div class="modal-pie">
+          <button class="btn btn-primario" onclick="cerrarModalImportar()">Cerrar</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Modal Capacitación -->
+  <div id="modalCapacitacion" class="modal oculto">
+    <div class="modal-contenido">
+      <div class="modal-cabecera"><h2 id="modalCapTitulo">Nueva capacitación</h2><button class="cerrar" onclick="cerrarModalCapacitacion()">&times;</button></div>
+      <form id="formCapacitacion" onsubmit="guardarCapacitacion(event)">
+        <input type="hidden" id="capId">
+        <div class="campo"><label for="capEmpleado">Empleado *</label><select id="capEmpleado" required></select></div>
+        <div class="campo"><label for="capCurso">Nombre del curso *</label><input type="text" id="capCurso" required maxlength="100"></div>
+        <div class="campo"><label for="capInstitucion">Institución</label><input type="text" id="capInstitucion" maxlength="80"></div>
+        <div class="smtp-fila">
+          <div class="campo smtp-campo"><label for="capInicio">Fecha inicio</label><input type="date" id="capInicio"></div>
+          <div class="campo smtp-campo"><label for="capFin">Fecha fin</label><input type="date" id="capFin"></div>
+        </div>
+        <div class="campo"><label for="capEstado">Estado</label>
+          <select id="capEstado">
+            <option value="en progreso">En progreso</option>
+            <option value="completado">Completado</option>
+            <option value="cancelado">Cancelado</option>
+          </select>
+        </div>
+        <div class="campo"><label for="capCertUrl">URL del certificado</label><input type="url" id="capCertUrl" placeholder="https://..."></div>
+        <div class="modal-pie"><button type="button" class="btn btn-secundario" onclick="cerrarModalCapacitacion()">Cancelar</button><button type="submit" class="btn btn-primario">Guardar</button></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal Evaluación -->
+  <div id="modalEvaluacion" class="modal oculto">
+    <div class="modal-contenido">
+      <div class="modal-cabecera"><h2 id="modalEvaTitulo">Nueva evaluación</h2><button class="cerrar" onclick="cerrarModalEvaluacion()">&times;</button></div>
+      <form id="formEvaluacion" onsubmit="guardarEvaluacion(event)">
+        <input type="hidden" id="evaId">
+        <div class="campo"><label for="evaEmpleado">Empleado *</label><select id="evaEmpleado" required></select></div>
+        <div class="campo"><label for="evaPeriodo">Período *</label><input type="text" id="evaPeriodo" required placeholder="Ej: 2026-S1, 2025 Anual" maxlength="30"></div>
+        <div class="campo"><label for="evaCalificacion">Calificación * (1-10)</label><input type="number" id="evaCalificacion" required min="1" max="10" step="0.1" placeholder="7.5"></div>
+        <div class="campo"><label for="evaEvaluador">Evaluador</label><input type="text" id="evaEvaluador" maxlength="80"></div>
+        <div class="campo"><label for="evaFecha">Fecha</label><input type="date" id="evaFecha"></div>
+        <div class="campo"><label for="evaComentarios">Comentarios</label><textarea id="evaComentarios" rows="3" style="width:100%;border:1px solid var(--border);border-radius:var(--r);padding:8px;font-size:14px;resize:vertical"></textarea></div>
+        <div class="modal-pie"><button type="button" class="btn btn-secundario" onclick="cerrarModalEvaluacion()">Cancelar</button><button type="submit" class="btn btn-primario">Guardar</button></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal Historial Salarios -->
+  <div id="modalHistorialSal" class="modal oculto">
+    <div class="modal-contenido modal-grande">
+      <div class="modal-cabecera"><h2 id="modalHistTitulo">Historial de salarios</h2><button class="cerrar" onclick="cerrarModalHistorial()">&times;</button></div>
+      <div class="tabla-envoltorio" style="padding:0 4px 12px">
+        <table class="tabla" id="tablaHistSal">
+          <thead><tr><th>Fecha</th><th>Salario anterior</th><th>Salario nuevo</th><th>Variación</th><th>Notas</th></tr></thead>
+          <tbody id="cuerpoHistSal"></tbody>
+        </table>
+        <p id="sinHistSal" class="sin-datos oculto">No hay cambios de salario registrados.</p>
+      </div>
+      <div class="modal-pie"><button class="btn btn-primario" onclick="cerrarModalHistorial()">Cerrar</button></div>
+    </div>
+  </div>
+
+  <!-- Modal PIN de acceso -->
+  <div id="modalPin" class="modal oculto">
+    <div class="modal-contenido" style="max-width:360px">
+      <div class="modal-cabecera"><h2>Acceso con PIN</h2><button class="cerrar" onclick="cerrarModalPin()">&times;</button></div>
+      <div style="padding:16px 20px 4px">
+        <p style="margin-bottom:12px;font-size:14px;color:var(--txt-2)">Ingresa tu PIN para acceder con permisos de edición. Deja vacío para continuar en modo solo lectura.</p>
+        <div class="campo"><label for="pinInput">PIN de acceso</label><input type="password" id="pinInput" maxlength="20" placeholder="••••••" onkeydown="if(event.key==='Enter')verificarPinUI()"></div>
+        <div id="pinError" style="color:var(--err);font-size:13px;margin-top:4px"></div>
+      </div>
+      <div class="modal-pie">
+        <button class="btn btn-secundario" onclick="cerrarModalPin()">Entrar como consulta</button>
+        <button class="btn btn-primario" onclick="verificarPinUI()">Ingresar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Indicador de rol activo -->
+  <div id="rolBadge" class="rol-badge oculto"></div>
+
+  <!-- Lógica JS (un include por módulo + comunes) -->
+  <?!= include('Js_Comun'); ?>
+  <?!= include('Js_Importar'); ?>
+  <?!= include('Js_Alertas'); ?>
+  <?!= include('Js_Empleados'); ?>
+  <?!= include('Js_Departamentos'); ?>
+  <?!= include('Js_Asistencia'); ?>
+  <?!= include('Js_Vacaciones'); ?>
+  <?!= include('Js_Nomina'); ?>
+  <?!= include('Js_Dashboard'); ?>
+  <?!= include('Js_Reportes'); ?>
+  <?!= include('Js_Configuracion'); ?>
+  <?!= include('Js_Capacitaciones'); ?>
+  <?!= include('Js_Evaluaciones'); ?>
+  <?!= include('Js_Documentos'); ?>
+  <?!= include('Js_Bitacora'); ?>
+
+</body>
+</html>

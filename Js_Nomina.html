@@ -1,0 +1,90 @@
+<script>
+  /* ============================================================
+     MÓDULO NÓMINA BÁSICA (frontend)
+     ============================================================ */
+
+  function cargarNomina() {
+    var mes = document.getElementById('filtroMes').value || '';
+    llamarBackend('listarNomina', [mes], function (lista) {
+      lista = lista || [];
+      var cuerpo = document.getElementById('cuerpoNomina');
+      cuerpo.innerHTML = '';
+      document.getElementById('sinNomina').classList.toggle('oculto', lista.length > 0);
+
+      var total = 0;
+      lista.forEach(function (n) {
+        total += Number(n.neto) || 0;
+        var tr = document.createElement('tr');
+        tr.innerHTML =
+          '<td>' + escapar(n.empleado_nombre) + '</td>' +
+          '<td>' + escapar(n.mes) + '</td>' +
+          '<td>' + formatoDinero(n.salario_base) + '</td>' +
+          '<td>' + formatoDinero(n.deducciones) + '</td>' +
+          '<td>' + formatoDinero(n.neto) + '</td>' +
+          '<td><button class="btn-mini peligro" onclick="eliminarNom(\'' + n.id + '\')">Eliminar</button></td>';
+        cuerpo.appendChild(tr);
+      });
+      document.getElementById('totalNomina').textContent = formatoDinero(total);
+    });
+  }
+
+  function abrirFormNomina() {
+    document.getElementById('formNomina').reset();
+    document.getElementById('errNomDed').textContent = '';
+    document.getElementById('nomSalarioBase').value = '';
+    llenarSelectEmpleados('nomEmpleado');
+    // Mes actual por defecto (yyyy-MM).
+    document.getElementById('nomMes').value = new Date().toISOString().slice(0, 7);
+    document.getElementById('modalNomina').classList.remove('oculto');
+  }
+
+  // El salario base se toma del empleado en el backend; aquí solo informamos.
+  function mostrarSalarioBase() {
+    var sel = document.getElementById('nomEmpleado');
+    document.getElementById('nomSalarioBase').value =
+      sel.value ? 'Se tomará del empleado seleccionado' : '';
+  }
+
+  function cerrarModalNomina() { document.getElementById('modalNomina').classList.add('oculto'); }
+
+  function guardarNomina(evento) {
+    evento.preventDefault();
+    document.getElementById('errNomDed').textContent = '';
+    var datos = {
+      empleado_id: document.getElementById('nomEmpleado').value,
+      mes: document.getElementById('nomMes').value,
+      deducciones: document.getElementById('nomDeducciones').value
+    };
+    if (!datos.empleado_id) { mostrarMensaje('Selecciona un empleado.', 'error'); return; }
+    var ded = Number(datos.deducciones);
+    if (datos.deducciones === '' || isNaN(ded) || ded < 0) {
+      document.getElementById('errNomDed').textContent = 'Las deducciones deben ser un número ≥ 0.';
+      return;
+    }
+
+    var btn = document.getElementById('btnGuardarNomina');
+    btn.disabled = true; btn.textContent = 'Generando...';
+    google.script.run
+      .withSuccessHandler(function (res) {
+        btn.disabled = false; btn.textContent = 'Generar';
+        if (res.ok) {
+          cerrarModalNomina();
+          mostrarMensaje(res.mensaje, 'exito');
+          cargarNomina();
+        } else { mostrarMensaje(res.mensaje, 'error'); }
+      })
+      .withFailureHandler(function (err) {
+        btn.disabled = false; btn.textContent = 'Generar';
+        mostrarMensaje('Error: ' + err.message, 'error');
+      })
+      .generarNomina(datos);
+  }
+
+  function eliminarNom(id) {
+    if (!confirm('¿Eliminar este registro de nómina?')) return;
+    llamarBackend('eliminarNomina', [id], function (res) {
+      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+      if (res.ok) cargarNomina();
+    });
+  }
+</script>

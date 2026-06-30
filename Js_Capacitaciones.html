@@ -1,0 +1,111 @@
+<script>
+  /* ============================================================
+     MÓDULO CAPACITACIONES — v9
+     ============================================================ */
+
+  var CAPACITACIONES = [];
+
+  function cargarCapacitaciones() {
+    llenarSelectEmpleadosFiltro('filtroEmpCap');
+    var empId = (document.getElementById('filtroEmpCap') || {}).value || '';
+    llamarBackend('listarCapacitaciones', [empId || null], function (lista) {
+      CAPACITACIONES = lista || [];
+      _pintarCapacitaciones();
+    });
+  }
+
+  function _pintarCapacitaciones() {
+    var estadoFiltro = (document.getElementById('filtroEstadoCap') || {}).value || '';
+    var lista = CAPACITACIONES.filter(function (c) {
+      return !estadoFiltro || String(c.estado).toLowerCase() === estadoFiltro;
+    });
+    var cuerpo = document.getElementById('cuerpoCapacitaciones');
+    cuerpo.innerHTML = '';
+    document.getElementById('sinCapacitaciones').classList.toggle('oculto', lista.length > 0);
+    lista.forEach(function (c) {
+      var estadoClase = String(c.estado || '').toLowerCase().replace(/\s+/g, '-');
+      var certLink = c.certificado_url
+        ? '<a href="' + escapar(c.certificado_url) + '" target="_blank" class="btn-mini">Ver</a>'
+        : '<span style="color:var(--txt-3)">—</span>';
+      var acciones = puedeEditar()
+        ? '<button class="btn-mini" onclick="editarCapacitacion(\'' + c.id + '\')">Editar</button>' +
+          '<button class="btn-mini peligro" onclick="eliminarCapacitacion(\'' + c.id + '\')">Eliminar</button>'
+        : '<span style="color:var(--txt-3);font-size:12px">Solo lectura</span>';
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td>' + escapar(c.empleado_nombre) + '</td>' +
+        '<td><strong>' + escapar(c.curso) + '</strong></td>' +
+        '<td>' + escapar(c.institucion || '—') + '</td>' +
+        '<td>' + escapar(c.fecha_inicio || '—') + '</td>' +
+        '<td>' + escapar(c.fecha_fin || '—') + '</td>' +
+        '<td>' + badge(c.estado || 'en progreso', estadoClase) + '</td>' +
+        '<td>' + certLink + '</td>' +
+        '<td class="no-print">' + acciones + '</td>';
+      cuerpo.appendChild(tr);
+    });
+  }
+
+  function abrirFormCapacitacion() {
+    if (!puedeEditar()) { mostrarMensaje('Sin permisos para esta acción.', 'error'); return; }
+    document.getElementById('formCapacitacion').reset();
+    document.getElementById('capId').value = '';
+    document.getElementById('modalCapTitulo').textContent = 'Nueva capacitación';
+    llenarSelectEmpleados('capEmpleado');
+    document.getElementById('modalCapacitacion').classList.remove('oculto');
+  }
+
+  function editarCapacitacion(id) {
+    if (!puedeEditar()) { mostrarMensaje('Sin permisos para esta acción.', 'error'); return; }
+    var c = CAPACITACIONES.filter(function (x) { return String(x.id) === String(id); })[0];
+    if (!c) return;
+    document.getElementById('capId').value         = c.id;
+    document.getElementById('capCurso').value      = c.curso || '';
+    document.getElementById('capInstitucion').value = c.institucion || '';
+    document.getElementById('capInicio').value     = c.fecha_inicio || '';
+    document.getElementById('capFin').value        = c.fecha_fin || '';
+    document.getElementById('capEstado').value     = c.estado || 'en progreso';
+    document.getElementById('capCertUrl').value    = c.certificado_url || '';
+    document.getElementById('modalCapTitulo').textContent = 'Editar capacitación';
+    llenarSelectEmpleados('capEmpleado');
+    setTimeout(function () {
+      document.getElementById('capEmpleado').value = c.empleado_id;
+    }, 100);
+    document.getElementById('modalCapacitacion').classList.remove('oculto');
+  }
+
+  function cerrarModalCapacitacion() {
+    document.getElementById('modalCapacitacion').classList.add('oculto');
+  }
+
+  function guardarCapacitacion(evento) {
+    evento.preventDefault();
+    var datos = {
+      id:             document.getElementById('capId').value,
+      empleado_id:    document.getElementById('capEmpleado').value,
+      curso:          document.getElementById('capCurso').value,
+      institucion:    document.getElementById('capInstitucion').value,
+      fecha_inicio:   document.getElementById('capInicio').value,
+      fecha_fin:      document.getElementById('capFin').value,
+      estado:         document.getElementById('capEstado').value,
+      certificado_url:document.getElementById('capCertUrl').value
+    };
+    if (!datos.empleado_id) { mostrarMensaje('Selecciona un empleado.', 'error'); return; }
+    if (!datos.curso.trim()) { mostrarMensaje('El nombre del curso es obligatorio.', 'error'); return; }
+    var fn = datos.id ? 'actualizarCapacitacion' : 'crearCapacitacion';
+    llamarBackend(fn, [datos], function (res) {
+      if (res.ok) {
+        cerrarModalCapacitacion();
+        mostrarMensaje(res.mensaje, 'exito');
+        cargarCapacitaciones();
+      } else { mostrarMensaje(res.mensaje, 'error'); }
+    });
+  }
+
+  function eliminarCapacitacion(id) {
+    if (!confirm('¿Eliminar esta capacitación?')) return;
+    llamarBackend('eliminarCapacitacion', [id], function (res) {
+      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+      if (res.ok) cargarCapacitaciones();
+    });
+  }
+</script>

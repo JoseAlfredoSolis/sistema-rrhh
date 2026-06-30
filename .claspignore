@@ -1,0 +1,11 @@
+# Archivos que clasp NO debe subir a Apps Script.
+# (Solo se suben Code.gs, los *.html y appsscript.json.)
+
+*.md
+**/*.md
+.clasp.json
+.claspignore
+.git/**
+node_modules/**
+package.json
+package-lock.json

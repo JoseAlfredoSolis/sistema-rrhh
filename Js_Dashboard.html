@@ -1,0 +1,29 @@
+<script>
+  /* ============================================================
+     MÓDULO DASHBOARD (frontend)
+     Muestra tarjetas con los totales del sistema.
+     ============================================================ */
+
+  function cargarDashboard() {
+    llamarBackend('obtenerDashboard', [], function (d) {
+      var tarjetas = [
+        { num: d.empleadosActivos,      lbl: 'Empleados activos' },
+        { num: d.empleadosInactivos,    lbl: 'Empleados inactivos' },
+        { num: d.totalDepartamentos,    lbl: 'Departamentos' },
+        { num: d.vacacionesPendientes,  lbl: 'Vacaciones pendientes' },
+        { num: d.nominasMesActual,      lbl: 'Nóminas mes ' + d.mesActual },
+        { num: formatoDinero(d.totalNetoMes),  lbl: 'Neto pagado este mes' },
+        { num: formatoDinero(d.masaSalarial),  lbl: 'Masa salarial (activos)' }
+      ];
+      var cont = document.getElementById('tarjetasDashboard');
+      cont.innerHTML = '';
+      tarjetas.forEach(function (t) {
+        var div = document.createElement('div');
+        div.className = 'tarjeta';
+        div.innerHTML = '<div class="num">' + escapar(t.num) + '</div>' +
+                        '<div class="lbl">' + escapar(t.lbl) + '</div>';
+        cont.appendChild(div);
+      });
+    });
+  }
+</script>

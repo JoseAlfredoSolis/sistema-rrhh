@@ -1,0 +1,88 @@
+<script>
+  /* ============================================================
+     MÓDULO DEPARTAMENTOS (frontend)
+     ============================================================ */
+
+  var DEPARTAMENTOS = [];
+
+  function cargarDepartamentos() {
+    llamarBackend('listarDepartamentos', [], function (lista) {
+      DEPARTAMENTOS = lista || [];
+      var cuerpo = document.getElementById('cuerpoDeptos');
+      cuerpo.innerHTML = '';
+      document.getElementById('sinDeptos').classList.toggle('oculto', DEPARTAMENTOS.length > 0);
+      DEPARTAMENTOS.forEach(function (d) {
+        var tr = document.createElement('tr');
+        tr.innerHTML =
+          '<td>' + escapar(d.nombre) + '</td>' +
+          '<td>' + escapar(d.responsable || '—') + '</td>' +
+          '<td>' +
+            '<button class="btn-mini" onclick="editarDepto(\'' + d.id + '\')">Editar</button>' +
+            '<button class="btn-mini peligro" onclick="eliminarDepto(\'' + d.id + '\')">Eliminar</button>' +
+          '</td>';
+        cuerpo.appendChild(tr);
+      });
+    });
+  }
+
+  function abrirFormDepto() {
+    document.getElementById('formDepto').reset();
+    document.getElementById('depId').value = '';
+    document.getElementById('errDepNombre').textContent = '';
+    document.getElementById('modalDeptoTitulo').textContent = 'Nuevo departamento';
+    document.getElementById('modalDepto').classList.remove('oculto');
+  }
+
+  function editarDepto(id) {
+    var d = DEPARTAMENTOS.filter(function (x) { return String(x.id) === String(id); })[0];
+    if (!d) return;
+    document.getElementById('depId').value = d.id;
+    document.getElementById('depNombre').value = d.nombre || '';
+    document.getElementById('depResponsable').value = d.responsable || '';
+    document.getElementById('errDepNombre').textContent = '';
+    document.getElementById('modalDeptoTitulo').textContent = 'Editar departamento';
+    document.getElementById('modalDepto').classList.remove('oculto');
+  }
+
+  function cerrarModalDepto() { document.getElementById('modalDepto').classList.add('oculto'); }
+
+  function guardarDepto(evento) {
+    evento.preventDefault();
+    var datos = {
+      id: document.getElementById('depId').value,
+      nombre: document.getElementById('depNombre').value,
+      responsable: document.getElementById('depResponsable').value
+    };
+    if (!datos.nombre.trim()) {
+      document.getElementById('errDepNombre').textContent = 'El nombre es obligatorio.';
+      return;
+    }
+    var btn = document.getElementById('btnGuardarDepto');
+    btn.disabled = true; btn.textContent = 'Guardando...';
+    var fn = datos.id ? 'actualizarDepartamento' : 'crearDepartamento';
+    google.script.run
+      .withSuccessHandler(function (res) {
+        btn.disabled = false; btn.textContent = 'Guardar';
+        if (res.ok) {
+          cerrarModalDepto();
+          mostrarMensaje(res.mensaje, 'exito');
+          cargarDepartamentos();
+        } else {
+          mostrarMensaje(res.mensaje, 'error');
+        }
+      })
+      .withFailureHandler(function (err) {
+        btn.disabled = false; btn.textContent = 'Guardar';
+        mostrarMensaje('Error: ' + err.message, 'error');
+      })
+      [fn](datos);
+  }
+
+  function eliminarDepto(id) {
+    if (!confirm('¿Eliminar este departamento?')) return;
+    llamarBackend('eliminarDepartamento', [id], function (res) {
+      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+      if (res.ok) cargarDepartamentos();
+    });
+  }
+</script>

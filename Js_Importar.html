@@ -1,0 +1,226 @@
+<script>
+  /* ============================================================
+     MÓDULO IMPORTAR (frontend)
+     Parsea Excel/CSV con SheetJS, muestra mapeo de columnas,
+     previsualiza datos y los envía al backend en lote.
+     ============================================================ */
+
+  var IMP = {
+    entidad: 'EMPLEADOS',
+    headers: [],  // cabeceras detectadas en el archivo
+    filas:   [],  // filas como arrays de valores
+    mapping: {}   // { campo_nuestro: indice_columna }
+  };
+
+  // Campos esperados por entidad + alias para auto-detección.
+  var IMP_CAMPOS = {
+    EMPLEADOS: [
+      { key: 'nombre',        label: 'Nombre completo *', aliases: ['nombre','name','empleado','nombrecompleto'] },
+      { key: 'cedula',        label: 'Cédula *',           aliases: ['cedula','dni','documento','identificacion'] },
+      { key: 'departamento',  label: 'Departamento',       aliases: ['departamento','area','depto','dept'] },
+      { key: 'puesto',        label: 'Puesto',             aliases: ['puesto','cargo','position','rol'] },
+      { key: 'fecha_ingreso', label: 'Fecha de ingreso *', aliases: ['fechaingreso','ingreso','fecha','startdate'] },
+      { key: 'salario',       label: 'Salario *',          aliases: ['salario','sueldo','salary','remuneracion'] },
+      { key: 'estado',        label: 'Estado',             aliases: ['estado','status'] }
+    ],
+    DEPARTAMENTOS: [
+      { key: 'nombre',       label: 'Nombre *',     aliases: ['nombre','departamento','area','name'] },
+      { key: 'responsable',  label: 'Responsable',  aliases: ['responsable','jefe','manager','encargado'] }
+    ]
+  };
+
+  // Normaliza una cadena para comparar headers: minúsculas, sin acentos ni espacios.
+  function normKey(s) {
+    return String(s).toLowerCase()
+      .replace(/[áàä]/g,'a').replace(/[éèë]/g,'e')
+      .replace(/[íìï]/g,'i').replace(/[óòö]/g,'o').replace(/[úùü]/g,'u')
+      .replace(/[^a-z0-9]/g,'');
+  }
+
+  // ---- Abrir / cerrar modal ----
+
+  function abrirModalImportar(entidad) {
+    IMP.entidad = entidad || 'EMPLEADOS';
+    IMP.headers = []; IMP.filas = []; IMP.mapping = {};
+    document.getElementById('importEntidad').value = IMP.entidad;
+    document.getElementById('importFile').value = '';
+    document.getElementById('importNombreArchivo').textContent = '';
+    document.getElementById('importDrop').classList.remove('import-drop-ok');
+    document.getElementById('importTitulo').textContent =
+      'Importar ' + (IMP.entidad === 'EMPLEADOS' ? 'empleados' : 'departamentos');
+    mostrarPasoImport(1);
+    document.getElementById('modalImportar').classList.remove('oculto');
+  }
+
+  function cerrarModalImportar() {
+    document.getElementById('modalImportar').classList.add('oculto');
+  }
+
+  function mostrarPasoImport(n) {
+    [1, 2, 3].forEach(function (i) {
+      document.getElementById('importPaso' + i).classList.toggle('oculto', i !== n);
+    });
+  }
+
+  // ---- Leer el archivo con SheetJS ----
+
+  function leerArchivo(input) {
+    var file = input.files[0];
+    if (!file) return;
+
+    document.getElementById('importNombreArchivo').textContent = '📄 ' + file.name;
+    document.getElementById('importDrop').classList.add('import-drop-ok');
+
+    var reader = new FileReader();
+    reader.onload = function (e) {
+      try {
+        var data = new Uint8Array(e.target.result);
+        var wb   = XLSX.read(data, { type: 'array', cellDates: true });
+        var ws   = wb.Sheets[wb.SheetNames[0]];
+        var json = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+        if (json.length < 2) {
+          mostrarMensaje('El archivo está vacío o solo tiene encabezados.', 'error');
+          return;
+        }
+
+        IMP.headers = json[0].map(function (h) { return String(h); });
+        IMP.filas   = json.slice(1).filter(function (r) {
+          return r.some(function (c) { return String(c).trim() !== ''; });
+        });
+
+        autoDetectarMapping();
+        pintarMappingUI();
+        mostrarPasoImport(2);
+      } catch (err) {
+        mostrarMensaje('No se pudo leer el archivo: ' + err.message, 'error');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  // ---- Auto-detectar el mejor mapeo ----
+
+  function autoDetectarMapping() {
+    var campos = IMP_CAMPOS[IMP.entidad] || [];
+    IMP.mapping = {};
+    campos.forEach(function (campo) {
+      var mejor = -1;
+      IMP.headers.forEach(function (h, i) {
+        var hn = normKey(h);
+        if (campo.aliases.some(function (a) { return hn === a || hn.indexOf(a) !== -1; })) {
+          if (mejor === -1) mejor = i;
+        }
+      });
+      IMP.mapping[campo.key] = mejor; // -1 = sin mapear
+    });
+  }
+
+  // ---- Pintar UI de mapeo + vista previa ----
+
+  function pintarMappingUI() {
+    var campos = IMP_CAMPOS[IMP.entidad] || [];
+
+    // Opciones de columnas para cada <select>.
+    var opBase = '<option value="-1">— No incluir —</option>' +
+      IMP.headers.map(function (h, i) {
+        return '<option value="' + i + '">' + escapar(h) + '</option>';
+      }).join('');
+
+    var filas = campos.map(function (campo) {
+      var idx = IMP.mapping[campo.key];
+      // Insertamos "selected" en la opción correcta.
+      var ops = opBase.replace('value="' + idx + '"', 'value="' + idx + '" selected');
+      return '<tr>' +
+        '<td class="map-label">' + escapar(campo.label) + '</td>' +
+        '<td><select class="map-sel" data-key="' + campo.key + '" ' +
+          'onchange="IMP.mapping[this.dataset.key]=Number(this.value)">' + ops + '</select></td>' +
+        '</tr>';
+    }).join('');
+
+    document.getElementById('importMappingTable').innerHTML =
+      '<table class="tabla import-map-tabla">' +
+        '<thead><tr><th>Campo del sistema</th><th>Columna en tu archivo</th></tr></thead>' +
+        '<tbody>' + filas + '</tbody>' +
+      '</table>';
+
+    // Vista previa: primeras 5 filas.
+    var totalFilas = IMP.filas.length;
+    var prev = IMP.filas.slice(0, 5).map(function (r) {
+      return '<tr>' + IMP.headers.map(function (h, i) {
+        return '<td>' + escapar(String(r[i] != null ? r[i] : '')) + '</td>';
+      }).join('') + '</tr>';
+    }).join('');
+
+    document.getElementById('importPreviewTable').innerHTML =
+      '<p class="import-prev-label">Vista previa — primeras 5 de <strong>' + totalFilas + '</strong> filas detectadas:</p>' +
+      '<div class="tabla-envoltorio import-prev-scroll">' +
+        '<table class="tabla">' +
+          '<thead><tr>' + IMP.headers.map(function (h) {
+            return '<th>' + escapar(h) + '</th>';
+          }).join('') + '</tr></thead>' +
+          '<tbody>' + prev + '</tbody>' +
+        '</table>' +
+      '</div>';
+  }
+
+  // ---- Ejecutar importación ----
+
+  function ejecutarImport() {
+    var campos = IMP_CAMPOS[IMP.entidad] || [];
+
+    // Aplicar el mapeo: convertir cada fila de array a objeto.
+    var filasMapeadas = IMP.filas.map(function (row) {
+      var obj = {};
+      campos.forEach(function (campo) {
+        var idx = IMP.mapping[campo.key];
+        obj[campo.key] = (idx >= 0 && idx < row.length) ? row[idx] : '';
+      });
+      return obj;
+    });
+
+    var btn = document.getElementById('btnEjecutarImport');
+    btn.disabled = true;
+    btn.textContent = 'Importando ' + filasMapeadas.length + ' filas…';
+
+    llamarBackend('importarDatos', [IMP.entidad, filasMapeadas], function (res) {
+      btn.disabled = false;
+      btn.textContent = 'Importar';
+      pintarResultadosImport(res);
+      mostrarPasoImport(3);
+      // Recargar el módulo afectado.
+      if (IMP.entidad === 'EMPLEADOS') { cargarEmpleados(); refrescarEmpleadosSelect(); }
+      if (IMP.entidad === 'DEPARTAMENTOS') cargarDepartamentos();
+    });
+  }
+
+  // ---- Mostrar resumen de resultados ----
+
+  function pintarResultadosImport(res) {
+    var html = '<div class="import-resumen">';
+
+    if (!res.ok) {
+      html += '<div class="import-stat import-err">❌ ' + escapar(res.mensaje) + '</div>';
+    } else {
+      html += '<div class="import-stat import-ok">✅ <strong>' + res.creados + '</strong> registros importados correctamente</div>';
+
+      if (res.omitidos > 0) {
+        html += '<div class="import-stat import-warn">⏭ <strong>' + res.omitidos + '</strong> omitidos por duplicado (ya existían)</div>';
+      }
+      if (res.errores && res.errores.length > 0) {
+        html += '<div class="import-stat import-err">❌ <strong>' + res.errores.length + '</strong> filas con errores:</div>';
+        html += '<ul class="import-errores">';
+        res.errores.slice(0, 15).forEach(function (e) {
+          html += '<li>Fila ' + e.fila + ': ' + escapar(e.motivo) + '</li>';
+        });
+        if (res.errores.length > 15) {
+          html += '<li>… y ' + (res.errores.length - 15) + ' más.</li>';
+        }
+        html += '</ul>';
+      }
+    }
+
+    html += '</div>';
+    document.getElementById('importResultados').innerHTML = html;
+  }
+</script>

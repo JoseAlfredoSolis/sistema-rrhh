@@ -1,0 +1,96 @@
+<script>
+  /* ============================================================
+     MÓDULO VACACIONES — v9 (con balance)
+     ============================================================ */
+
+  function cargarVacaciones() {
+    llenarSelectEmpleadosFiltro('filtroEmpVac');
+    llamarBackend('listarVacaciones', [], function (lista) {
+      var cuerpo = document.getElementById('cuerpoVacaciones');
+      cuerpo.innerHTML = '';
+      document.getElementById('sinVacaciones').classList.toggle('oculto', (lista || []).length > 0);
+      (lista || []).forEach(function (v) {
+        var estado = String(v.estado).toLowerCase();
+        var acciones = '';
+        if (estado === 'pendiente' && puedeEditar()) {
+          acciones =
+            '<button class="btn-mini" onclick="decidirVacaciones(\'' + v.id + '\',\'aprobada\')">Aprobar</button>' +
+            '<button class="btn-mini peligro" onclick="decidirVacaciones(\'' + v.id + '\',\'rechazada\')">Rechazar</button>';
+        } else {
+          acciones = '<span style="color:var(--txt-3);font-size:13px">—</span>';
+        }
+        var tr = document.createElement('tr');
+        tr.innerHTML =
+          '<td>' + escapar(v.empleado_nombre) + '</td>' +
+          '<td>' + escapar(v.fecha_inicio) + '</td>' +
+          '<td>' + escapar(v.fecha_fin) + '</td>' +
+          '<td>' + escapar(v.dias) + '</td>' +
+          '<td>' + badge(estado) + '</td>' +
+          '<td class="no-print">' + acciones + '</td>';
+        cuerpo.appendChild(tr);
+      });
+      actualizarBadge();
+    });
+  }
+
+  function consultarBalanceVacaciones() {
+    var sel = document.getElementById('filtroEmpVac');
+    var id  = sel ? sel.value : '';
+    var panel = document.getElementById('balanceVacPanel');
+    if (!id) { panel.classList.add('oculto'); return; }
+    llamarBackend('obtenerBalanceVacaciones', [id], function (res) {
+      if (!res.ok) { panel.classList.add('oculto'); return; }
+      document.getElementById('balAcum').textContent  = res.diasAcumulados;
+      document.getElementById('balUsado').textContent = res.diasUsados;
+      document.getElementById('balDisp').textContent  = res.diasDisponibles;
+      panel.classList.remove('oculto');
+    });
+  }
+
+  function abrirFormVacaciones() {
+    if (!puedeEditar()) { mostrarMensaje('Sin permisos para solicitar vacaciones.', 'error'); return; }
+    document.getElementById('formVacaciones').reset();
+    llenarSelectEmpleados('vacEmpleado');
+    document.getElementById('modalVacaciones').classList.remove('oculto');
+  }
+
+  function cerrarModalVacaciones() { document.getElementById('modalVacaciones').classList.add('oculto'); }
+
+  function guardarVacaciones(evento) {
+    evento.preventDefault();
+    var datos = {
+      empleado_id:  document.getElementById('vacEmpleado').value,
+      fecha_inicio: document.getElementById('vacInicio').value,
+      fecha_fin:    document.getElementById('vacFin').value
+    };
+    if (!datos.empleado_id) { mostrarMensaje('Selecciona un empleado.', 'error'); return; }
+    if (new Date(datos.fecha_fin) < new Date(datos.fecha_inicio)) {
+      mostrarMensaje('La fecha de fin no puede ser anterior a la de inicio.', 'error'); return;
+    }
+    var btn = document.getElementById('btnGuardarVacaciones');
+    btn.disabled = true; btn.textContent = 'Enviando...';
+    google.script.run
+      .withSuccessHandler(function (res) {
+        btn.disabled = false; btn.textContent = 'Solicitar';
+        if (res.ok) {
+          cerrarModalVacaciones();
+          mostrarMensaje(res.mensaje, 'exito');
+          cargarVacaciones();
+        } else { mostrarMensaje(res.mensaje, 'error'); }
+      })
+      .withFailureHandler(function (err) {
+        btn.disabled = false; btn.textContent = 'Solicitar';
+        mostrarMensaje('Error: ' + err.message, 'error');
+      })
+      .crearVacaciones(datos);
+  }
+
+  function decidirVacaciones(id, nuevoEstado) {
+    var verbo = (nuevoEstado === 'aprobada') ? 'aprobar' : 'rechazar';
+    if (!confirm('¿Seguro que deseas ' + verbo + ' esta solicitud?')) return;
+    llamarBackend('cambiarEstadoVacaciones', [id, nuevoEstado], function (res) {
+      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+      if (res.ok) { cargarVacaciones(); consultarBalanceVacaciones(); }
+    });
+  }
+</script>

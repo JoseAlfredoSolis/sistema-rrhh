@@ -1,0 +1,210 @@
+<script>
+  /* ============================================================
+     MÓDULO CONFIGURACIÓN — v9 (+ respaldo + roles)
+     ============================================================ */
+
+  function cargarConfiguracion() {
+    llamarBackend('obtenerConfiguracion', [], function (info) {
+      pintarEstadoConexion(info);
+      pintarPestanas(info.pestanas || []);
+    });
+    cargarConfigCorreo();
+    cargarEstadoRespaldo();
+    cargarConfigRoles();
+  }
+
+  function pintarEstadoConexion(info) {
+    var div = document.getElementById('estadoConexion');
+    if (info.error) {
+      div.className = 'config-estado error-conexion';
+      div.innerHTML = '❌ ' + escapar(info.error);
+      return;
+    }
+    var origen = info.usandoHojaLigada ? 'Hoja ligada al proyecto' : 'Hoja conectada por ID';
+    div.className = 'config-estado ok-conexion';
+    div.innerHTML =
+      '✅ <strong>Conectado</strong> (' + origen + ')<br>' +
+      '<span class="config-dato">Nombre:</span> ' + escapar(info.nombreLibro) + '<br>' +
+      '<span class="config-dato">ID:</span> <code>' + escapar(info.idLibro) + '</code><br>' +
+      '<a href="' + escapar(info.urlLibro) + '" target="_blank" rel="noopener">Abrir la hoja ↗</a>';
+    if (info.idConfigurado) document.getElementById('cfgIdHoja').value = info.idConfigurado;
+  }
+
+  function pintarPestanas(pestanas) {
+    var cuerpo = document.getElementById('cuerpoPestanas');
+    cuerpo.innerHTML = '';
+    pestanas.forEach(function (p) {
+      var estado = p.existe
+        ? '<span class="badge activo">existe</span>'
+        : '<span class="badge inactivo">falta</span>';
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td><strong>' + escapar(p.nombre) + '</strong></td>' +
+        '<td>' + estado + '</td>' +
+        '<td>' + escapar(p.existe ? p.registros : '—') + '</td>' +
+        '<td style="font-size:12px;color:var(--txt-3)">' + escapar(p.columnas) + '</td>';
+      cuerpo.appendChild(tr);
+    });
+  }
+
+  function guardarHoja() {
+    var id = document.getElementById('cfgIdHoja').value;
+    if (!id.trim()) { mostrarMensaje('Pega el ID o la URL de la hoja.', 'error'); return; }
+    llamarBackend('guardarIdHoja', [id], function (res) {
+      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+      if (res.ok) { cargarConfiguracion(); refrescarEmpleadosSelect(); }
+    });
+  }
+
+  function crearHoja() {
+    var nombre = document.getElementById('cfgNombreHoja').value;
+    if (!confirm('Se creará una hoja nueva en tu Drive. ¿Continuar?')) return;
+    llamarBackend('crearHojaNueva', [nombre], function (res) {
+      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+      if (res.ok) { document.getElementById('cfgNombreHoja').value = ''; cargarConfiguracion(); refrescarEmpleadosSelect(); }
+    });
+  }
+
+  function volverHojaLigada() {
+    if (!confirm('¿Volver a usar la hoja ligada al proyecto?')) return;
+    llamarBackend('usarHojaLigada', [], function (res) {
+      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+      if (res.ok) { document.getElementById('cfgIdHoja').value = ''; cargarConfiguracion(); refrescarEmpleadosSelect(); }
+    });
+  }
+
+  function inicializarPestanas() {
+    llamarBackend('inicializarHojas', [], function (res) {
+      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+      if (res.ok) cargarConfiguracion();
+    });
+  }
+
+  // ── Respaldo automático ───────────────────────────────────
+  function cargarEstadoRespaldo() {
+    llamarBackend('estadoRespaldo', [], function (res) {
+      var el = document.getElementById('estadoRespaldo');
+      if (!el) return;
+      if (res.activo) {
+        el.className = 'config-estado ok-conexion';
+        el.innerHTML = '✅ <strong>Activo</strong> — respaldo semanal automático (domingos 2 a.m.)';
+      } else {
+        el.className = 'config-estado error-conexion';
+        el.innerHTML = '⏹ <strong>Inactivo</strong> — solo respaldo manual disponible';
+      }
+      var ultimo = document.getElementById('ultimoRespaldo');
+      if (ultimo) ultimo.textContent = res.ultimoRespaldo ? 'Último: ' + res.ultimoRespaldo : '';
+    });
+  }
+
+  function hacerRespaldoAhora() {
+    mostrarMensaje('Creando respaldo…', 'exito');
+    llamarBackend('crearRespaldo', [], function (res) {
+      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+      if (res.ok && res.url) window.open(res.url, '_blank');
+      cargarEstadoRespaldo();
+    });
+  }
+
+  function activarRespaldoSemanal() {
+    llamarBackend('activarRespaldoSemanal', [], function (res) {
+      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+      cargarEstadoRespaldo();
+    });
+  }
+
+  function desactivarRespaldoSemanal() {
+    if (!confirm('¿Desactivar el respaldo automático semanal?')) return;
+    llamarBackend('desactivarRespaldoSemanal', [], function (res) {
+      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+      cargarEstadoRespaldo();
+    });
+  }
+
+  // ── Roles y PINs ─────────────────────────────────────────
+  function cargarConfigRoles() {
+    if (!esAdmin()) return;
+    llamarBackend('obtenerConfigRoles', [], function (cfg) {
+      var pa = document.getElementById('pinAdmin');
+      var pr = document.getElementById('pinRrhh');
+      if (pa) pa.placeholder = cfg.pinAdmin ? '••••  (configurado)' : 'PIN de admin';
+      if (pr) pr.placeholder = cfg.pinRrhh  ? '••••  (configurado)' : 'PIN de RRHH';
+      if (pa) pa.value = '';
+      if (pr) pr.value = '';
+    });
+  }
+
+  function guardarRoles() {
+    var pa = document.getElementById('pinAdmin').value.trim();
+    var pr = document.getElementById('pinRrhh').value.trim();
+    if (!pa && !pr) { mostrarMensaje('Escribe al menos un PIN para actualizar.', 'error'); return; }
+    llamarBackend('guardarConfigRoles', [{ pinAdmin: pa, pinRrhh: pr }], function (res) {
+      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+      if (res.ok) cargarConfigRoles();
+    });
+  }
+
+  // ── Configuración de correo ───────────────────────────────
+  var SMTP_AYUDA = {
+    sendgrid: 'Crea una cuenta en <strong>sendgrid.com</strong> → Settings → API Keys → Create API Key. Plan gratuito: 100 correos/día.',
+    brevo:    'Crea una cuenta en <strong>brevo.com</strong> → SMTP &amp; API → API Keys. Plan gratuito: 300 correos/día.'
+  };
+
+  function cargarConfigCorreo() {
+    llamarBackend('obtenerConfigCorreo', [], function (cfg) {
+      document.getElementById('correoProveedor').value  = cfg.proveedor  || 'google';
+      document.getElementById('correoFromNombre').value = cfg.fromNombre || '';
+      document.getElementById('correoFromEmail').value  = cfg.fromEmail  || '';
+      document.getElementById('correoApiKey').placeholder =
+        cfg.apiKey ? '••••••••  (ya configurada, deja vacío para mantenerla)' : 'Pega aquí tu API Key';
+      document.getElementById('correoApiKey').value = '';
+      cambiarProveedorCorreo();
+    });
+  }
+
+  function cambiarProveedorCorreo() {
+    var prv    = document.getElementById('correoProveedor').value;
+    var ext    = document.getElementById('smtpExterno');
+    var ayuda  = document.getElementById('smtpAyudaLinks');
+    var hint   = document.getElementById('correoApiKeyHint');
+    ext.classList.toggle('oculto', prv === 'google');
+    if (prv === 'sendgrid') { hint.textContent = '(SendGrid)'; ayuda.innerHTML = '<p class="smtp-ayuda-texto">ℹ️ ' + SMTP_AYUDA.sendgrid + '</p>'; }
+    else if (prv === 'brevo') { hint.textContent = '(Brevo)'; ayuda.innerHTML = '<p class="smtp-ayuda-texto">ℹ️ ' + SMTP_AYUDA.brevo + '</p>'; }
+    else { ayuda.innerHTML = ''; }
+  }
+
+  function guardarConfigCorreo() {
+    var cfg = {
+      proveedor:  document.getElementById('correoProveedor').value,
+      fromNombre: document.getElementById('correoFromNombre').value.trim(),
+      fromEmail:  document.getElementById('correoFromEmail').value.trim(),
+      apiKey:     document.getElementById('correoApiKey').value.trim()
+    };
+    var estado = document.getElementById('correoEstado');
+    estado.textContent = '';
+    if ((cfg.proveedor === 'sendgrid' || cfg.proveedor === 'brevo') && !cfg.fromEmail) {
+      estado.innerHTML = '<span style="color:var(--err)">Introduce el correo del remitente.</span>'; return;
+    }
+    llamarBackend('guardarConfigCorreo', [cfg], function (res) {
+      estado.innerHTML = res.ok
+        ? '<span style="color:var(--ok)">✅ ' + res.mensaje + '</span>'
+        : '<span style="color:var(--err)">❌ ' + escapar(res.mensaje) + '</span>';
+      if (res.ok) cargarConfigCorreo();
+    });
+  }
+
+  function probarConfigCorreo() {
+    var estado = document.getElementById('correoEstado');
+    estado.innerHTML = '<span style="color:var(--txt-3)">Enviando correo de prueba…</span>';
+    llamarBackend('probarConfigCorreo', [], function (res) {
+      estado.innerHTML = res.ok
+        ? '<span style="color:var(--ok)">✅ ' + res.mensaje + '</span>'
+        : '<span style="color:var(--err)">❌ ' + escapar(res.mensaje) + '</span>';
+    });
+  }
+
+  function toggleApiKey() {
+    var inp = document.getElementById('correoApiKey');
+    inp.type = inp.type === 'password' ? 'text' : 'password';
+  }
+</script>

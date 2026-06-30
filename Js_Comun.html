@@ -1,0 +1,274 @@
+<script>
+  /* ============================================================
+     FUNCIONES COMUNES — v9
+     Navegación · Mensajes · Formato · Dark mode · Export · Roles
+     ============================================================ */
+
+  var EMPLEADOS_SELECT = [];
+  var ROL_ACTUAL = 'consulta'; // 'consulta' | 'rrhh' | 'admin'
+
+  var CARGADORES = {
+    dashboard:      function () { cargarDashboard(); },
+    empleados:      function () { cargarEmpleados(); },
+    departamentos:  function () { cargarDepartamentos(); },
+    asistencia:     function () { cargarAsistencia(); },
+    vacaciones:     function () { cargarVacaciones(); },
+    nomina:         function () { cargarNomina(); },
+    reportes:       function () { cargarReportes(); },
+    alertas:        function () { cargarAlertas(); },
+    configuracion:  function () { cargarConfiguracion(); },
+    capacitaciones: function () { cargarCapacitaciones(); },
+    evaluaciones:   function () { cargarEvaluaciones(); },
+    documentos:     function () { cargarDocumentos(); },
+    bitacora:       function () { cargarBitacora(); }
+  };
+
+  var TITULOS = {
+    dashboard:      'Dashboard',
+    empleados:      'Empleados',
+    departamentos:  'Departamentos',
+    asistencia:     'Asistencia',
+    vacaciones:     'Vacaciones',
+    nomina:         'Nómina',
+    reportes:       'Reportes',
+    alertas:        'Alertas',
+    configuracion:  'Configuración',
+    capacitaciones: 'Capacitaciones',
+    evaluaciones:   'Evaluaciones de desempeño',
+    documentos:     'Documentos',
+    bitacora:       'Bitácora de cambios'
+  };
+
+  window.addEventListener('load', function () {
+    // Restaurar dark mode preferido
+    if (localStorage.getItem('rrhh-dark') === '1') {
+      document.body.classList.add('dark');
+      var btn = document.getElementById('btnDarkMode');
+      if (btn) btn.textContent = '☀️';
+    }
+    // Restaurar sidebar colapsado
+    if (localStorage.getItem('rrhh-sb-collapsed') === '1') {
+      var sb = document.getElementById('sidebar');
+      var btnC = document.getElementById('btnColapsar');
+      if (sb) sb.classList.add('collapsed');
+      if (btnC) btnC.title = 'Mostrar menú';
+    }
+    refrescarEmpleadosSelect(function () {
+      mostrarVista('dashboard');
+      actualizarBadge();
+      mostrarModalPin();
+    });
+  });
+
+  // ── Navegación ────────────────────────────────────────────
+  function mostrarVista(nombre) {
+    document.querySelectorAll('.vista').forEach(function (v) { v.classList.add('oculto'); });
+    document.getElementById('vista-' + nombre).classList.remove('oculto');
+    document.querySelectorAll('.nav-item').forEach(function (b) {
+      b.classList.toggle('activo', b.getAttribute('data-vista') === nombre);
+    });
+    var t = document.getElementById('topbarTitulo');
+    if (t) t.textContent = TITULOS[nombre] || nombre;
+    cerrarSidebar();
+    if (CARGADORES[nombre]) CARGADORES[nombre]();
+  }
+
+  // ── Sidebar ───────────────────────────────────────────────
+  function toggleSidebar() {
+    document.getElementById('sidebar').classList.toggle('open');
+    document.getElementById('sidebarOverlay').classList.toggle('oculto');
+  }
+  function cerrarSidebar() {
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('sidebarOverlay').classList.add('oculto');
+  }
+
+  // ── Modo oscuro ───────────────────────────────────────────
+  function toggleDarkMode() {
+    var dark = document.body.classList.toggle('dark');
+    localStorage.setItem('rrhh-dark', dark ? '1' : '0');
+    var btn = document.getElementById('btnDarkMode');
+    if (btn) btn.textContent = dark ? '☀️' : '🌙';
+  }
+
+  // ── Badge de alertas ──────────────────────────────────────
+  function actualizarBadge() {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        var badge = document.getElementById('badgeAlertas');
+        if (!badge) return;
+        if (res && res.total > 0) {
+          badge.textContent = res.total;
+          badge.classList.remove('oculto');
+        } else {
+          badge.classList.add('oculto');
+        }
+      })
+      .withFailureHandler(function () {})
+      .obtenerContadorAlertas();
+  }
+
+  // ── Roles / PIN ───────────────────────────────────────────
+  function mostrarModalPin() {
+    document.getElementById('modalPin').classList.remove('oculto');
+    setTimeout(function () {
+      var inp = document.getElementById('pinInput');
+      if (inp) inp.focus();
+    }, 100);
+  }
+
+  function cerrarModalPin() {
+    document.getElementById('modalPin').classList.add('oculto');
+    establecerRol('consulta');
+  }
+
+  function verificarPinUI() {
+    var pin = document.getElementById('pinInput').value;
+    llamarBackend('verificarPIN', [pin], function (res) {
+      if (!res.rol) {
+        document.getElementById('pinError').textContent = res.mensaje || 'PIN incorrecto.';
+        return;
+      }
+      document.getElementById('modalPin').classList.add('oculto');
+      establecerRol(res.rol);
+    });
+  }
+
+  function establecerRol(rol) {
+    ROL_ACTUAL = rol;
+    var badge = document.getElementById('rolBadge');
+    if (!badge) return;
+    if (rol === 'consulta') {
+      badge.textContent = '👁 Consulta';
+      badge.className = 'rol-badge consulta';
+    } else if (rol === 'rrhh') {
+      badge.textContent = '✏️ RRHH';
+      badge.className = 'rol-badge rrhh';
+    } else {
+      badge.textContent = '🔑 Admin';
+      badge.className = 'rol-badge';
+    }
+    badge.classList.remove('oculto');
+    badge.onclick = function () {
+      if (confirm('¿Cambiar de usuario?')) {
+        document.getElementById('pinInput').value = '';
+        document.getElementById('pinError').textContent = '';
+        mostrarModalPin();
+      }
+    };
+  }
+
+  function puedeEditar() { return ROL_ACTUAL === 'rrhh' || ROL_ACTUAL === 'admin'; }
+  function esAdmin()     { return ROL_ACTUAL === 'admin'; }
+
+  // ── Indicador de carga ────────────────────────────────────
+  function mostrarCargando(visible) {
+    document.getElementById('cargando').classList.toggle('oculto', !visible);
+  }
+
+  // ── Mensajes ──────────────────────────────────────────────
+  function mostrarMensaje(texto, tipo) {
+    var div = document.getElementById('mensaje');
+    div.textContent = texto;
+    div.className = 'mensaje ' + tipo;
+    div.classList.remove('oculto');
+    clearTimeout(window._tmpMsg);
+    window._tmpMsg = setTimeout(function () { div.classList.add('oculto'); }, 4000);
+  }
+
+  // ── Helpers de formato ────────────────────────────────────
+  function escapar(txt) {
+    return String(txt == null ? '' : txt)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function formatoDinero(n) {
+    var num = Number(n) || 0;
+    return '₡' + num.toLocaleString('es', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function badge(valor, clase) {
+    return '<span class="badge ' + (clase || valor) + '">' + escapar(valor) + '</span>';
+  }
+
+  // ── Empleados select ──────────────────────────────────────
+  function refrescarEmpleadosSelect(callback) {
+    google.script.run
+      .withSuccessHandler(function (lista) {
+        EMPLEADOS_SELECT = lista || [];
+        if (callback) callback();
+      })
+      .withFailureHandler(function () { if (callback) callback(); })
+      .listarEmpleadosSelect();
+  }
+
+  function llenarSelectEmpleados(idSelect) {
+    var sel = document.getElementById(idSelect);
+    if (!sel) return;
+    sel.innerHTML = '<option value="">— Selecciona —</option>';
+    EMPLEADOS_SELECT.forEach(function (e) {
+      var opt = document.createElement('option');
+      opt.value = e.id;
+      opt.textContent = e.nombre;
+      sel.appendChild(opt);
+    });
+  }
+
+  function llenarSelectEmpleadosFiltro(idSelect) {
+    var sel = document.getElementById(idSelect);
+    if (!sel) return;
+    var valActual = sel.value;
+    sel.innerHTML = '<option value="">Todos los empleados</option>';
+    EMPLEADOS_SELECT.forEach(function (e) {
+      var opt = document.createElement('option');
+      opt.value = e.id;
+      opt.textContent = e.nombre;
+      sel.appendChild(opt);
+    });
+    if (valActual) sel.value = valActual;
+  }
+
+  // ── Backend helper ────────────────────────────────────────
+  function llamarBackend(fn, args, alExito) {
+    mostrarCargando(true);
+    var runner = google.script.run
+      .withSuccessHandler(function (res) {
+        mostrarCargando(false);
+        alExito(res);
+      })
+      .withFailureHandler(function (err) {
+        mostrarCargando(false);
+        mostrarMensaje('Error: ' + err.message, 'error');
+      });
+    runner[fn].apply(runner, args || []);
+  }
+
+  // ── Exportar a Excel (SheetJS) ────────────────────────────
+  function exportarTabla(tablaId, nombre) {
+    if (typeof XLSX === 'undefined') {
+      mostrarMensaje('La librería XLSX no está cargada.', 'error');
+      return;
+    }
+    var tabla = document.getElementById(tablaId);
+    if (!tabla) { mostrarMensaje('Tabla no encontrada.', 'error'); return; }
+    // Clonar sin columnas no-print (Acciones)
+    var clone = tabla.cloneNode(true);
+    clone.querySelectorAll('.no-print').forEach(function (el) { el.remove(); });
+    var wb = XLSX.utils.book_new();
+    var ws = XLSX.utils.table_to_sheet(clone);
+    XLSX.utils.book_append_sheet(wb, ws, nombre || 'Datos');
+    XLSX.writeFile(wb, (nombre || 'datos') + '_' + new Date().toISOString().slice(0,10) + '.xlsx');
+  }
+
+  // ── Sidebar colapsable ────────────────────────────────────
+  function toggleSidebarCollapse() {
+    var sb  = document.getElementById('sidebar');
+    var btn = document.getElementById('btnColapsar');
+    var collapsed = sb.classList.toggle('collapsed');
+    localStorage.setItem('rrhh-sb-collapsed', collapsed ? '1' : '0');
+    if (btn) btn.title = collapsed ? 'Mostrar menú' : 'Ocultar menú';
+  }
+
+  // ── Imprimir nómina ───────────────────────────────────────
+  function imprimirNomina() { window.print(); }
+</script>

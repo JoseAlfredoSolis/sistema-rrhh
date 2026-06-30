@@ -1,0 +1,72 @@
+<script>
+  /* ============================================================
+     MÓDULO DOCUMENTOS POR EMPLEADO — v9
+     ============================================================ */
+
+  var _docEmpId = null;
+
+  function cargarDocumentos() {
+    llenarSelectEmpleadosFiltro('filtroEmpDoc');
+    var sel = document.getElementById('filtroEmpDoc');
+    if (!sel) return;
+    var empId = sel.value;
+    var panel    = document.getElementById('docPanel');
+    var btnCrear = document.getElementById('btnCrearCarpeta');
+
+    if (!empId) {
+      panel.classList.add('oculto');
+      if (btnCrear) btnCrear.style.display = 'none';
+      _docEmpId = null;
+      return;
+    }
+    _docEmpId = empId;
+    if (btnCrear) btnCrear.style.display = '';
+
+    llamarBackend('listarDocumentos', [empId], function (res) {
+      if (!res.ok && !res.documentos) {
+        mostrarMensaje(res.mensaje || 'Error al cargar documentos.', 'error');
+        return;
+      }
+      panel.classList.remove('oculto');
+      var emp = EMPLEADOS_SELECT.filter(function (e) { return e.id === empId; })[0];
+      document.getElementById('docTituloEmp').textContent =
+        'Documentos' + (emp ? ' — ' + emp.nombre : '');
+
+      var linkCarpeta = document.getElementById('docLinkCarpeta');
+      if (res.carpetaUrl) {
+        linkCarpeta.href = res.carpetaUrl;
+        linkCarpeta.style.display = '';
+      } else {
+        linkCarpeta.style.display = 'none';
+      }
+
+      var cuerpo = document.getElementById('cuerpoDocumentos');
+      cuerpo.innerHTML = '';
+      var docs = res.documentos || [];
+      document.getElementById('sinDocumentos').classList.toggle('oculto', docs.length > 0);
+      docs.forEach(function (d) {
+        var tr = document.createElement('tr');
+        tr.innerHTML =
+          '<td>' + escapar(d.nombre) + '</td>' +
+          '<td>' + escapar(d.fecha || '—') + '</td>' +
+          '<td><a href="' + escapar(d.url) + '" target="_blank" class="btn-mini">Ver en Drive ↗</a></td>';
+        cuerpo.appendChild(tr);
+      });
+    });
+  }
+
+  function crearCarpetaDoc() {
+    if (!_docEmpId) return;
+    llamarBackend('crearCarpetaEmpleado', [_docEmpId], function (res) {
+      if (res.ok) {
+        mostrarMensaje(res.mensaje, 'exito');
+        cargarDocumentos();
+        if (res.carpetaUrl) {
+          var link = document.getElementById('docLinkCarpeta');
+          if (link) { link.href = res.carpetaUrl; link.style.display = ''; }
+          window.open(res.carpetaUrl, '_blank');
+        }
+      } else { mostrarMensaje(res.mensaje, 'error'); }
+    });
+  }
+</script>

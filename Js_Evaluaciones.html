@@ -1,0 +1,103 @@
+<script>
+  /* ============================================================
+     MÓDULO EVALUACIONES DE DESEMPEÑO — v9
+     ============================================================ */
+
+  var EVALUACIONES = [];
+
+  function cargarEvaluaciones() {
+    llenarSelectEmpleadosFiltro('filtroEmpEva');
+    var empId = (document.getElementById('filtroEmpEva') || {}).value || '';
+    llamarBackend('listarEvaluaciones', [empId || null], function (lista) {
+      EVALUACIONES = lista || [];
+      _pintarEvaluaciones();
+    });
+  }
+
+  function _pintarEvaluaciones() {
+    var cuerpo = document.getElementById('cuerpoEvaluaciones');
+    cuerpo.innerHTML = '';
+    document.getElementById('sinEvaluaciones').classList.toggle('oculto', EVALUACIONES.length > 0);
+    EVALUACIONES.forEach(function (e) {
+      var calColor = e.calificacion >= 7 ? 'var(--ok)' : e.calificacion >= 5 ? 'var(--warn)' : 'var(--err)';
+      var acciones = puedeEditar()
+        ? '<button class="btn-mini" onclick="editarEvaluacion(\'' + e.id + '\')">Editar</button>' +
+          '<button class="btn-mini peligro" onclick="eliminarEvaluacion(\'' + e.id + '\')">Eliminar</button>'
+        : '<span style="color:var(--txt-3);font-size:12px">Solo lectura</span>';
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td>' + escapar(e.empleado_nombre) + '</td>' +
+        '<td><strong>' + escapar(e.periodo) + '</strong></td>' +
+        '<td style="font-size:18px;font-weight:700;color:' + calColor + '">' + Number(e.calificacion).toFixed(1) + '/10</td>' +
+        '<td>' + escapar(e.evaluador || '—') + '</td>' +
+        '<td>' + escapar(e.fecha || '—') + '</td>' +
+        '<td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escapar(e.comentarios) + '">' + escapar(e.comentarios || '—') + '</td>' +
+        '<td class="no-print">' + acciones + '</td>';
+      cuerpo.appendChild(tr);
+    });
+  }
+
+  function abrirFormEvaluacion() {
+    if (!puedeEditar()) { mostrarMensaje('Sin permisos para esta acción.', 'error'); return; }
+    document.getElementById('formEvaluacion').reset();
+    document.getElementById('evaId').value = '';
+    document.getElementById('evaFecha').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('modalEvaTitulo').textContent = 'Nueva evaluación';
+    llenarSelectEmpleados('evaEmpleado');
+    document.getElementById('modalEvaluacion').classList.remove('oculto');
+  }
+
+  function editarEvaluacion(id) {
+    if (!puedeEditar()) { mostrarMensaje('Sin permisos para esta acción.', 'error'); return; }
+    var ev = EVALUACIONES.filter(function (x) { return String(x.id) === String(id); })[0];
+    if (!ev) return;
+    document.getElementById('evaId').value           = ev.id;
+    document.getElementById('evaPeriodo').value      = ev.periodo || '';
+    document.getElementById('evaCalificacion').value = ev.calificacion || '';
+    document.getElementById('evaEvaluador').value    = ev.evaluador || '';
+    document.getElementById('evaFecha').value        = ev.fecha || '';
+    document.getElementById('evaComentarios').value  = ev.comentarios || '';
+    document.getElementById('modalEvaTitulo').textContent = 'Editar evaluación';
+    llenarSelectEmpleados('evaEmpleado');
+    setTimeout(function () {
+      document.getElementById('evaEmpleado').value = ev.empleado_id;
+    }, 100);
+    document.getElementById('modalEvaluacion').classList.remove('oculto');
+  }
+
+  function cerrarModalEvaluacion() {
+    document.getElementById('modalEvaluacion').classList.add('oculto');
+  }
+
+  function guardarEvaluacion(evento) {
+    evento.preventDefault();
+    var datos = {
+      id:           document.getElementById('evaId').value,
+      empleado_id:  document.getElementById('evaEmpleado').value,
+      periodo:      document.getElementById('evaPeriodo').value,
+      calificacion: document.getElementById('evaCalificacion').value,
+      evaluador:    document.getElementById('evaEvaluador').value,
+      fecha:        document.getElementById('evaFecha').value,
+      comentarios:  document.getElementById('evaComentarios').value
+    };
+    if (!datos.empleado_id) { mostrarMensaje('Selecciona un empleado.', 'error'); return; }
+    var cal = Number(datos.calificacion);
+    if (isNaN(cal) || cal < 1 || cal > 10) { mostrarMensaje('La calificación debe ser entre 1 y 10.', 'error'); return; }
+    var fn = datos.id ? 'actualizarEvaluacion' : 'crearEvaluacion';
+    llamarBackend(fn, [datos], function (res) {
+      if (res.ok) {
+        cerrarModalEvaluacion();
+        mostrarMensaje(res.mensaje, 'exito');
+        cargarEvaluaciones();
+      } else { mostrarMensaje(res.mensaje, 'error'); }
+    });
+  }
+
+  function eliminarEvaluacion(id) {
+    if (!confirm('¿Eliminar esta evaluación?')) return;
+    llamarBackend('eliminarEvaluacion', [id], function (res) {
+      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+      if (res.ok) cargarEvaluaciones();
+    });
+  }
+</script>

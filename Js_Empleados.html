@@ -1,0 +1,220 @@
+<script>
+  /* ============================================================
+     MÓDULO EMPLEADOS — v9
+     ============================================================ */
+
+  var EMPLEADOS = [];
+
+  function cargarEmpleados() {
+    mostrarCargando(true);
+    var soloActivos = document.getElementById('soloActivos').checked;
+    google.script.run
+      .withSuccessHandler(function (lista) {
+        EMPLEADOS = lista || [];
+        mostrarCargando(false);
+        llenarSelectDepartamentosEmpleado();
+        _llenarFiltroDepartamento();
+        filtrarTabla();
+      })
+      .withFailureHandler(function (err) {
+        mostrarCargando(false);
+        mostrarMensaje('Error al cargar empleados: ' + err.message, 'error');
+      })
+      .listarEmpleados(soloActivos);
+  }
+
+  function llenarSelectDepartamentosEmpleado() {
+    google.script.run
+      .withSuccessHandler(function (nombres) {
+        var select = document.getElementById('departamento');
+        select.length = 1;
+        (nombres || []).forEach(function (nombre) {
+          var opt = document.createElement('option');
+          opt.value = nombre; opt.textContent = nombre;
+          select.appendChild(opt);
+        });
+      })
+      .listarNombresDepartamentos();
+  }
+
+  function _llenarFiltroDepartamento() {
+    var sel = document.getElementById('filtroDeptEmp');
+    if (!sel) return;
+    var val = sel.value;
+    sel.innerHTML = '<option value="">Todos los departamentos</option>';
+    var deptos = {};
+    EMPLEADOS.forEach(function (e) { if (e.departamento) deptos[e.departamento] = 1; });
+    Object.keys(deptos).sort().forEach(function (d) {
+      var opt = document.createElement('option');
+      opt.value = d; opt.textContent = d;
+      sel.appendChild(opt);
+    });
+    if (val) sel.value = val;
+  }
+
+  function filtrarTabla() {
+    var texto = (document.getElementById('buscador').value || '').toLowerCase().trim();
+    var depto  = (document.getElementById('filtroDeptEmp') || {}).value || '';
+    var visibles = EMPLEADOS.filter(function (e) {
+      var textoOk = !texto ||
+        String(e.nombre).toLowerCase().indexOf(texto) !== -1 ||
+        String(e.cedula).toLowerCase().indexOf(texto) !== -1;
+      var deptoOk = !depto || e.departamento === depto;
+      return textoOk && deptoOk;
+    });
+
+    var cuerpo = document.getElementById('cuerpoTabla');
+    cuerpo.innerHTML = '';
+    document.getElementById('sinDatos').classList.toggle('oculto', visibles.length > 0);
+
+    visibles.forEach(function (e) {
+      var esActivo = String(e.estado).toLowerCase() === 'activo';
+      var accionesCRUD = puedeEditar()
+        ? '<button class="btn-mini" onclick="editarEmpleado(\'' + e.id + '\')">Editar</button>' +
+          (esActivo
+            ? '<button class="btn-mini peligro" onclick="cambiarEstado(\'' + e.id + '\',\'inactivo\')">Baja</button>'
+            : '<button class="btn-mini" onclick="cambiarEstado(\'' + e.id + '\',\'activo\')">Activar</button>')
+        : '<span style="color:var(--txt-3);font-size:12px">Solo lectura</span>';
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td>' + escapar(e.nombre) + '</td>' +
+        '<td>' + escapar(e.cedula) + '</td>' +
+        '<td>' + escapar(e.departamento || '—') + '</td>' +
+        '<td>' + escapar(e.puesto || '—') + '</td>' +
+        '<td>' + escapar(e.fecha_ingreso || '—') + '</td>' +
+        '<td>' + formatoDinero(e.salario) + '</td>' +
+        '<td>' + badge(esActivo ? 'activo' : 'inactivo') + '</td>' +
+        '<td class="no-print">' + accionesCRUD +
+          '<button class="btn-mini" onclick="verHistorial(\'' + e.id + '\',\'' + escapar(e.nombre) + '\')">📈</button>' +
+        '</td>';
+      cuerpo.appendChild(tr);
+    });
+  }
+
+  // ── Historial de salarios ─────────────────────────────────
+  function verHistorial(id, nombre) {
+    document.getElementById('modalHistTitulo').textContent = 'Historial de salarios — ' + nombre;
+    document.getElementById('cuerpoHistSal').innerHTML = '';
+    document.getElementById('sinHistSal').classList.add('oculto');
+    document.getElementById('modalHistorialSal').classList.remove('oculto');
+    llamarBackend('listarHistorialSalario', [id], function (lista) {
+      var cuerpo = document.getElementById('cuerpoHistSal');
+      if (!lista || !lista.length) {
+        document.getElementById('sinHistSal').classList.remove('oculto');
+        return;
+      }
+      lista.forEach(function (h) {
+        var variacion = h.salario_nuevo - h.salario_anterior;
+        var varStr = (variacion >= 0 ? '+' : '') + formatoDinero(variacion);
+        var varColor = variacion >= 0 ? 'var(--ok)' : 'var(--err)';
+        var tr = document.createElement('tr');
+        tr.innerHTML =
+          '<td>' + escapar(h.fecha) + '</td>' +
+          '<td>' + formatoDinero(h.salario_anterior) + '</td>' +
+          '<td>' + formatoDinero(h.salario_nuevo) + '</td>' +
+          '<td style="color:' + varColor + ';font-weight:600">' + varStr + '</td>' +
+          '<td>' + escapar(h.notas || '—') + '</td>';
+        cuerpo.appendChild(tr);
+      });
+    });
+  }
+
+  function cerrarModalHistorial() {
+    document.getElementById('modalHistorialSal').classList.add('oculto');
+  }
+
+  // ── Formulario ────────────────────────────────────────────
+  function abrirFormularioNuevo() {
+    if (!puedeEditar()) { mostrarMensaje('Necesitas rol RRHH o Admin para crear empleados.', 'error'); return; }
+    document.getElementById('formEmpleado').reset();
+    document.getElementById('id').value = '';
+    document.getElementById('modalTitulo').textContent = 'Nuevo empleado';
+    limpiarErroresEmp();
+    document.getElementById('modal').classList.remove('oculto');
+  }
+
+  function editarEmpleado(id) {
+    if (!puedeEditar()) { mostrarMensaje('Necesitas rol RRHH o Admin para editar.', 'error'); return; }
+    var e = EMPLEADOS.filter(function (x) { return String(x.id) === String(id); })[0];
+    if (!e) return;
+    document.getElementById('id').value           = e.id;
+    document.getElementById('nombre').value       = e.nombre || '';
+    document.getElementById('cedula').value       = e.cedula || '';
+    document.getElementById('departamento').value = e.departamento || '';
+    document.getElementById('puesto').value       = e.puesto || '';
+    document.getElementById('fecha_ingreso').value = e.fecha_ingreso || '';
+    document.getElementById('salario').value      = e.salario != null ? e.salario : '';
+    document.getElementById('fecha_nacimiento').value = e.fecha_nacimiento || '';
+    document.getElementById('telefono').value     = e.telefono || '';
+    document.getElementById('modalTitulo').textContent = 'Editar empleado';
+    limpiarErroresEmp();
+    document.getElementById('modal').classList.remove('oculto');
+  }
+
+  function cerrarModal() { document.getElementById('modal').classList.add('oculto'); }
+
+  function limpiarErroresEmp() {
+    ['errNombre', 'errCedula', 'errFecha', 'errSalario'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.textContent = '';
+    });
+  }
+
+  function validarFormularioEmp(d) {
+    limpiarErroresEmp();
+    var ok = true;
+    if (!d.nombre.trim()) { document.getElementById('errNombre').textContent = 'El nombre es obligatorio.'; ok = false; }
+    if (!/^[0-9\-]{5,20}$/.test(d.cedula.trim())) { document.getElementById('errCedula').textContent = 'Cédula inválida (solo números y guiones, 5-20).'; ok = false; }
+    if (!d.fecha_ingreso) { document.getElementById('errFecha').textContent = 'La fecha de ingreso es obligatoria.'; ok = false; }
+    var sal = Number(d.salario);
+    if (d.salario === '' || isNaN(sal) || sal < 0) { document.getElementById('errSalario').textContent = 'El salario debe ser ≥ 0.'; ok = false; }
+    return ok;
+  }
+
+  function guardarEmpleado(evento) {
+    evento.preventDefault();
+    var datos = {
+      id:              document.getElementById('id').value,
+      nombre:          document.getElementById('nombre').value,
+      cedula:          document.getElementById('cedula').value,
+      departamento:    document.getElementById('departamento').value,
+      puesto:          document.getElementById('puesto').value,
+      fecha_ingreso:   document.getElementById('fecha_ingreso').value,
+      salario:         document.getElementById('salario').value,
+      fecha_nacimiento:document.getElementById('fecha_nacimiento').value,
+      telefono:        document.getElementById('telefono').value
+    };
+    if (!validarFormularioEmp(datos)) return;
+
+    var btn = document.getElementById('btnGuardar');
+    btn.disabled = true; btn.textContent = 'Guardando...';
+    var fn = datos.id ? 'actualizarEmpleado' : 'crearEmpleado';
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        btn.disabled = false; btn.textContent = 'Guardar';
+        if (res.ok) {
+          cerrarModal();
+          mostrarMensaje(res.mensaje, 'exito');
+          cargarEmpleados();
+          refrescarEmpleadosSelect();
+          actualizarBadge();
+        } else { mostrarMensaje(res.mensaje, 'error'); }
+      })
+      .withFailureHandler(function (err) {
+        btn.disabled = false; btn.textContent = 'Guardar';
+        mostrarMensaje('Error: ' + err.message, 'error');
+      })
+      [fn](datos);
+  }
+
+  function cambiarEstado(id, nuevoEstado) {
+    if (!puedeEditar()) { mostrarMensaje('Sin permisos para esta acción.', 'error'); return; }
+    var accion = (nuevoEstado === 'inactivo') ? 'dar de baja' : 'reactivar';
+    if (!confirm('¿Seguro que deseas ' + accion + ' a este empleado?')) return;
+    llamarBackend('cambiarEstadoEmpleado', [id, nuevoEstado], function (res) {
+      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+      if (res.ok) { cargarEmpleados(); refrescarEmpleadosSelect(); }
+    });
+  }
+</script>
