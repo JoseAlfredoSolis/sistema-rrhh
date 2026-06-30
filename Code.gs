@@ -668,6 +668,7 @@ function crearVacaciones(v, token) {
     var id = generarId('VAC');
     hoja.appendRow([id, v.empleado_id, formatearFecha(v.fecha_inicio),
                     formatearFecha(v.fecha_fin), dias, 'pendiente']);
+    try { _notificarWhatsAppNuevaVacacion(v, dias); } catch (e) {}
     return { ok: true, mensaje: 'Solicitud creada (' + dias + ' días).', id: id };
   });
 }
@@ -1025,36 +1026,37 @@ function guardarConfigAlertas(cfg, token) {
 function verificarAlertas() {
   var cfg    = obtenerConfigAlertas();
   var emails = cfg.destinatarios.split(',').map(function (e) { return e.trim(); }).filter(Boolean);
-  if (!emails.length) return; // sin destinatarios, nada que hacer
+  var waCfg  = obtenerConfigWhatsAppInterno();
+  var waListo = waCfg.activo && waCfg.telefono && waCfg.apikey;
 
-  if (cfg.vacacionesPendientesActiva) {
-    var msgVac = _cuerpoVacacionesPendientes();
-    if (msgVac) _enviarCorreo(emails, '🏖 Vacaciones pendientes de aprobación', msgVac);
-  }
+  if (!emails.length && !waListo) return;
 
-  if (cfg.nominaMensualActiva) {
-    var hoy = new Date();
-    if (hoy.getDate() >= Number(cfg.nominaMensualDia)) {
-      var msgNom = _cuerpoNominaMensual();
-      if (msgNom) _enviarCorreo(emails, '💰 Nómina mensual no generada', msgNom);
+  if (emails.length) {
+    if (cfg.vacacionesPendientesActiva) {
+      var msgVac = _cuerpoVacacionesPendientes();
+      if (msgVac) _enviarCorreo(emails, '🏖 Vacaciones pendientes de aprobación', msgVac);
     }
-  }
 
-  if (cfg.resumenSemanalActivo) {
-    if (new Date().getDay() === 1) { // lunes
+    if (cfg.nominaMensualActiva) {
+      var hoy = new Date();
+      if (hoy.getDate() >= Number(cfg.nominaMensualDia)) {
+        var msgNom = _cuerpoNominaMensual();
+        if (msgNom) _enviarCorreo(emails, '💰 Nómina mensual no generada', msgNom);
+      }
+    }
+
+    if (cfg.resumenSemanalActivo && new Date().getDay() === 1) {
       _enviarCorreo(emails, '📊 Resumen semanal de RRHH', _cuerpoResumenSemanal());
     }
+
+    if (cfg.cumpleaniosActiva && new Date().getDate() === 1) {
+      var msgCump = _cuerpoProximosCumpleanios();
+      if (msgCump) _enviarCorreo(emails, '🎂 Cumpleaños de empleados este mes', msgCump);
+    }
   }
 
-  if (cfg.cumpleaniosActiva && new Date().getDate() === 1) {
-    var msgCump = _cuerpoProximosCumpleanios();
-    if (msgCump) _enviarCorreo(emails, '🎂 Cumpleaños de empleados este mes', msgCump);
-  }
-
-  var waCfg = obtenerConfigWhatsAppInterno();
-  if (waCfg.activo && waCfg.telefono && waCfg.apikey) {
-    var resumenWa = _resumenAlertaWhatsApp();
-    if (resumenWa) _enviarWhatsApp(resumenWa, waCfg);
+  if (waListo) {
+    _enviarAlertasWhatsApp(cfg, waCfg);
   }
 }
 
@@ -1879,10 +1881,24 @@ function estadoRespaldo() {
 // ===================================================================
 
 var CLAVE_CONFIG_WHATSAPP = 'CONFIG_WHATSAPP';
+var MAX_CHARS_WHATSAPP = 1500;
+
+function _defConfigWhatsApp() {
+  return {
+    telefono: '',
+    apikey: '',
+    activo: false,
+    alertaVacaciones: true,
+    alertaNomina: true,
+    alertaResumen: false,
+    alertaCumpleanios: true,
+    notificarNuevaVacacion: true
+  };
+}
 
 function obtenerConfigWhatsAppInterno() {
   var raw = PropertiesService.getScriptProperties().getProperty(CLAVE_CONFIG_WHATSAPP);
-  var def = { telefono: '', apikey: '', activo: false };
+  var def = _defConfigWhatsApp();
   if (!raw) return def;
   try { return Object.assign(def, JSON.parse(raw)); } catch (e) { return def; }
 }
@@ -1899,11 +1915,176 @@ function guardarConfigWhatsApp(cfg, token) {
 
   var actual = obtenerConfigWhatsAppInterno();
   if (!cfg.apikey) cfg.apikey = actual.apikey;
-  PropertiesService.getScriptProperties().setProperty(CLAVE_CONFIG_WHATSAPP, JSON.stringify(cfg));
+  var merged = Object.assign(_defConfigWhatsApp(), actual, cfg);
+  PropertiesService.getScriptProperties().setProperty(CLAVE_CONFIG_WHATSAPP, JSON.stringify(merged));
   return { ok: true, mensaje: 'Configuración de WhatsApp guardada.' };
 }
 
-function probarWhatsApp(token) {
+function _normalizarTelefonoWhatsApp(telefono) {
+  var t = String(telefono || '').trim().replace(/[\s\-()]/g, '');
+  if (!t) return '';
+  if (t.charAt(0) !== '+') t = '+' + t.replace(/^\+/, '');
+  return t;
+}
+
+function _truncarWhatsApp(texto) {
+  var s = String(texto || '');
+  if (s.length <= MAX_CHARS_WHATSAPP) return s;
+  return s.slice(0, MAX_CHARS_WHATSAPP - 3) + '...';
+}
+
+/**
+ * Envía un mensaje vía CallMeBot.
+ * @param {string} mensaje
+ * @param {Object} cfg  Configuración con telefono y apikey.
+ * @param {Object} [opciones]  { forzar: true } omite la validación de activo.
+ */
+function _enviarWhatsApp(mensaje, cfg, opciones) {
+  opciones = opciones || {};
+  if (!cfg) cfg = obtenerConfigWhatsAppInterno();
+  if (!cfg || !cfg.telefono || !cfg.apikey) {
+    return { ok: false, mensaje: 'WhatsApp no configurado (teléfono o API Key faltante).' };
+  }
+  if (!opciones.forzar && !cfg.activo) {
+    return { ok: false, mensaje: 'Las notificaciones WhatsApp están desactivadas.' };
+  }
+
+  var telefono = _normalizarTelefonoWhatsApp(cfg.telefono);
+  if (!/^\+\d{8,15}$/.test(telefono)) {
+    return { ok: false, mensaje: 'Número inválido. Usa formato internacional, ej: +50688887777' };
+  }
+
+  try {
+    var texto = _truncarWhatsApp(mensaje);
+    var url = 'https://api.callmebot.com/whatsapp.php' +
+      '?phone='  + encodeURIComponent(telefono) +
+      '&text='   + encodeURIComponent(texto) +
+      '&apikey=' + encodeURIComponent(cfg.apikey);
+    var res = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    var code = res.getResponseCode();
+    var body = res.getContentText();
+    if (code >= 400) {
+      return { ok: false, mensaje: 'CallMeBot error ' + code + ': ' + body.slice(0, 120) };
+    }
+    if (/error|invalid|failed/i.test(body) && !/message sent|success/i.test(body)) {
+      return { ok: false, mensaje: 'CallMeBot: ' + body.slice(0, 120) };
+    }
+    return { ok: true, mensaje: 'Mensaje WhatsApp enviado a ' + telefono + '.' };
+  } catch (e) {
+    return { ok: false, mensaje: 'Error WhatsApp: ' + e.message };
+  }
+}
+
+function _textoVacacionesPendientes() {
+  var vacs = leerTabla(HOJAS.VACACIONES).filter(function (v) {
+    return estadoNormalizado(v.estado) === 'pendiente';
+  });
+  if (!vacs.length) return null;
+
+  var mapa = mapaEmpleados();
+  var lineas = vacs.map(function (v, i) {
+    var nombre = mapa[v.empleado_id] || v.empleado_id || '—';
+    return (i + 1) + '. ' + nombre + ' (' + formatearFecha(v.fecha_inicio) +
+      ' → ' + formatearFecha(v.fecha_fin) + ', ' + (v.dias || '—') + ' días)';
+  });
+
+  return '🏖 *Vacaciones pendientes* (' + vacs.length + ')\n\n' +
+    lineas.join('\n') + '\n\nIngresa al sistema para aprobar o rechazar.';
+}
+
+function _textoNominaMensual() {
+  var mesActual = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM');
+  var noms = leerTabla(HOJAS.NOMINA).filter(function (n) { return String(n.mes) === mesActual; });
+  var activos = leerTabla(HOJAS.EMPLEADOS).filter(function (e) {
+    return estadoNormalizado(e.estado) === 'activo';
+  });
+  if (!activos.length) return null;
+  var conNomina = {};
+  noms.forEach(function (n) { conNomina[String(n.empleado_id)] = true; });
+  var faltantes = activos.filter(function (e) { return !conNomina[String(e.id)]; });
+  if (!faltantes.length) return null;
+
+  var lista = faltantes.map(function (e, i) { return (i + 1) + '. ' + e.nombre; }).join('\n');
+  return '💰 *Nómina pendiente* — ' + mesActual + '\n\n' +
+    'Faltan ' + faltantes.length + ' empleado(s) activo(s):\n' + lista +
+    '\n\nGenera la nómina en el módulo correspondiente.';
+}
+
+function _textoResumenSemanal() {
+  var dash = obtenerDashboard();
+  return '📊 *Resumen semanal RRHH*\n' +
+    '• Empleados activos: ' + dash.empleadosActivos + '\n' +
+    '• Inactivos: ' + dash.empleadosInactivos + '\n' +
+    '• Vacaciones pendientes: ' + dash.vacacionesPendientes + '\n' +
+    '• Nómina ' + dash.mesActual + ': ' + dash.nominasMesActual + ' registros\n' +
+    '• Total neto mes: ₡' + (dash.totalNetoMes || 0).toLocaleString();
+}
+
+function _textoCumpleanios() {
+  var hoy = new Date();
+  var mesHoy = hoy.getMonth() + 1;
+  var empls = leerTabla(HOJAS.EMPLEADOS).filter(function (e) {
+    if (estadoNormalizado(e.estado) !== 'activo') return false;
+    if (!e.fecha_nacimiento) return false;
+    var fn = new Date(e.fecha_nacimiento);
+    return !isNaN(fn.getTime()) && (fn.getMonth() + 1) === mesHoy;
+  });
+  if (!empls.length) return null;
+
+  var lineas = empls.map(function (e, i) {
+    var fn = new Date(e.fecha_nacimiento);
+    return (i + 1) + '. ' + e.nombre + ' — ' + fn.getDate() + '/' + mesHoy;
+  });
+  return '🎂 *Cumpleaños del mes*\n\n' + lineas.join('\n');
+}
+
+function _enviarAlertasWhatsApp(cfgAlertas, waCfg) {
+  var enviados = 0;
+
+  if (waCfg.alertaVacaciones !== false && cfgAlertas.vacacionesPendientesActiva) {
+    var tVac = _textoVacacionesPendientes();
+    if (tVac && _enviarWhatsApp(tVac, waCfg).ok) enviados++;
+  }
+
+  if (waCfg.alertaNomina !== false && cfgAlertas.nominaMensualActiva) {
+    var hoy = new Date();
+    if (hoy.getDate() >= Number(cfgAlertas.nominaMensualDia)) {
+      var tNom = _textoNominaMensual();
+      if (tNom && _enviarWhatsApp(tNom, waCfg).ok) enviados++;
+    }
+  }
+
+  if (waCfg.alertaResumen && cfgAlertas.resumenSemanalActivo && new Date().getDay() === 1) {
+    if (_enviarWhatsApp(_textoResumenSemanal(), waCfg).ok) enviados++;
+  }
+
+  if (waCfg.alertaCumpleanios !== false && cfgAlertas.cumpleaniosActiva && new Date().getDate() === 1) {
+    var tCump = _textoCumpleanios();
+    if (tCump && _enviarWhatsApp(tCump, waCfg).ok) enviados++;
+  }
+
+  if (!enviados) {
+    _enviarWhatsApp(_textoResumenSemanal(), waCfg);
+  }
+}
+
+function _notificarWhatsAppNuevaVacacion(v, dias) {
+  var waCfg = obtenerConfigWhatsAppInterno();
+  if (!waCfg.activo || waCfg.notificarNuevaVacacion === false) return;
+  var mapa = mapaEmpleados();
+  var nombre = mapa[v.empleado_id] || v.empleado_id;
+  var msg = '🏖 *Nueva solicitud de vacaciones*\n' +
+    'Empleado: ' + nombre + '\n' +
+    'Desde: ' + formatearFecha(v.fecha_inicio) + '\n' +
+    'Hasta: ' + formatearFecha(v.fecha_fin) + '\n' +
+    'Días: ' + dias + '\n\nRevisa el sistema para aprobar.';
+  _enviarWhatsApp(msg, waCfg);
+}
+
+/**
+ * Prueba el envío de WhatsApp. tipo: general | vacaciones | nomina | resumen | cumpleanios
+ */
+function probarWhatsApp(tipo, token) {
   var _authErr = requiereAdmin(token);
   if (_authErr) return _authErr;
 
@@ -1911,37 +2092,33 @@ function probarWhatsApp(token) {
   if (!cfg.telefono || !cfg.apikey) {
     return { ok: false, mensaje: 'Configura el teléfono y la API Key de CallMeBot primero.' };
   }
-  return _enviarWhatsApp('🧪 Prueba de notificación del Sistema RRHH. ¡Todo funciona correctamente!', cfg);
-}
 
-function _enviarWhatsApp(mensaje, cfg) {
-  if (!cfg) cfg = obtenerConfigWhatsAppInterno();
-  if (!cfg || !cfg.activo || !cfg.telefono || !cfg.apikey) return null;
-  try {
-    var url = 'https://api.callmebot.com/whatsapp.php' +
-      '?phone='  + encodeURIComponent(cfg.telefono) +
-      '&text='   + encodeURIComponent(mensaje) +
-      '&apikey=' + encodeURIComponent(cfg.apikey);
-    var res = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
-    var code = res.getResponseCode();
-    if (code >= 400) {
-      return { ok: false, mensaje: 'WhatsApp error ' + code };
-    }
-    return { ok: true, mensaje: 'WhatsApp enviado.' };
-  } catch (e) {
-    return { ok: false, mensaje: 'Error WhatsApp: ' + e.message };
+  var mensaje;
+  if (tipo === 'vacaciones') {
+    mensaje = _textoVacacionesPendientes() || '✅ No hay vacaciones pendientes en este momento.';
+  } else if (tipo === 'nomina') {
+    mensaje = _textoNominaMensual() || '✅ Todos los empleados activos tienen nómina del mes.';
+  } else if (tipo === 'resumen') {
+    mensaje = _textoResumenSemanal();
+  } else if (tipo === 'cumpleanios') {
+    mensaje = _textoCumpleanios() || '✅ No hay cumpleaños registrados este mes.';
+  } else {
+    mensaje = '🧪 Prueba del Sistema RRHH\nWhatsApp configurado correctamente via CallMeBot.';
   }
+
+  return _enviarWhatsApp('🧪 [PRUEBA]\n' + mensaje, cfg, { forzar: true });
 }
 
-function _resumenAlertaWhatsApp() {
-  var dash = obtenerDashboard();
-  var partes = [
-    'RRHH ' + dash.mesActual + ':',
-    dash.empleadosActivos + ' activos',
-    dash.vacacionesPendientes + ' vac. pendientes',
-    'Nómina: ' + dash.nominasMesActual + ' registros'
-  ];
-  return partes.join(' | ');
+/** Envía un mensaje personalizado por WhatsApp (solo admin). */
+function enviarWhatsAppPersonalizado(mensaje, token) {
+  var _authErr = requiereAdmin(token);
+  if (_authErr) return _authErr;
+
+  if (!mensaje || !String(mensaje).trim()) {
+    return { ok: false, mensaje: 'Escribe un mensaje para enviar.' };
+  }
+  var cfg = obtenerConfigWhatsAppInterno();
+  return _enviarWhatsApp(String(mensaje).trim(), cfg, { forzar: true });
 }
 
 

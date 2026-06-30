@@ -1,6 +1,6 @@
 <script>
   /* ============================================================
-     MÓDULO ALERTAS — v9 (WhatsApp + cumpleaños)
+     MÓDULO ALERTAS — v10 (WhatsApp completo + cumpleaños)
      ============================================================ */
 
   function cargarAlertas() {
@@ -35,7 +35,7 @@
       var el = document.getElementById('estadoTrigger');
       if (res.activo) {
         el.className = 'config-estado ok-conexion';
-        el.innerHTML = '✅ <strong>Activo</strong> — el sistema verifica y envía alertas todos los días a las 8 a.m.';
+        el.innerHTML = '✅ <strong>Activo</strong> — el sistema verifica y envía alertas (correo y WhatsApp) todos los días a las 8 a.m.';
       } else {
         el.className = 'config-estado error-conexion';
         el.innerHTML = '⏹ <strong>Inactivo</strong> — las alertas automáticas están desactivadas.';
@@ -67,21 +67,35 @@
   // ── WhatsApp ──────────────────────────────────────────────
   function cargarConfigWhatsApp() {
     llamarBackend('obtenerConfigWhatsApp', [], function (cfg) {
-      document.getElementById('wpActivo').checked  = !!cfg.activo;
-      document.getElementById('wpTelefono').value  = cfg.telefono || '';
-      document.getElementById('wpApiKey').value    = '';
+      document.getElementById('wpActivo').checked         = !!cfg.activo;
+      document.getElementById('wpTelefono').value         = cfg.telefono || '';
+      document.getElementById('wpApiKey').value           = '';
+      document.getElementById('wpAlertaVac').checked      = cfg.alertaVacaciones !== false;
+      document.getElementById('wpAlertaNom').checked      = cfg.alertaNomina !== false;
+      document.getElementById('wpAlertaResumen').checked  = !!cfg.alertaResumen;
+      document.getElementById('wpAlertaCumple').checked    = cfg.alertaCumpleanios !== false;
+      document.getElementById('wpNotifNuevaVac').checked   = cfg.notificarNuevaVacacion !== false;
       document.getElementById('wpApiKey').placeholder =
         cfg.apikey ? '••••••••  (ya configurada)' : 'Tu API Key de CallMeBot';
     });
   }
 
-  function guardarConfigWhatsApp() {
+  function _leerConfigWhatsAppUI() {
     var apikey = document.getElementById('wpApiKey').value.trim();
-    var cfg = {
+    return {
       activo:   document.getElementById('wpActivo').checked,
       telefono: document.getElementById('wpTelefono').value.trim(),
-      apikey:   apikey // backend preserva la existente si llega vacía
+      apikey:   apikey,
+      alertaVacaciones:      document.getElementById('wpAlertaVac').checked,
+      alertaNomina:          document.getElementById('wpAlertaNom').checked,
+      alertaResumen:         document.getElementById('wpAlertaResumen').checked,
+      alertaCumpleanios:     document.getElementById('wpAlertaCumple').checked,
+      notificarNuevaVacacion: document.getElementById('wpNotifNuevaVac').checked
     };
+  }
+
+  function guardarConfigWhatsApp() {
+    var cfg = _leerConfigWhatsAppUI();
     llamarBackend('guardarConfigWhatsApp', [cfg], function (res) {
       var el = document.getElementById('wpEstado');
       el.style.color = res.ok ? 'var(--ok)' : 'var(--err)';
@@ -90,13 +104,30 @@
     });
   }
 
-  function probarWhatsApp() {
+  function _mostrarEstadoWhatsApp(res) {
+    var el = document.getElementById('wpEstado');
+    el.style.color = res.ok ? 'var(--ok)' : 'var(--err)';
+    el.textContent = (res.ok ? '✅ ' : '❌ ') + (res.mensaje || 'Sin respuesta');
+  }
+
+  function probarWhatsApp(tipo) {
     var el = document.getElementById('wpEstado');
     el.style.color = 'var(--txt-3)';
-    el.textContent = 'Enviando mensaje de prueba…';
-    llamarBackend('probarWhatsApp', [], function (res) {
-      el.style.color = res.ok ? 'var(--ok)' : 'var(--err)';
-      el.textContent = (res.ok ? '✅ ' : '❌ ') + res.mensaje;
+    el.textContent = 'Enviando mensaje de prueba por WhatsApp…';
+    llamarBackend('probarWhatsApp', [tipo || 'general'], function (res) {
+      _mostrarEstadoWhatsApp(res);
+    });
+  }
+
+  function enviarWhatsAppManual() {
+    var mensaje = document.getElementById('wpMensajeManual').value.trim();
+    if (!mensaje) { mostrarMensaje('Escribe un mensaje para enviar.', 'error'); return; }
+    var el = document.getElementById('wpEstado');
+    el.style.color = 'var(--txt-3)';
+    el.textContent = 'Enviando…';
+    llamarBackend('enviarWhatsAppPersonalizado', [mensaje], function (res) {
+      _mostrarEstadoWhatsApp(res);
+      if (res.ok) document.getElementById('wpMensajeManual').value = '';
     });
   }
 </script>
