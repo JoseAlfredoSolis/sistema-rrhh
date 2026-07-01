@@ -29,7 +29,10 @@ var HOJAS = {
   PRESTAMOS:         'Prestamos',
   HORAS_EXTRA:       'HorasExtra',
   ACTIVOS:           'Activos',
-  TURNOS:            'Turnos'
+  TURNOS:            'Turnos',
+  INCAPACIDADES:     'Incapacidades',
+  FERIADOS:          'Feriados',
+  LIQUIDACIONES:     'Liquidaciones'
 };
 
 /**
@@ -49,7 +52,10 @@ var ENCABEZADOS = {
   Prestamos:         ['id', 'empleado_id', 'monto', 'cuotas', 'cuota_mensual', 'cuotas_pagadas', 'estado', 'fecha', 'notas'],
   HorasExtra:        ['id', 'empleado_id', 'fecha', 'horas', 'tipo', 'aprobado', 'monto', 'notas'],
   Activos:           ['id', 'empleado_id', 'nombre', 'categoria', 'serial', 'fecha_entrega', 'fecha_devolucion', 'estado', 'notas'],
-  Turnos:            ['id', 'empleado_id', 'semana', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo']
+  Turnos:            ['id', 'empleado_id', 'semana', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'],
+  Incapacidades:     ['id', 'empleado_id', 'fecha_desde', 'fecha_hasta', 'dias', 'entidad', 'especialidad', 'notas'],
+  Feriados:          ['id', 'fecha', 'nombre', 'tipo'],
+  Liquidaciones:     ['id', 'empleado_id', 'fecha_salida', 'motivo', 'fecha_calculo', 'monto', 'estado', 'notas']
 };
 
 
@@ -1974,6 +1980,22 @@ function listarEventosCalendario(mes, anio) {
     }
   });
 
+  leerTabla(HOJAS.FERIADOS).forEach(function (f) {
+    var fd = new Date(f.fecha);
+    if (isNaN(fd.getTime())) return;
+    if ((fd.getMonth() + 1) === m && fd.getFullYear() === y) {
+      eventos.push({ tipo: 'feriado', dia: fd.getDate(), titulo: f.nombre || 'Feriado', color: '#6366f1' });
+    }
+  });
+
+  leerTabla(HOJAS.INCAPACIDADES).forEach(function (inc) {
+    var fd = new Date(inc.fecha_desde);
+    if (isNaN(fd.getTime())) return;
+    if ((fd.getMonth() + 1) === m && fd.getFullYear() === y) {
+      eventos.push({ tipo: 'incapacidad', dia: fd.getDate(), titulo: 'Incapacidad', color: '#ef4444' });
+    }
+  });
+
   return eventos;
 }
 
@@ -2221,6 +2243,172 @@ function obtenerExpediente(empleadoId) {
     activos:           leerTabla(HOJAS.ACTIVOS).filter(function (a) { return String(a.empleado_id) === String(empleadoId); }),
     horasExtra:        leerTabla(HOJAS.HORAS_EXTRA).filter(function (h) { return String(h.empleado_id) === String(empleadoId); })
   };
+}
+
+
+// ===================================================================
+// MÓDULO: INCAPACIDADES (CCSS / INS)
+// ===================================================================
+//
+// Estructura: id | empleado_id | fecha_desde | fecha_hasta | dias |
+//             entidad ('CCSS' | 'INS') | especialidad | notas
+// ===================================================================
+
+function listarIncapacidades(empleadoId) {
+  var rows  = leerTabla(HOJAS.INCAPACIDADES);
+  var empls = leerTabla(HOJAS.EMPLEADOS);
+  if (empleadoId) rows = rows.filter(function (r) { return String(r.empleado_id) === String(empleadoId); });
+  return rows.map(function (r) {
+    var emp = empls.filter(function (e) { return String(e.id) === String(r.empleado_id); })[0] || {};
+    r.fecha_desde = formatearFecha(r.fecha_desde);
+    r.fecha_hasta = formatearFecha(r.fecha_hasta);
+    return Object.assign({ empleado_nombre: emp.nombre || '-' }, r);
+  });
+}
+
+function crearIncapacidad(datos) {
+  if (!datos || !datos.empleado_id) return { ok: false, mensaje: 'Selecciona un empleado.' };
+  if (!datos.fecha_desde || isNaN(new Date(datos.fecha_desde).getTime())) {
+    return { ok: false, mensaje: 'La fecha de inicio no es válida.' };
+  }
+  if (!datos.fecha_hasta || isNaN(new Date(datos.fecha_hasta).getTime())) {
+    return { ok: false, mensaje: 'La fecha de fin no es válida.' };
+  }
+  if (new Date(datos.fecha_hasta) < new Date(datos.fecha_desde)) {
+    return { ok: false, mensaje: 'La fecha de fin no puede ser anterior a la de inicio.' };
+  }
+  var dias = calcularDias(datos.fecha_desde, datos.fecha_hasta);
+  var hoja = getHoja(HOJAS.INCAPACIDADES);
+  var id   = generarId('INC');
+  hoja.appendRow([id, datos.empleado_id, formatearFecha(datos.fecha_desde),
+    formatearFecha(datos.fecha_hasta), dias, datos.entidad || 'CCSS',
+    datos.especialidad || '', datos.notas || '']);
+  registrarBitacora('crear', 'Incapacidad', id, dias + ' días (' + (datos.entidad || 'CCSS') + ')');
+  return { ok: true, mensaje: 'Incapacidad registrada (' + dias + ' días).' };
+}
+
+function actualizarIncapacidad(datos) {
+  var hoja = getHoja(HOJAS.INCAPACIDADES);
+  var rows = hoja.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]) === String(datos.id)) {
+      var dias = calcularDias(datos.fecha_desde, datos.fecha_hasta);
+      hoja.getRange(i+1, 1, 1, 8).setValues([[datos.id, datos.empleado_id,
+        formatearFecha(datos.fecha_desde), formatearFecha(datos.fecha_hasta), dias,
+        datos.entidad || 'CCSS', datos.especialidad || '', datos.notas || '']]);
+      registrarBitacora('actualizar', 'Incapacidad', datos.id, dias + ' días');
+      return { ok: true, mensaje: 'Incapacidad actualizada.' };
+    }
+  }
+  return { ok: false, mensaje: 'No encontrada.' };
+}
+
+function eliminarIncapacidad(id) {
+  return eliminarFila(HOJAS.INCAPACIDADES, id, 'Incapacidad');
+}
+
+
+// ===================================================================
+// MÓDULO: FERIADOS
+// ===================================================================
+//
+// Estructura: id | fecha | nombre | tipo ('obligatorio' | 'no obligatorio')
+// ===================================================================
+
+function listarFeriados(anio) {
+  var rows = leerTabla(HOJAS.FERIADOS);
+  rows.forEach(function (r) { r.fecha = formatearFecha(r.fecha); });
+  if (anio) rows = rows.filter(function (r) { return String(r.fecha).slice(0, 4) === String(anio); });
+  rows.sort(function (a, b) { return String(a.fecha).localeCompare(String(b.fecha)); });
+  return rows;
+}
+
+function crearFeriado(datos) {
+  if (!datos || !datos.fecha || isNaN(new Date(datos.fecha).getTime())) {
+    return { ok: false, mensaje: 'La fecha no es válida.' };
+  }
+  var fecha = formatearFecha(datos.fecha);
+  var existe = leerTabla(HOJAS.FERIADOS).some(function (f) {
+    return formatearFecha(f.fecha) === fecha;
+  });
+  if (existe) return { ok: false, mensaje: 'Ya hay un feriado registrado en esa fecha.' };
+  var hoja = getHoja(HOJAS.FERIADOS);
+  var id   = generarId('FER');
+  hoja.appendRow([id, fecha, datos.nombre || '', datos.tipo || 'obligatorio']);
+  registrarBitacora('crear', 'Feriado', id, fecha + ' ' + (datos.nombre || ''));
+  return { ok: true, mensaje: 'Feriado registrado.' };
+}
+
+function eliminarFeriado(id) {
+  return eliminarFila(HOJAS.FERIADOS, id, 'Feriado');
+}
+
+
+// ===================================================================
+// MÓDULO: LIQUIDACIONES LABORALES
+// ===================================================================
+//
+// Estructura: id | empleado_id | fecha_salida | motivo | fecha_calculo |
+//             monto | estado ('pendiente' | 'pagada') | notas
+// ===================================================================
+
+function listarLiquidaciones(empleadoId) {
+  var rows  = leerTabla(HOJAS.LIQUIDACIONES);
+  var empls = leerTabla(HOJAS.EMPLEADOS);
+  if (empleadoId) rows = rows.filter(function (r) { return String(r.empleado_id) === String(empleadoId); });
+  return rows.map(function (r) {
+    var emp = empls.filter(function (e) { return String(e.id) === String(r.empleado_id); })[0] || {};
+    r.fecha_salida  = formatearFecha(r.fecha_salida);
+    r.fecha_calculo = formatearFecha(r.fecha_calculo);
+    return Object.assign({ empleado_nombre: emp.nombre || '-' }, r);
+  });
+}
+
+function crearLiquidacion(datos) {
+  if (!datos || !datos.empleado_id) return { ok: false, mensaje: 'Selecciona un empleado.' };
+  if (!datos.fecha_salida || isNaN(new Date(datos.fecha_salida).getTime())) {
+    return { ok: false, mensaje: 'La fecha de salida no es válida.' };
+  }
+  var monto = Number(datos.monto);
+  if (isNaN(monto) || monto < 0) return { ok: false, mensaje: 'El monto debe ser un número mayor o igual a 0.' };
+  var hoja = getHoja(HOJAS.LIQUIDACIONES);
+  var id   = generarId('LIQ');
+  hoja.appendRow([id, datos.empleado_id, formatearFecha(datos.fecha_salida),
+    datos.motivo || '', formatearFecha(datos.fecha_calculo || hoy()), monto,
+    datos.estado || 'pendiente', datos.notas || '']);
+  registrarBitacora('crear', 'Liquidacion', id, 'Liquidación de ' + monto);
+  // Opcional: dar de baja al empleado en el mismo paso.
+  if (datos.inactivar) cambiarEstadoEmpleado(datos.empleado_id, 'inactivo');
+  return { ok: true, mensaje: 'Liquidación registrada.' };
+}
+
+function actualizarLiquidacion(datos) {
+  var hoja = getHoja(HOJAS.LIQUIDACIONES);
+  var rows = hoja.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]) === String(datos.id)) {
+      hoja.getRange(i+1, 1, 1, 8).setValues([[datos.id, datos.empleado_id,
+        formatearFecha(datos.fecha_salida), datos.motivo || '',
+        formatearFecha(datos.fecha_calculo || hoy()), Number(datos.monto) || 0,
+        datos.estado || 'pendiente', datos.notas || '']]);
+      registrarBitacora('actualizar', 'Liquidacion', datos.id, 'Estado: ' + (datos.estado || 'pendiente'));
+      return { ok: true, mensaje: 'Liquidación actualizada.' };
+    }
+  }
+  return { ok: false, mensaje: 'No encontrada.' };
+}
+
+function marcarLiquidacionPagada(id) {
+  var hoja = getHoja(HOJAS.LIQUIDACIONES);
+  var fila = buscarFilaPorId(hoja, id);
+  if (fila === -1) return { ok: false, mensaje: 'No se encontró la liquidación.' };
+  hoja.getRange(fila, 7).setValue('pagada'); // columna 7 = estado
+  registrarBitacora('actualizar', 'Liquidacion', id, 'Marcada como pagada');
+  return { ok: true, mensaje: 'Liquidación marcada como pagada.' };
+}
+
+function eliminarLiquidacion(id) {
+  return eliminarFila(HOJAS.LIQUIDACIONES, id, 'Liquidacion');
 }
 
 

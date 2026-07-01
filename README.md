@@ -5,7 +5,8 @@ el frontend se sirve con `HtmlService` y una hoja de Google Sheets es la base de
 datos. Sin servidor externo, sin CORS.
 
 **Módulos:** Dashboard (con guía de uso) · Empleados · Departamentos · Asistencia
-· Vacaciones/permisos · Nómina básica · Reportes (gráficos) · Configuración.
+· Vacaciones/permisos · Nómina básica · Incapacidades CCSS/INS · Feriados
+· Liquidaciones laborales · Reportes (gráficos) · Configuración.
 
 > 📄 Para la guía detallada de instalación manual (copiar/pegar) y de pruebas,
 > mira **[INSTRUCCIONES.md](INSTRUCCIONES.md)**.

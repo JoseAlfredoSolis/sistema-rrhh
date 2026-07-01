@@ -28,7 +28,10 @@
     turnos:         function () { cargarTurnos(); },
     expediente:     function () { cargarExpediente(); },
     calendario:     function () { cargarCalendario(); },
-    organigrama:    function () { cargarOrganigrama(); }
+    organigrama:    function () { cargarOrganigrama(); },
+    incapacidades:  function () { cargarIncapacidades(); },
+    feriados:       function () { cargarFeriados(); },
+    liquidaciones:  function () { cargarLiquidaciones(); }
   };
 
   var TITULOS = {
@@ -51,7 +54,10 @@
     turnos:         'Gestión de turnos',
     expediente:     'Expediente 360°',
     calendario:     'Calendario de eventos',
-    organigrama:    'Organigrama'
+    organigrama:    'Organigrama',
+    incapacidades:  'Incapacidades CCSS / INS',
+    feriados:       'Feriados',
+    liquidaciones:  'Liquidaciones laborales'
   };
 
   window.addEventListener('load', function () {

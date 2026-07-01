@@ -1,0 +1,91 @@
+<script>
+  /* ============================================================
+     MÓDULO INCAPACIDADES (CCSS / INS) — v11
+     ============================================================ */
+  var INCAPACIDADES = [];
+
+  function cargarIncapacidades() {
+    llenarSelectEmpleadosFiltro('filtroEmpInc');
+    var empId = (document.getElementById('filtroEmpInc')||{}).value || '';
+    llamarBackend('listarIncapacidades', [empId||null], function(lista) {
+      INCAPACIDADES = lista || [];
+      _pintarIncapacidades();
+    });
+  }
+
+  function _pintarIncapacidades() {
+    var cuerpo = document.getElementById('cuerpoIncapacidades');
+    cuerpo.innerHTML = '';
+    document.getElementById('sinIncapacidades').classList.toggle('oculto', INCAPACIDADES.length > 0);
+    INCAPACIDADES.forEach(function(inc) {
+      var acciones = puedeEditar()
+        ? '<button class="btn-mini" onclick="editarIncapacidad(\''+inc.id+'\')">Editar</button>' +
+          '<button class="btn-mini peligro" onclick="eliminarIncapacidadUI(\''+inc.id+'\')">Eliminar</button>'
+        : '<span style="color:var(--txt-3);font-size:12px">Solo lectura</span>';
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td>'+escapar(inc.empleado_nombre)+'</td>'+
+        '<td>'+escapar(inc.fecha_desde)+'</td>'+
+        '<td>'+escapar(inc.fecha_hasta)+'</td>'+
+        '<td style="text-align:center">'+escapar(inc.dias)+'</td>'+
+        '<td>'+badge(inc.entidad||'CCSS', inc.entidad === 'INS' ? 'pendiente' : 'activo')+'</td>'+
+        '<td>'+escapar(inc.especialidad||'—')+'</td>'+
+        '<td class="no-print">'+acciones+'</td>';
+      cuerpo.appendChild(tr);
+    });
+  }
+
+  function abrirFormIncapacidad() {
+    if (!puedeEditar()) { mostrarMensaje('Sin permisos.', 'error'); return; }
+    document.getElementById('formIncapacidad').reset();
+    document.getElementById('incId').value = '';
+    document.getElementById('modalIncTitulo').textContent = 'Nueva incapacidad';
+    llenarSelectEmpleados('incEmpleado');
+    document.getElementById('modalIncapacidad').classList.remove('oculto');
+  }
+
+  function editarIncapacidad(id) {
+    if (!puedeEditar()) { mostrarMensaje('Sin permisos.', 'error'); return; }
+    var inc = INCAPACIDADES.filter(function(i) { return String(i.id) === String(id); })[0];
+    if (!inc) return;
+    llenarSelectEmpleados('incEmpleado');
+    document.getElementById('incId').value = inc.id;
+    document.getElementById('incEmpleado').value = inc.empleado_id;
+    document.getElementById('incDesde').value = inc.fecha_desde;
+    document.getElementById('incHasta').value = inc.fecha_hasta;
+    document.getElementById('incEntidad').value = inc.entidad || 'CCSS';
+    document.getElementById('incEspecialidad').value = inc.especialidad || '';
+    document.getElementById('incNotas').value = inc.notas || '';
+    document.getElementById('modalIncTitulo').textContent = 'Editar incapacidad';
+    document.getElementById('modalIncapacidad').classList.remove('oculto');
+  }
+
+  function cerrarModalIncapacidad() { document.getElementById('modalIncapacidad').classList.add('oculto'); }
+
+  function guardarIncapacidad(e) {
+    e.preventDefault();
+    var datos = {
+      id: document.getElementById('incId').value,
+      empleado_id: document.getElementById('incEmpleado').value,
+      fecha_desde: document.getElementById('incDesde').value,
+      fecha_hasta: document.getElementById('incHasta').value,
+      entidad: document.getElementById('incEntidad').value,
+      especialidad: document.getElementById('incEspecialidad').value,
+      notas: document.getElementById('incNotas').value
+    };
+    if (!datos.empleado_id) { mostrarMensaje('Selecciona un empleado.', 'error'); return; }
+    var fn = datos.id ? 'actualizarIncapacidad' : 'crearIncapacidad';
+    llamarBackend(fn, [datos], function(res) {
+      if (res.ok) { cerrarModalIncapacidad(); mostrarMensaje(res.mensaje,'exito'); cargarIncapacidades(); }
+      else mostrarMensaje(res.mensaje,'error');
+    });
+  }
+
+  function eliminarIncapacidadUI(id) {
+    if (!confirm('¿Eliminar esta incapacidad?')) return;
+    llamarBackend('eliminarIncapacidad', [id], function(res) {
+      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+      if (res.ok) cargarIncapacidades();
+    });
+  }
+</script>

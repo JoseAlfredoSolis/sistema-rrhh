@@ -72,6 +72,12 @@
       <button class="nav-item" data-vista="turnos"         data-tooltip="Turnos"         onclick="mostrarVista('turnos')">
         <span class="nav-icon">🗓️</span><span class="nav-label">Turnos</span>
       </button>
+      <button class="nav-item" data-vista="incapacidades"  data-tooltip="Incapacidades"  onclick="mostrarVista('incapacidades')">
+        <span class="nav-icon">🏥</span><span class="nav-label">Incapacidades</span>
+      </button>
+      <button class="nav-item" data-vista="liquidaciones"  data-tooltip="Liquidaciones"  onclick="mostrarVista('liquidaciones')">
+        <span class="nav-icon">🧾</span><span class="nav-label">Liquidaciones</span>
+      </button>
 
       <span class="nav-sep">Análisis</span>
       <button class="nav-item" data-vista="calendario"     data-tooltip="Calendario"     onclick="mostrarVista('calendario')">
@@ -79,6 +85,9 @@
       </button>
       <button class="nav-item" data-vista="organigrama"    data-tooltip="Organigrama"    onclick="mostrarVista('organigrama')">
         <span class="nav-icon">🏗️</span><span class="nav-label">Organigrama</span>
+      </button>
+      <button class="nav-item" data-vista="feriados"       data-tooltip="Feriados"       onclick="mostrarVista('feriados')">
+        <span class="nav-icon">🎉</span><span class="nav-label">Feriados</span>
       </button>
 
       <span class="nav-sep">Sistema</span>
@@ -766,6 +775,62 @@
       </div>
     </section>
 
+    <!-- ====== VISTA: INCAPACIDADES ====== -->
+    <section id="vista-incapacidades" class="vista oculto">
+      <div class="barra-acciones">
+        <h2 class="titulo-vista">Incapacidades CCSS / INS</h2>
+        <select id="filtroEmpInc" onchange="cargarIncapacidades()" style="min-width:180px"><option value="">Todos</option></select>
+        <button class="btn btn-primario" onclick="abrirFormIncapacidad()">+ Registrar incapacidad</button>
+        <button class="btn" onclick="exportarTabla('tablaIncapacidades','Incapacidades')">⬇ Excel</button>
+      </div>
+      <div class="tabla-envoltorio">
+        <table class="tabla" id="tablaIncapacidades">
+          <thead><tr><th>Empleado</th><th>Desde</th><th>Hasta</th><th>Días</th><th>Entidad</th><th>Especialidad / Servicio</th><th class="no-print">Acciones</th></tr></thead>
+          <tbody id="cuerpoIncapacidades"></tbody>
+        </table>
+        <p id="sinIncapacidades" class="sin-datos oculto">No hay incapacidades registradas.</p>
+      </div>
+    </section>
+
+    <!-- ====== VISTA: LIQUIDACIONES ====== -->
+    <section id="vista-liquidaciones" class="vista oculto">
+      <div class="barra-acciones">
+        <h2 class="titulo-vista">Liquidaciones laborales</h2>
+        <select id="filtroEmpLiq" onchange="cargarLiquidaciones()" style="min-width:180px"><option value="">Todos</option></select>
+        <button class="btn btn-primario" onclick="abrirFormLiquidacion()">+ Nueva liquidación</button>
+        <button class="btn" onclick="exportarTabla('tablaLiquidaciones','Liquidaciones')">⬇ Excel</button>
+      </div>
+      <div class="tabla-envoltorio">
+        <table class="tabla" id="tablaLiquidaciones">
+          <thead><tr><th>Empleado</th><th>Fecha salida</th><th>Motivo</th><th>Fecha cálculo</th><th>Monto</th><th>Estado</th><th class="no-print">Acciones</th></tr></thead>
+          <tbody id="cuerpoLiquidaciones"></tbody>
+        </table>
+        <p id="sinLiquidaciones" class="sin-datos oculto">No hay liquidaciones registradas.</p>
+      </div>
+    </section>
+
+    <!-- ====== VISTA: FERIADOS ====== -->
+    <section id="vista-feriados" class="vista oculto">
+      <div class="barra-acciones">
+        <h2 class="titulo-vista">Feriados</h2>
+        <select id="filtroAnioFer" onchange="cargarFeriados()" style="min-width:120px">
+          <option value="">Todos los años</option>
+          <option value="2025">2025</option>
+          <option value="2026">2026</option>
+          <option value="2027">2027</option>
+        </select>
+        <button class="btn btn-primario" onclick="abrirFormFeriado()">+ Agregar feriado</button>
+        <button class="btn" onclick="exportarTabla('tablaFeriados','Feriados')">⬇ Excel</button>
+      </div>
+      <div class="tabla-envoltorio">
+        <table class="tabla" id="tablaFeriados">
+          <thead><tr><th>Fecha</th><th>Día</th><th>Nombre</th><th>Tipo de pago</th><th class="no-print">Acciones</th></tr></thead>
+          <tbody id="cuerpoFeriados"></tbody>
+        </table>
+        <p id="sinFeriados" class="sin-datos oculto">No hay feriados registrados.</p>
+      </div>
+    </section>
+
     <!-- ====== VISTA: CALENDARIO ====== -->
     <section id="vista-calendario" class="vista oculto">
       <div class="barra-acciones">
@@ -778,7 +843,9 @@
       <div class="cal-leyenda">
         <span class="cal-dot" style="background:#ec4899"></span> Cumpleaños &nbsp;
         <span class="cal-dot" style="background:#10b981"></span> Vacaciones &nbsp;
-        <span class="cal-dot" style="background:#f59e0b"></span> Horas extra
+        <span class="cal-dot" style="background:#f59e0b"></span> Horas extra &nbsp;
+        <span class="cal-dot" style="background:#6366f1"></span> Feriados &nbsp;
+        <span class="cal-dot" style="background:#ef4444"></span> Incapacidades
       </div>
     </section>
 
@@ -1053,6 +1120,66 @@
     </div>
   </div>
 
+  <!-- Modal Incapacidad -->
+  <div id="modalIncapacidad" class="modal oculto">
+    <div class="modal-contenido">
+      <div class="modal-cabecera"><h2 id="modalIncTitulo">Nueva incapacidad</h2><button class="cerrar" onclick="cerrarModalIncapacidad()">&times;</button></div>
+      <form id="formIncapacidad" onsubmit="guardarIncapacidad(event)">
+        <input type="hidden" id="incId">
+        <div class="campo"><label>Empleado *</label><select id="incEmpleado" required></select></div>
+        <div class="smtp-fila">
+          <div class="campo smtp-campo"><label>Desde *</label><input type="date" id="incDesde" required></div>
+          <div class="campo smtp-campo"><label>Hasta *</label><input type="date" id="incHasta" required></div>
+        </div>
+        <div class="campo"><label>Entidad</label><select id="incEntidad"><option value="CCSS">CCSS</option><option value="INS">INS</option></select></div>
+        <div class="campo"><label>Especialidad / Servicio</label><input type="text" id="incEspecialidad" maxlength="80" placeholder="Medicina general, Licencia paternidad, etc."></div>
+        <div class="campo"><label>Notas</label><input type="text" id="incNotas" maxlength="100"></div>
+        <div class="modal-pie"><button type="button" class="btn btn-secundario" onclick="cerrarModalIncapacidad()">Cancelar</button><button type="submit" class="btn btn-primario" id="btnGuardarInc">Guardar</button></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal Feriado -->
+  <div id="modalFeriado" class="modal oculto">
+    <div class="modal-contenido">
+      <div class="modal-cabecera"><h2>Agregar feriado</h2><button class="cerrar" onclick="cerrarModalFeriado()">&times;</button></div>
+      <form id="formFeriado" onsubmit="guardarFeriado(event)">
+        <div class="campo"><label>Fecha *</label><input type="date" id="ferFecha" required></div>
+        <div class="campo"><label>Nombre</label><input type="text" id="ferNombre" maxlength="80" placeholder="Día de la Independencia"></div>
+        <div class="campo"><label>Tipo de pago</label><select id="ferTipo"><option value="obligatorio">Pago obligatorio</option><option value="no obligatorio">Pago no obligatorio</option></select></div>
+        <div class="modal-pie"><button type="button" class="btn btn-secundario" onclick="cerrarModalFeriado()">Cancelar</button><button type="submit" class="btn btn-primario" id="btnGuardarFer">Guardar</button></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal Liquidación -->
+  <div id="modalLiquidacion" class="modal oculto">
+    <div class="modal-contenido">
+      <div class="modal-cabecera"><h2 id="modalLiqTitulo">Nueva liquidación</h2><button class="cerrar" onclick="cerrarModalLiquidacion()">&times;</button></div>
+      <form id="formLiquidacion" onsubmit="guardarLiquidacion(event)">
+        <input type="hidden" id="liqId">
+        <div class="campo"><label>Empleado *</label><select id="liqEmpleado" required></select></div>
+        <div class="campo"><label>Fecha de salida *</label><input type="date" id="liqFechaSalida" required></div>
+        <div class="campo"><label>Motivo</label>
+          <select id="liqMotivo">
+            <option value="Renuncia">Renuncia</option>
+            <option value="Despido con responsabilidad">Despido con responsabilidad patronal</option>
+            <option value="Despido sin responsabilidad">Despido sin responsabilidad patronal</option>
+            <option value="Fin de contrato">Fin de contrato</option>
+            <option value="Abandono de trabajo">Abandono de trabajo</option>
+            <option value="Mutuo acuerdo">Mutuo acuerdo</option>
+          </select>
+        </div>
+        <div class="campo"><label>Fecha de cálculo</label><input type="date" id="liqFechaCalculo"></div>
+        <div class="campo"><label>Monto (₡) *</label><input type="number" id="liqMonto" required min="0" step="0.01" placeholder="0.00"></div>
+        <div class="campo"><label>Estado</label><select id="liqEstado"><option value="pendiente">Pendiente</option><option value="pagada">Pagada</option></select></div>
+        <div class="campo"><label>Notas</label><input type="text" id="liqNotas" maxlength="100" placeholder="Recontratable, etc."></div>
+        <div class="campo" id="liqInactivarWrap"><label style="display:flex;align-items:center;gap:8px;font-weight:400"><input type="checkbox" id="liqInactivar" style="width:auto"> Marcar empleado como inactivo al guardar</label></div>
+        <div class="modal-pie"><button type="button" class="btn btn-secundario" onclick="cerrarModalLiquidacion()">Cancelar</button><button type="submit" class="btn btn-primario" id="btnGuardarLiq">Guardar</button></div>
+      </form>
+    </div>
+  </div>
+
   <!-- Modal PIN de acceso -->
   <div id="modalPin" class="modal oculto">
     <div class="modal-contenido" style="max-width:360px">
@@ -1095,6 +1222,9 @@
   <?!= include('Js_Expediente'); ?>
   <?!= include('Js_Calendario'); ?>
   <?!= include('Js_Organigrama'); ?>
+  <?!= include('Js_Incapacidades'); ?>
+  <?!= include('Js_Feriados'); ?>
+  <?!= include('Js_Liquidaciones'); ?>
 
 </body>
 </html>

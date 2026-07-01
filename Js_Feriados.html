@@ -1,0 +1,65 @@
+<script>
+  /* ============================================================
+     MÓDULO FERIADOS — v11
+     ============================================================ */
+  var FERIADOS = [];
+
+  function cargarFeriados() {
+    var anio = (document.getElementById('filtroAnioFer')||{}).value || '';
+    llamarBackend('listarFeriados', [anio||null], function(lista) {
+      FERIADOS = lista || [];
+      _pintarFeriados();
+    });
+  }
+
+  function _pintarFeriados() {
+    var cuerpo = document.getElementById('cuerpoFeriados');
+    cuerpo.innerHTML = '';
+    document.getElementById('sinFeriados').classList.toggle('oculto', FERIADOS.length > 0);
+    var dias = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+    FERIADOS.forEach(function(f) {
+      var d = new Date(f.fecha + 'T00:00:00');
+      var diaSemana = isNaN(d.getTime()) ? '—' : dias[d.getDay()];
+      var acciones = puedeEditar()
+        ? '<button class="btn-mini peligro" onclick="eliminarFeriadoUI(\''+f.id+'\')">Eliminar</button>'
+        : '<span style="color:var(--txt-3);font-size:12px">Solo lectura</span>';
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td>'+escapar(f.fecha)+'</td>'+
+        '<td>'+escapar(diaSemana)+'</td>'+
+        '<td>'+escapar(f.nombre||'—')+'</td>'+
+        '<td>'+badge(f.tipo||'obligatorio', f.tipo === 'no obligatorio' ? 'pendiente' : 'activo')+'</td>'+
+        '<td class="no-print">'+acciones+'</td>';
+      cuerpo.appendChild(tr);
+    });
+  }
+
+  function abrirFormFeriado() {
+    if (!puedeEditar()) { mostrarMensaje('Sin permisos.', 'error'); return; }
+    document.getElementById('formFeriado').reset();
+    document.getElementById('modalFeriado').classList.remove('oculto');
+  }
+
+  function cerrarModalFeriado() { document.getElementById('modalFeriado').classList.add('oculto'); }
+
+  function guardarFeriado(e) {
+    e.preventDefault();
+    var datos = {
+      fecha: document.getElementById('ferFecha').value,
+      nombre: document.getElementById('ferNombre').value,
+      tipo: document.getElementById('ferTipo').value
+    };
+    llamarBackend('crearFeriado', [datos], function(res) {
+      if (res.ok) { cerrarModalFeriado(); mostrarMensaje(res.mensaje,'exito'); cargarFeriados(); }
+      else mostrarMensaje(res.mensaje,'error');
+    });
+  }
+
+  function eliminarFeriadoUI(id) {
+    if (!confirm('¿Eliminar este feriado?')) return;
+    llamarBackend('eliminarFeriado', [id], function(res) {
+      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+      if (res.ok) cargarFeriados();
+    });
+  }
+</script>
