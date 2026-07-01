@@ -1,0 +1,486 @@
+<script>
+  /* ============================================================
+     MÓDULO CARGA COMPLETA DESDE EXCEL (Configuración) — v13
+     Lee el Excel de la empresa con SheetJS, lo convierte a la
+     estructura del sistema y lo sube completo a Google Sheets.
+
+     Acepta dos formatos:
+     1. Formato del sistema: pestañas Empleados, Departamentos, etc.
+     2. Formato interno de la empresa: BASE DATOS PERSONAL,
+        CARGOS CRITICOS, INCAPACIDADES CCSS-INS, ASISTENCIA, FERIADOS.
+     ============================================================ */
+
+  var CARGA = { datos: null, avisos: [] };
+
+  // Pestañas y campos del sistema (espejo de ENCABEZADOS en Code.gs).
+  var CARGA_TABS = {
+    Empleados: ['id','nombre','cedula','departamento','puesto','fecha_ingreso','salario','estado','fecha_nacimiento','telefono',
+      'correo','direccion','genero','estado_civil','nacionalidad','sede','tipo_nomina','cuenta_iban','carne_ccss',
+      'vencimiento_cedula','licencia_conducir','vencimiento_licencia','jefe_inmediato','cargo_critico','actividad','padre_madre'],
+    Departamentos: ['id','nombre','responsable'],
+    Asistencia: ['id','empleado_id','fecha','hora_entrada','hora_salida','horas'],
+    Vacaciones: ['id','empleado_id','fecha_inicio','fecha_fin','dias','estado'],
+    Nomina: ['id','empleado_id','mes','salario_base','deducciones','neto'],
+    HistorialSalarios: ['id','empleado_id','salario_anterior','salario_nuevo','fecha','notas'],
+    Capacitaciones: ['id','empleado_id','curso','institucion','fecha_inicio','fecha_fin','estado','certificado_url'],
+    Evaluaciones: ['id','empleado_id','periodo','calificacion','comentarios','evaluador','fecha'],
+    Prestamos: ['id','empleado_id','monto','cuotas','cuota_mensual','cuotas_pagadas','estado','fecha','notas'],
+    HorasExtra: ['id','empleado_id','fecha','horas','tipo','aprobado','monto','notas'],
+    Activos: ['id','empleado_id','nombre','categoria','serial','fecha_entrega','fecha_devolucion','estado','notas'],
+    Turnos: ['id','empleado_id','semana','lunes','martes','miercoles','jueves','viernes','sabado','domingo'],
+    Incapacidades: ['id','empleado_id','fecha_desde','fecha_hasta','dias','entidad','especialidad','notas'],
+    Feriados: ['id','fecha','nombre','tipo'],
+    Liquidaciones: ['id','empleado_id','fecha_salida','motivo','fecha_calculo','monto','estado','notas']
+  };
+
+  var CARGA_FERIADOS_CR = {
+    '01-01': ['Año Nuevo','obligatorio'],
+    '04-11': ['Día de Juan Santamaría','obligatorio'],
+    '05-01': ['Día Internacional del Trabajo','obligatorio'],
+    '07-25': ['Anexión del Partido de Nicoya','obligatorio'],
+    '08-02': ['Virgen de los Ángeles','no obligatorio'],
+    '08-15': ['Día de la Madre','obligatorio'],
+    '08-31': ['Día de la Persona Negra y la Cultura Afrocostarricense','no obligatorio'],
+    '09-15': ['Día de la Independencia','obligatorio'],
+    '12-01': ['Día de la Abolición del Ejército','obligatorio'],
+    '12-25': ['Navidad','obligatorio']
+  };
+
+  // ── Helpers ───────────────────────────────────────────────
+
+  // Serial de Excel o Date → 'yyyy-mm-dd'. Devuelve '' si no es fecha.
+  function serialAISO(v) {
+    if (v instanceof Date && !isNaN(v.getTime())) {
+      return v.toISOString().slice(0, 10);
+    }
+    var n = Number(v);
+    if (isFinite(n) && n > 20000 && n < 80000) {
+      return new Date(Math.round((n - 25569) * 86400 * 1000)).toISOString().slice(0, 10);
+    }
+    if (/^\d{4}-\d{2}-\d{2}/.test(String(v))) return String(v).slice(0, 10);
+    return '';
+  }
+
+  function normNombre(s) {
+    return String(s || '').toLowerCase()
+      .replace(/[áàä]/g,'a').replace(/[éèë]/g,'e').replace(/[íìï]/g,'i')
+      .replace(/[óòö]/g,'o').replace(/[úùü]/g,'u').replace(/\s+/g,' ').trim();
+  }
+
+  function celda(fila, idx) {
+    if (idx === -1 || idx === undefined) return '';
+    var v = fila[idx];
+    return (v === undefined || v === null) ? '' : String(v).trim();
+  }
+
+  // Busca el índice de columna cuyo encabezado normalizado coincide con
+  // alguno de los alias (primero exacto, luego "contiene").
+  function buscarCol(headers, aliases) {
+    var hn = headers.map(function (h) { return normKey(h); });
+    for (var p = 0; p < 2; p++) {
+      for (var i = 0; i < hn.length; i++) {
+        for (var a = 0; a < aliases.length; a++) {
+          if (p === 0 ? hn[i] === aliases[a] : (hn[i] && hn[i].indexOf(aliases[a]) !== -1)) return i;
+        }
+      }
+    }
+    return -1;
+  }
+
+  // ── Leer el archivo ───────────────────────────────────────
+
+  function leerArchivoCarga(input) {
+    var file = input.files[0];
+    if (!file) return;
+    document.getElementById('cargaNombreArchivo').textContent = '📄 ' + file.name;
+    document.getElementById('cargaResultado').innerHTML = '';
+
+    var reader = new FileReader();
+    reader.onload = function (e) {
+      try {
+        var wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+        CARGA.avisos = [];
+        CARGA.datos = _convertirLibro(wb);
+        _pintarResumenCarga();
+      } catch (err) {
+        mostrarMensaje('No se pudo leer el archivo: ' + err.message, 'error');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+    input.value = '';
+  }
+
+  function _hojaAFilas(wb, nombre) {
+    return XLSX.utils.sheet_to_json(wb.Sheets[nombre], { header: 1, raw: true, defval: '' });
+  }
+
+  // Decide el formato del libro y devuelve { Pestana: [objetos] }.
+  function _convertirLibro(wb) {
+    var tabsSistema = wb.SheetNames.filter(function (n) { return CARGA_TABS[n]; });
+    if (tabsSistema.length) return _convertirFormatoSistema(wb, tabsSistema);
+
+    var tieneBase = wb.SheetNames.some(function (n) {
+      return normKey(n).indexOf('basedatos') !== -1;
+    });
+    if (tieneBase) return _convertirFormatoEmpresa(wb);
+
+    throw new Error('No se reconoció el formato. El archivo debe tener las pestañas del ' +
+      'sistema (Empleados, Departamentos…) o la hoja "BASE DATOS PERSONAL" de la empresa.');
+  }
+
+  // ── Formato 1: pestañas del sistema ───────────────────────
+
+  function _convertirFormatoSistema(wb, tabs) {
+    var datos = {};
+    tabs.forEach(function (tab) {
+      var filas = XLSX.utils.sheet_to_json(wb.Sheets[tab], { raw: true, defval: '' });
+      if (!filas.length) return;
+      filas.forEach(function (f) {
+        Object.keys(f).forEach(function (k) {
+          // Normalizar fechas que vengan como serial o Date.
+          if (/fecha|vencimiento/.test(k) && f[k] !== '') {
+            var iso = serialAISO(f[k]);
+            if (iso) f[k] = iso;
+          } else if (f[k] instanceof Date) {
+            f[k] = serialAISO(f[k]);
+          }
+        });
+      });
+      datos[tab] = filas;
+    });
+    return datos;
+  }
+
+  // ── Formato 2: Excel interno de la empresa ────────────────
+
+  function _convertirFormatoEmpresa(wb) {
+    var buscarHoja = function (fragmento) {
+      for (var i = 0; i < wb.SheetNames.length; i++) {
+        if (normKey(wb.SheetNames[i]).indexOf(fragmento) !== -1) return wb.SheetNames[i];
+      }
+      return null;
+    };
+
+    var datos = {};
+    var hojaBase = buscarHoja('basedatos');
+    var filasBase = _hojaAFilas(wb, hojaBase);
+    if (filasBase.length < 2) throw new Error('La hoja "' + hojaBase + '" no tiene datos.');
+    var H = filasBase[0].map(String);
+
+    var col = {
+      nombre: buscarCol(H, ['nombrecompleto']),        cedula: buscarCol(H, ['cedulaidentidad','cedula']),
+      vencCed: buscarCol(H, ['vencimientoid']),        carne: buscarCol(H, ['carneccss']),
+      nacimiento: buscarCol(H, ['fechanacimiento']),   telefono: buscarCol(H, ['telefono']),
+      correo: buscarCol(H, ['correoelectronico']),     direccion: buscarCol(H, ['direcciondomiciliar']),
+      genero: buscarCol(H, ['genero']),                estCivil: buscarCol(H, ['estadocivil']),
+      padreMadre: buscarCol(H, ['padremadre']),        nacionalidad: buscarCol(H, ['nacionalidad']),
+      estado: buscarCol(H, ['estado']),                sede: buscarCol(H, ['sedetrabajo']),
+      tipoNomina: buscarCol(H, ['tiponomina']),        iban: buscarCol(H, ['iban']),
+      salario: buscarCol(H, ['salariobase']),          codigo: buscarCol(H, ['codempleado']),
+      ingreso: buscarCol(H, ['fechaingreso']),         licencia: buscarCol(H, ['licenciaconducir']),
+      vencLic: buscarCol(H, ['vencimientolicencia']),  depto: buscarCol(H, ['areadepartamento']),
+      cargoCrit: buscarCol(H, ['cargoscriticos','cargocritico']), puesto: buscarCol(H, ['puesto']),
+      actividad: buscarCol(H, ['actividadlabor','actividad']),    jefe: buscarCol(H, ['jefeinmediato']),
+      salida: buscarCol(H, ['fechasalida']),           motivoSalida: buscarCol(H, ['motivosalida']),
+      fechaLiq: buscarCol(H, ['fechaelaboracionliquidacion']),
+      montoLiq: buscarCol(H, ['montodelaliquidacion']),
+      estadoLiq: buscarCol(H, ['estadodeliquidacion']),
+      obs: buscarCol(H, ['observaciones'])
+    };
+    if (col.nombre === -1) throw new Error('No se encontró la columna "NOMBRE COMPLETO".');
+
+    // — Empleados —
+    var empleados = [];
+    var porNombre = {};
+    var jefePorId = {};
+    filasBase.slice(1).forEach(function (f, i) {
+      var nombre = celda(f, col.nombre);
+      if (!nombre) return;
+      var lic = celda(f, col.licencia);
+      var emp = {
+        id: 'EMP-' + (celda(f, col.codigo) || 'F' + (i + 2)),
+        nombre: nombre,
+        cedula: celda(f, col.cedula).replace(/\s+/g, ''),
+        departamento: celda(f, col.depto),
+        puesto: celda(f, col.puesto),
+        fecha_ingreso: serialAISO(celda(f, col.ingreso)),
+        salario: Number(celda(f, col.salario)) || 0,
+        estado: normNombre(celda(f, col.estado)) === 'inactivo' ? 'inactivo' : 'activo',
+        fecha_nacimiento: serialAISO(celda(f, col.nacimiento)),
+        telefono: celda(f, col.telefono),
+        correo: celda(f, col.correo),
+        direccion: celda(f, col.direccion),
+        genero: celda(f, col.genero),
+        estado_civil: celda(f, col.estCivil),
+        nacionalidad: celda(f, col.nacionalidad),
+        sede: celda(f, col.sede),
+        tipo_nomina: celda(f, col.tipoNomina),
+        cuenta_iban: celda(f, col.iban),
+        carne_ccss: celda(f, col.carne),
+        vencimiento_cedula: serialAISO(celda(f, col.vencCed)),
+        licencia_conducir: (lic && lic !== '-') ? lic : '',
+        vencimiento_licencia: (lic && lic !== '-') ? serialAISO(celda(f, col.vencLic)) : '',
+        jefe_inmediato: normNombre(celda(f, col.jefe)) === 'na' ? '' : celda(f, col.jefe),
+        cargo_critico: celda(f, col.cargoCrit),
+        actividad: normNombre(celda(f, col.actividad)) === 'na' ? '' : celda(f, col.actividad),
+        padre_madre: celda(f, col.padreMadre)
+      };
+      empleados.push(emp);
+      porNombre[normNombre(nombre)] = emp;
+      jefePorId[emp.id] = emp.jefe_inmediato;
+    });
+    if (!empleados.length) throw new Error('No se encontraron empleados con nombre en "' + hojaBase + '".');
+
+    var buscarEmpleado = function (nombre) {
+      var n = normNombre(nombre);
+      if (porNombre[n]) return porNombre[n];
+      var claves = Object.keys(porNombre);
+      for (var i = 0; i < claves.length; i++) {
+        if (claves[i].indexOf(n) === 0 || n.indexOf(claves[i]) === 0) return porNombre[claves[i]];
+      }
+      var n3 = n.split(' ').slice(0, 3).join(' ');
+      for (var j = 0; j < claves.length; j++) {
+        if (n3 && claves[j].split(' ').slice(0, 3).join(' ') === n3) return porNombre[claves[j]];
+      }
+      return null;
+    };
+
+    // — Respaldo de departamento: hoja CARGOS CRITICOS + mismo jefe —
+    var hojaCargos = buscarHoja('cargoscriticos');
+    var areaPorNombre = {};
+    if (hojaCargos) {
+      var fc = _hojaAFilas(wb, hojaCargos);
+      if (fc.length > 1) {
+        var hc = fc[0].map(String);
+        var cNom = buscarCol(hc, ['nombre']);
+        var cArea = buscarCol(hc, ['area']);
+        fc.slice(1).forEach(function (f) {
+          var n = celda(f, cNom), a = celda(f, cArea);
+          if (n && a) areaPorNombre[normNombre(n)] = a;
+        });
+      }
+    }
+    for (var pasada = 0; pasada < 2; pasada++) {
+      empleados.forEach(function (emp) {
+        if (emp.departamento) return;
+        var n = normNombre(emp.nombre);
+        var area = areaPorNombre[n];
+        if (!area) {
+          var claves = Object.keys(areaPorNombre);
+          for (var i = 0; i < claves.length; i++) {
+            if (claves[i].indexOf(n) === 0 || n.indexOf(claves[i]) === 0 ||
+                claves[i].split(' ').slice(0,3).join(' ') === n.split(' ').slice(0,3).join(' ')) {
+              area = areaPorNombre[claves[i]]; break;
+            }
+          }
+        }
+        if (area) { emp.departamento = String(area).trim(); return; }
+        var jefe = jefePorId[emp.id];
+        if (jefe) {
+          for (var k = 0; k < empleados.length; k++) {
+            if (empleados[k].departamento && jefePorId[empleados[k].id] === jefe) {
+              emp.departamento = empleados[k].departamento; return;
+            }
+          }
+        }
+      });
+    }
+    var sinDepto = empleados.filter(function (e) { return !e.departamento; });
+    if (sinDepto.length) {
+      CARGA.avisos.push('⚠️ ' + sinDepto.length + ' empleado(s) quedaron sin departamento: ' +
+        sinDepto.map(function (e) { return e.nombre; }).join(', '));
+    }
+    datos.Empleados = empleados;
+
+    // — Departamentos (derivados, responsable = jefe más frecuente) —
+    var deptoJefes = {};
+    empleados.forEach(function (e) {
+      if (!e.departamento) return;
+      deptoJefes[e.departamento] = deptoJefes[e.departamento] || {};
+      var j = jefePorId[e.id];
+      if (j) deptoJefes[e.departamento][j] = (deptoJefes[e.departamento][j] || 0) + 1;
+    });
+    datos.Departamentos = Object.keys(deptoJefes).sort().map(function (d, i) {
+      var jefes = Object.keys(deptoJefes[d]).sort(function (a, b) { return deptoJefes[d][b] - deptoJefes[d][a]; });
+      return { id: 'DEP-' + ('00' + (i + 1)).slice(-3), nombre: d, responsable: jefes[0] || '' };
+    });
+
+    // — Asistencia (+ vacaciones marcadas VAC) —
+    var hojaAsis = buscarHoja('asistencia');
+    if (hojaAsis) {
+      var fa = _hojaAFilas(wb, hojaAsis);
+      if (fa.length > 1) {
+        var ha = fa[0].map(String);
+        var aNom = buscarCol(ha, ['nombredelempleado','nombre']);
+        var aEst = buscarCol(ha, ['estado']);
+        var aDia = buscarCol(ha, ['dia']);
+        var aPres = buscarCol(ha, ['presente']);
+        var aVac = buscarCol(ha, ['vac']);
+        var asistencia = [];
+        var vacPorEmp = {};
+        var sinMatch = {};
+        fa.slice(1).forEach(function (f) {
+          var nombre = celda(f, aNom);
+          if (!nombre) return;
+          if (/^\d+$/.test(celda(f, aEst))) return; // fila separadora de semana
+          var emp = buscarEmpleado(nombre);
+          if (!emp) { sinMatch[nombre] = 1; return; }
+          var fecha = serialAISO(celda(f, aDia));
+          if (!fecha) return;
+          if (celda(f, aPres) === '1') {
+            asistencia.push({ empleado_id: emp.id, fecha: fecha, hora_entrada: '', hora_salida: '', horas: '' });
+          }
+          if (aVac !== -1 && celda(f, aVac) === '1') {
+            (vacPorEmp[emp.id] = vacPorEmp[emp.id] || []).push(fecha);
+          }
+        });
+        if (asistencia.length) datos.Asistencia = asistencia;
+        var noEncontrados = Object.keys(sinMatch);
+        if (noEncontrados.length) {
+          CARGA.avisos.push('⚠️ Asistencia: no se encontró en la base a: ' + noEncontrados.join(', '));
+        }
+        // Días VAC consecutivos → solicitudes aprobadas
+        var vacaciones = [];
+        Object.keys(vacPorEmp).forEach(function (empId) {
+          var dias = vacPorEmp[empId].sort();
+          var ini = dias[0], fin = dias[0], n = 1;
+          var cerrar = function () { vacaciones.push({ empleado_id: empId, fecha_inicio: ini, fecha_fin: fin, dias: n, estado: 'aprobada' }); };
+          for (var i = 1; i < dias.length; i++) {
+            var sig = new Date(fin + 'T00:00:00'); sig.setDate(sig.getDate() + 1);
+            if (dias[i] === sig.toISOString().slice(0, 10)) { fin = dias[i]; n++; }
+            else { cerrar(); ini = fin = dias[i]; n = 1; }
+          }
+          cerrar();
+        });
+        if (vacaciones.length) datos.Vacaciones = vacaciones;
+      }
+    }
+
+    // — Incapacidades —
+    var hojaInc = buscarHoja('incapacidad');
+    if (hojaInc) {
+      var fi = _hojaAFilas(wb, hojaInc);
+      if (fi.length > 1) {
+        var hi = fi[0].map(String);
+        var iNom = buscarCol(hi, ['nombrecompleto','nombre']);
+        var iDesde = buscarCol(hi, ['incapacidaddesde','desde']);
+        var iHasta = buscarCol(hi, ['incapacidadhasta','hasta']);
+        var iDias = buscarCol(hi, ['cantidaddedias','dias']);
+        var iEnt = buscarCol(hi, ['entidad']);
+        var iEsp = buscarCol(hi, ['especialidad']);
+        var incapacidades = [];
+        var incSinMatch = {};
+        fi.slice(1).forEach(function (f) {
+          var nombre = celda(f, iNom);
+          if (!nombre) return;
+          var emp = buscarEmpleado(nombre);
+          if (!emp) { incSinMatch[nombre] = 1; return; }
+          incapacidades.push({
+            empleado_id: emp.id,
+            fecha_desde: serialAISO(celda(f, iDesde)),
+            fecha_hasta: serialAISO(celda(f, iHasta)),
+            dias: Number(celda(f, iDias)) || '',
+            entidad: celda(f, iEnt) || 'CCSS',
+            especialidad: celda(f, iEsp),
+            notas: ''
+          });
+        });
+        if (incapacidades.length) datos.Incapacidades = incapacidades;
+        var incNo = Object.keys(incSinMatch);
+        if (incNo.length) CARGA.avisos.push('⚠️ Incapacidades: no se encontró a: ' + incNo.join(', '));
+      }
+    }
+
+    // — Feriados —
+    var hojaFer = buscarHoja('feriado');
+    if (hojaFer) {
+      var ff = _hojaAFilas(wb, hojaFer);
+      var feriados = [];
+      ff.forEach(function (f) {
+        for (var c = 0; c < Math.min(f.length, 3); c++) {
+          var iso = serialAISO(f[c]);
+          if (iso) {
+            var info = CARGA_FERIADOS_CR[iso.slice(5)] || ['Feriado', 'obligatorio'];
+            feriados.push({ fecha: iso, nombre: info[0], tipo: info[1] });
+            break;
+          }
+        }
+      });
+      if (feriados.length) datos.Feriados = feriados;
+    }
+
+    // — Liquidaciones (columnas de salida de la base de personal) —
+    if (col.salida !== -1) {
+      var liquidaciones = [];
+      filasBase.slice(1).forEach(function (f) {
+        var nombre = celda(f, col.nombre);
+        var salida = serialAISO(celda(f, col.salida));
+        if (!nombre || !salida) return;
+        var emp = porNombre[normNombre(nombre)];
+        if (!emp) return;
+        var estadoRaw = normNombre(celda(f, col.estadoLiq));
+        liquidaciones.push({
+          empleado_id: emp.id,
+          fecha_salida: salida,
+          motivo: celda(f, col.motivoSalida),
+          fecha_calculo: serialAISO(celda(f, col.fechaLiq)),
+          monto: Math.round((Number(celda(f, col.montoLiq)) || 0) * 100) / 100,
+          estado: (!estadoRaw || estadoRaw.indexOf('pendiente') !== -1) ? 'pendiente' : 'pagada',
+          notas: celda(f, col.obs)
+        });
+      });
+      if (liquidaciones.length) datos.Liquidaciones = liquidaciones;
+    }
+
+    return datos;
+  }
+
+  // ── Resumen + ejecución ───────────────────────────────────
+
+  function _pintarResumenCarga() {
+    var cuerpo = document.getElementById('cargaResumenCuerpo');
+    cuerpo.innerHTML = '';
+    var total = 0;
+    Object.keys(CARGA_TABS).forEach(function (tab) {
+      var n = (CARGA.datos[tab] || []).length;
+      if (!n) return;
+      total += n;
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td>' + escapar(tab) + '</td><td style="text-align:center">' + n + '</td>';
+      cuerpo.appendChild(tr);
+    });
+    if (!total) { mostrarMensaje('El archivo no contiene registros para cargar.', 'error'); return; }
+    document.getElementById('cargaAvisos').innerHTML =
+      CARGA.avisos.map(function (a) { return '<div>' + escapar(a) + '</div>'; }).join('');
+    document.getElementById('cargaPanel').classList.remove('oculto');
+  }
+
+  function ejecutarCargaCompleta() {
+    if (!puedeEditar()) { mostrarMensaje('Necesitas rol RRHH o Admin para cargar datos.', 'error'); return; }
+    if (!CARGA.datos) { mostrarMensaje('Primero selecciona un archivo.', 'error'); return; }
+    var modo = document.getElementById('cargaModo').value;
+    var msg = (modo === 'reemplazar')
+      ? '⚠️ Se BORRARÁN los datos actuales de las pestañas incluidas en el archivo y se escribirán los nuevos.\n\n¿Continuar?'
+      : 'Se agregarán los registros del archivo (los duplicados se omiten).\n\n¿Continuar?';
+    if (!confirm(msg)) return;
+
+    var btn = document.getElementById('btnEjecutarCarga');
+    btn.disabled = true; btn.textContent = 'Cargando...';
+    llamarBackend('cargarBaseCompleta', [CARGA.datos, modo], function (res) {
+      btn.disabled = false; btn.textContent = '🚀 Cargar a Google Sheets';
+      var div = document.getElementById('cargaResultado');
+      if (!res.ok) { div.innerHTML = '<span style="color:var(--err)">' + escapar(res.mensaje) + '</span>'; return; }
+      div.innerHTML = '<strong style="color:var(--ok)">✅ ' + escapar(res.mensaje) + '</strong>' +
+        (res.resumen || []).map(function (r) {
+          return '<div>• ' + escapar(r.pestana) + ': ' + r.creados + ' cargados' +
+            (r.omitidos ? ', ' + r.omitidos + ' omitidos por duplicado' : '') + '</div>';
+        }).join('');
+      mostrarMensaje(res.mensaje, 'exito');
+      document.getElementById('cargaPanel').classList.add('oculto');
+      CARGA.datos = null;
+      document.getElementById('cargaNombreArchivo').textContent = '';
+      refrescarEmpleadosSelect();
+      cargarConfiguracion(); // refrescar contadores de pestañas
+    });
+  }
+</script>

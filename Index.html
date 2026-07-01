@@ -607,6 +607,45 @@
         </div>
       </div>
 
+      <!-- ──────────── Carga completa desde Excel ──────────── -->
+      <div class="config-bloque">
+        <h3>📥 Cargar datos de la empresa desde Excel</h3>
+        <p class="config-ayuda">
+          Sube el archivo Excel con la información de la empresa y se cargará
+          todo a la hoja de Google de una sola vez. Acepta el
+          <strong>formato interno de la empresa</strong> (hojas BASE DATOS
+          PERSONAL, CARGOS CRITICOS, INCAPACIDADES, ASISTENCIA, FERIADOS…) —
+          se convierte automáticamente — o un archivo que ya tenga las
+          <strong>pestañas del sistema</strong> (Empleados, Departamentos…).
+        </p>
+        <div class="import-drop" id="cargaDrop" onclick="document.getElementById('cargaFile').click()">
+          <div class="import-drop-icon">📂</div>
+          <p class="import-drop-texto">Haz clic aquí o arrastra tu archivo</p>
+          <p class="import-drop-sub">Formatos aceptados: .xlsx · .xls</p>
+          <p id="cargaNombreArchivo" class="import-nombre"></p>
+          <input type="file" id="cargaFile" accept=".xlsx,.xls" style="display:none" onchange="leerArchivoCarga(this)">
+        </div>
+        <div id="cargaPanel" class="oculto" style="margin-top:14px">
+          <p class="config-ayuda">Esto es lo que se encontró en el archivo. Revisa y elige el modo de carga:</p>
+          <div class="tabla-envoltorio">
+            <table class="tabla">
+              <thead><tr><th>Pestaña</th><th>Registros a cargar</th></tr></thead>
+              <tbody id="cargaResumenCuerpo"></tbody>
+            </table>
+          </div>
+          <div id="cargaAvisos" style="font-size:13px;margin:10px 0;color:var(--txt-2)"></div>
+          <div class="campo" style="max-width:340px">
+            <label for="cargaModo">Modo de carga</label>
+            <select id="cargaModo">
+              <option value="agregar">Agregar a lo existente (omite duplicados)</option>
+              <option value="reemplazar">Reemplazar los datos existentes</option>
+            </select>
+          </div>
+          <button class="btn btn-primario" id="btnEjecutarCarga" onclick="ejecutarCargaCompleta()">🚀 Cargar a Google Sheets</button>
+        </div>
+        <div id="cargaResultado" style="margin-top:10px;font-size:13px"></div>
+      </div>
+
       <!-- ──────────── Configuración de correo ──────────── -->
       <div class="config-bloque">
         <h3>📤 Configuración de envío de correo</h3>
@@ -1276,6 +1315,7 @@
   <?!= include('Js_Incapacidades'); ?>
   <?!= include('Js_Feriados'); ?>
   <?!= include('Js_Liquidaciones'); ?>
+  <?!= include('Js_CargaExcel'); ?>
 
 </body>
 </html>

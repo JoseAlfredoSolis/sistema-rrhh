@@ -1313,6 +1313,106 @@ function importarDatos(entidad, filas) {
 
 
 // ===================================================================
+// MÓDULO: CARGA COMPLETA DESDE EXCEL
+// ===================================================================
+// Recibe todas las pestañas ya convertidas por el frontend
+// (Js_CargaExcel parsea el Excel de la empresa con SheetJS) y las
+// escribe en la hoja de Google de una sola vez.
+// ===================================================================
+
+/**
+ * Prefijos de ID por pestaña, para generar ids si el archivo no los trae.
+ */
+var PREFIJOS_ID = {
+  Empleados: 'EMP', Departamentos: 'DEP', Asistencia: 'ASI', Vacaciones: 'VAC',
+  Nomina: 'NOM', HistorialSalarios: 'HSA', Capacitaciones: 'CAP', Evaluaciones: 'EVA',
+  Prestamos: 'PRE', HorasExtra: 'HEX', Activos: 'ACT', Turnos: 'TUR',
+  Incapacidades: 'INC', Feriados: 'FER', Liquidaciones: 'LIQ'
+};
+
+/**
+ * Carga masiva de toda la base de datos.
+ *
+ * @param {Object} datos  { NombrePestana: [ {campo: valor, ...}, ... ], ... }
+ *                        Las claves de cada objeto son los nombres de campo
+ *                        de ENCABEZADOS (el frontend ya hizo la conversión).
+ * @param {string} modo   'agregar'    → añade al final (omite duplicados básicos)
+ *                        'reemplazar' → borra los datos actuales de cada pestaña
+ *                                       incluida en el archivo y escribe los nuevos.
+ * @return {Object} {ok, resumen:[{pestana, creados, omitidos}], mensaje}
+ */
+function cargarBaseCompleta(datos, modo) {
+  if (!datos || typeof datos !== 'object') {
+    return { ok: false, mensaje: 'No se recibieron datos.' };
+  }
+  var reemplazar = (modo === 'reemplazar');
+  var resumen = [];
+
+  Object.keys(ENCABEZADOS).forEach(function (tab) {
+    var filas = datos[tab];
+    if (!filas || !filas.length) return;
+
+    var encabezados = ENCABEZADOS[tab];
+    var hoja = getHoja(tab);
+
+    if (reemplazar) {
+      var ultimaFila = hoja.getLastRow();
+      if (ultimaFila > 1) {
+        hoja.getRange(2, 1, ultimaFila - 1, Math.max(hoja.getLastColumn(), encabezados.length)).clearContent();
+      }
+    }
+
+    // Claves ya existentes para omitir duplicados en modo 'agregar'.
+    var existentes = {};
+    if (!reemplazar) {
+      leerTabla(tab).forEach(function (r) {
+        var clave = _claveDuplicado(tab, r);
+        if (clave) existentes[clave] = true;
+      });
+    }
+
+    var omitidos = 0;
+    var nuevas = [];
+    filas.forEach(function (f) {
+      var clave = _claveDuplicado(tab, f);
+      if (clave && existentes[clave]) { omitidos++; return; }
+      if (clave) existentes[clave] = true;
+      nuevas.push(encabezados.map(function (campo) {
+        if (campo === 'id' && !f.id) return generarId(PREFIJOS_ID[tab] || 'ID');
+        var v = f[campo];
+        return (v === undefined || v === null) ? '' : v;
+      }));
+    });
+
+    if (nuevas.length) {
+      hoja.getRange(hoja.getLastRow() + 1, 1, nuevas.length, encabezados.length).setValues(nuevas);
+    }
+    resumen.push({ pestana: tab, creados: nuevas.length, omitidos: omitidos });
+  });
+
+  if (!resumen.length) {
+    return { ok: false, mensaje: 'El archivo no contiene pestañas con datos reconocibles.' };
+  }
+  var totales = resumen.map(function (r) { return r.pestana + ': ' + r.creados; }).join(', ');
+  registrarBitacora('importar', 'BaseCompleta', '',
+    (reemplazar ? 'Reemplazo' : 'Carga') + ' desde Excel → ' + totales);
+  return { ok: true, resumen: resumen, mensaje: 'Carga completada. ' + totales + '.' };
+}
+
+/**
+ * Clave para detectar duplicados por pestaña en modo 'agregar'.
+ * Devuelve '' si la pestaña no tiene criterio de duplicado (siempre agrega).
+ */
+function _claveDuplicado(tab, fila) {
+  if (tab === 'Empleados')     return String(fila.cedula || '').trim();
+  if (tab === 'Departamentos') return String(fila.nombre || '').trim().toLowerCase();
+  if (tab === 'Feriados')      return formatearFecha(fila.fecha);
+  if (fila && fila.id)         return 'id:' + fila.id;
+  return '';
+}
+
+
+// ===================================================================
 // MÓDULO: CONFIGURACIÓN (archivos de Google)
 // ===================================================================
 // Permite conectar/verificar la hoja de Google que sirve de base de
