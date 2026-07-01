@@ -40,7 +40,9 @@ var HOJAS = {
  * Sirven para crear la hoja automáticamente si no existe.
  */
 var ENCABEZADOS = {
-  Empleados:         ['id', 'nombre', 'cedula', 'departamento', 'puesto', 'fecha_ingreso', 'salario', 'estado', 'fecha_nacimiento', 'telefono'],
+  Empleados:         ['id', 'nombre', 'cedula', 'departamento', 'puesto', 'fecha_ingreso', 'salario', 'estado', 'fecha_nacimiento', 'telefono',
+                      'correo', 'direccion', 'genero', 'estado_civil', 'nacionalidad', 'sede', 'tipo_nomina', 'cuenta_iban', 'carne_ccss',
+                      'vencimiento_cedula', 'licencia_conducir', 'vencimiento_licencia', 'jefe_inmediato', 'cargo_critico', 'actividad', 'padre_madre'],
   Departamentos:     ['id', 'nombre', 'responsable'],
   Asistencia:        ['id', 'empleado_id', 'fecha', 'hora_entrada', 'hora_salida', 'horas'],
   Vacaciones:        ['id', 'empleado_id', 'fecha_inicio', 'fecha_fin', 'dias', 'estado'],
@@ -242,6 +244,11 @@ function validarEmpleado(emp) {
   if (!emp.fecha_ingreso || isNaN(new Date(emp.fecha_ingreso).getTime())) {
     return 'La fecha de ingreso no es válida.';
   }
+  // Correo: opcional, pero si viene debe tener formato de email.
+  if (emp.correo && String(emp.correo).trim() !== '' &&
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(emp.correo).trim())) {
+    return 'El correo electrónico no tiene un formato válido.';
+  }
   return null; // sin errores
 }
 
@@ -275,10 +282,13 @@ function listarEmpleados(soloActivos) {
   // Normalizamos la fecha a texto yyyy-mm-dd para mostrarla bien
   // en el frontend (Sheets a veces devuelve objetos Date).
   empleados.forEach(function (emp) {
-    emp.fecha_ingreso     = formatearFecha(emp.fecha_ingreso);
-    emp.fecha_nacimiento  = emp.fecha_nacimiento ? formatearFecha(emp.fecha_nacimiento) : '';
-    emp.telefono          = emp.telefono ? String(emp.telefono) : '';
-    emp.salario           = Number(emp.salario) || 0;
+    emp.fecha_ingreso        = formatearFecha(emp.fecha_ingreso);
+    emp.fecha_nacimiento     = emp.fecha_nacimiento ? formatearFecha(emp.fecha_nacimiento) : '';
+    emp.vencimiento_cedula   = emp.vencimiento_cedula ? formatearFecha(emp.vencimiento_cedula) : '';
+    emp.vencimiento_licencia = emp.vencimiento_licencia ? formatearFecha(emp.vencimiento_licencia) : '';
+    emp.telefono             = emp.telefono ? String(emp.telefono) : '';
+    emp.carne_ccss           = emp.carne_ccss ? String(emp.carne_ccss) : '';
+    emp.salario              = Number(emp.salario) || 0;
   });
 
   if (soloActivos) {
@@ -329,11 +339,34 @@ function crearEmpleado(emp) {
     'activo',
     emp.fecha_nacimiento ? formatearFecha(emp.fecha_nacimiento) : '',
     emp.telefono ? String(emp.telefono).trim() : ''
-  ];
+  ].concat(_camposExtraEmpleado(emp, null));
 
   hoja.appendRow(fila);
   registrarBitacora('crear', 'Empleados', id, String(emp.nombre).trim());
   return { ok: true, mensaje: 'Empleado creado correctamente.', id: id };
+}
+
+/**
+ * Campos adicionales del expediente (columnas 11-26 de la hoja Empleados).
+ * Devuelve los 16 valores en el orden de ENCABEZADOS.Empleados.
+ * Si un campo no viene en el payload y hay fila actual, conserva el valor existente.
+ *
+ * @param {Object} emp        datos recibidos del frontend/importación.
+ * @param {Array|null} filaActual  valores actuales de la fila (o null al crear).
+ * @return {Array} 16 valores.
+ */
+function _camposExtraEmpleado(emp, filaActual) {
+  var campos = ['correo', 'direccion', 'genero', 'estado_civil', 'nacionalidad', 'sede',
+    'tipo_nomina', 'cuenta_iban', 'carne_ccss', 'vencimiento_cedula', 'licencia_conducir',
+    'vencimiento_licencia', 'jefe_inmediato', 'cargo_critico', 'actividad', 'padre_madre'];
+  var fechas = { vencimiento_cedula: true, vencimiento_licencia: true };
+  return campos.map(function (campo, i) {
+    var valor = emp[campo];
+    if (valor === undefined && filaActual) valor = filaActual[10 + i]; // columnas 11+ (0-based 10+)
+    if (valor === undefined || valor === null) valor = '';
+    valor = String(valor).trim();
+    return (fechas[campo] && valor) ? formatearFecha(valor) : valor;
+  });
 }
 
 /**
@@ -359,8 +392,11 @@ function actualizarEmpleado(emp) {
     return { ok: false, mensaje: 'No se encontró el empleado a actualizar.' };
   }
 
-  var estadoActual   = hoja.getRange(fila, 8).getValue() || 'activo';
-  var salarioAnterior = Number(hoja.getRange(fila, 7).getValue()) || 0;
+  var numCols = ENCABEZADOS.Empleados.length;
+  var filaActual = hoja.getRange(fila, 1, 1, numCols).getValues()[0];
+
+  var estadoActual    = filaActual[7] || 'activo';
+  var salarioAnterior = Number(filaActual[6]) || 0;
   var salarioNuevo    = Number(emp.salario);
 
   var valores = [
@@ -372,9 +408,9 @@ function actualizarEmpleado(emp) {
     formatearFecha(emp.fecha_ingreso),
     salarioNuevo,
     estadoActual,
-    emp.fecha_nacimiento ? formatearFecha(emp.fecha_nacimiento) : (String(hoja.getRange(fila, 9).getValue() || '')),
-    emp.telefono ? String(emp.telefono).trim() : (String(hoja.getRange(fila, 10).getValue() || ''))
-  ];
+    emp.fecha_nacimiento ? formatearFecha(emp.fecha_nacimiento) : (String(filaActual[8] || '')),
+    emp.telefono ? String(emp.telefono).trim() : (String(filaActual[9] || ''))
+  ].concat(_camposExtraEmpleado(emp, filaActual));
 
   hoja.getRange(fila, 1, 1, valores.length).setValues([valores]);
 
@@ -1234,7 +1270,8 @@ function importarDatos(entidad, filas) {
           puesto:        String(fila.puesto         || '').trim(),
           fecha_ingreso: String(fila.fecha_ingreso  || '').trim(),
           salario:       fila.salario,
-          estado:        String(fila.estado || 'activo').trim().toLowerCase()
+          estado:        String(fila.estado || 'activo').trim().toLowerCase(),
+          correo:        String(fila.correo || '').trim()
         };
         if (emp.estado !== 'activo' && emp.estado !== 'inactivo') emp.estado = 'activo';
 
@@ -1244,7 +1281,10 @@ function importarDatos(entidad, filas) {
 
         hoja.appendRow([generarId('EMP'), emp.nombre, emp.cedula,
           emp.departamento, emp.puesto, formatearFecha(emp.fecha_ingreso),
-          Number(emp.salario) || 0, emp.estado]);
+          Number(emp.salario) || 0, emp.estado,
+          fila.fecha_nacimiento ? formatearFecha(String(fila.fecha_nacimiento)) : '',
+          String(fila.telefono || '').trim()
+        ].concat(_camposExtraEmpleado(fila, null)));
         creados++;
 
       } else if (entidad === 'DEPARTAMENTOS') {

@@ -24,6 +24,8 @@
         '<h2>'+escapar(e.nombre)+'</h2>'+
         '<p>'+escapar(e.puesto||'Sin puesto')+' · '+escapar(e.departamento||'Sin departamento')+'</p>'+
         '<p>Cédula: '+escapar(e.cedula||'—')+' · Ingreso: '+escapar(e.fecha_ingreso||'—')+'</p>'+
+        ((e.telefono||e.correo) ? '<p>📞 '+escapar(e.telefono||'—')+' · ✉️ '+escapar(e.correo||'—')+'</p>' : '')+
+        ((e.sede||e.jefe_inmediato) ? '<p>Sede: '+escapar(e.sede||'—')+' · Jefe: '+escapar(e.jefe_inmediato||'—')+'</p>' : '')+
       '</div>'+
       '<div class="exp-kpis">'+
         '<div class="exp-kpi"><span class="exp-kpi-num">'+formatoDinero(e.salario)+'</span><span class="exp-kpi-lbl">Salario bruto</span></div>'+

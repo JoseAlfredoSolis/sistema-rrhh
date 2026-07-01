@@ -58,7 +58,8 @@
     var visibles = EMPLEADOS.filter(function (e) {
       var textoOk = !texto ||
         String(e.nombre).toLowerCase().indexOf(texto) !== -1 ||
-        String(e.cedula).toLowerCase().indexOf(texto) !== -1;
+        String(e.cedula).toLowerCase().indexOf(texto) !== -1 ||
+        String(e.correo || '').toLowerCase().indexOf(texto) !== -1;
       var deptoOk = !depto || e.departamento === depto;
       return textoOk && deptoOk;
     });
@@ -133,6 +134,12 @@
     document.getElementById('modal').classList.remove('oculto');
   }
 
+  // Campos adicionales del expediente (mismo id de elemento = nombre de campo).
+  var CAMPOS_EXTRA_EMP = ['correo', 'direccion', 'genero', 'estado_civil', 'nacionalidad',
+    'sede', 'tipo_nomina', 'cuenta_iban', 'carne_ccss', 'vencimiento_cedula',
+    'licencia_conducir', 'vencimiento_licencia', 'jefe_inmediato', 'cargo_critico',
+    'actividad', 'padre_madre'];
+
   function editarEmpleado(id) {
     if (!puedeEditar()) { mostrarMensaje('Necesitas rol RRHH o Admin para editar.', 'error'); return; }
     var e = EMPLEADOS.filter(function (x) { return String(x.id) === String(id); })[0];
@@ -146,6 +153,10 @@
     document.getElementById('salario').value      = e.salario != null ? e.salario : '';
     document.getElementById('fecha_nacimiento').value = e.fecha_nacimiento || '';
     document.getElementById('telefono').value     = e.telefono || '';
+    CAMPOS_EXTRA_EMP.forEach(function (campo) {
+      var el = document.getElementById(campo);
+      if (el) el.value = e[campo] != null ? e[campo] : '';
+    });
     document.getElementById('modalTitulo').textContent = 'Editar empleado';
     limpiarErroresEmp();
     document.getElementById('modal').classList.remove('oculto');
@@ -184,6 +195,10 @@
       fecha_nacimiento:document.getElementById('fecha_nacimiento').value,
       telefono:        document.getElementById('telefono').value
     };
+    CAMPOS_EXTRA_EMP.forEach(function (campo) {
+      var el = document.getElementById(campo);
+      if (el) datos[campo] = el.value;
+    });
     if (!validarFormularioEmp(datos)) return;
 
     var btn = document.getElementById('btnGuardar');

@@ -16,12 +16,30 @@
   var IMP_CAMPOS = {
     EMPLEADOS: [
       { key: 'nombre',        label: 'Nombre completo *', aliases: ['nombre','name','empleado','nombrecompleto'] },
-      { key: 'cedula',        label: 'Cédula *',           aliases: ['cedula','dni','documento','identificacion'] },
-      { key: 'departamento',  label: 'Departamento',       aliases: ['departamento','area','depto','dept'] },
+      { key: 'cedula',        label: 'Cédula *',           aliases: ['cedula','cedulaidentidad','dni','documento','identificacion'] },
+      { key: 'departamento',  label: 'Departamento',       aliases: ['departamento','areadepartamento','area','depto','dept'] },
       { key: 'puesto',        label: 'Puesto',             aliases: ['puesto','cargo','position','rol'] },
       { key: 'fecha_ingreso', label: 'Fecha de ingreso *', aliases: ['fechaingreso','ingreso','fecha','startdate'] },
-      { key: 'salario',       label: 'Salario *',          aliases: ['salario','sueldo','salary','remuneracion'] },
-      { key: 'estado',        label: 'Estado',             aliases: ['estado','status'] }
+      { key: 'salario',       label: 'Salario *',          aliases: ['salario','salariobase','sueldo','salary','remuneracion'] },
+      { key: 'estado',        label: 'Estado',             aliases: ['estado','status'] },
+      { key: 'fecha_nacimiento',     label: 'Fecha de nacimiento',    aliases: ['fechanacimiento','nacimiento','birthdate'] },
+      { key: 'telefono',             label: 'Teléfono',               aliases: ['telefono','celular','phone','movil'] },
+      { key: 'correo',               label: 'Correo electrónico',     aliases: ['correo','correoelectronico','email','mail'] },
+      { key: 'direccion',            label: 'Dirección',              aliases: ['direccion','direcciondomiciliar','domicilio','address'] },
+      { key: 'genero',               label: 'Género',                 aliases: ['genero','sexo','gender'] },
+      { key: 'estado_civil',         label: 'Estado civil',           aliases: ['estadocivil','civil'] },
+      { key: 'nacionalidad',         label: 'Nacionalidad',           aliases: ['nacionalidad','nationality'] },
+      { key: 'sede',                 label: 'Sede de trabajo',        aliases: ['sede','sedetrabajo','sucursal','planta'] },
+      { key: 'tipo_nomina',          label: 'Tipo de nómina',         aliases: ['tiponomina','nomina','frecuenciapago'] },
+      { key: 'cuenta_iban',          label: 'Cuenta IBAN',            aliases: ['cuentaiban','iban','ncuentaibanbac','cuentabancaria'] },
+      { key: 'carne_ccss',           label: 'Carné CCSS',             aliases: ['carneccss','carne','asegurado'] },
+      { key: 'vencimiento_cedula',   label: 'Vencimiento de cédula',  aliases: ['vencimientoid','vencimientocedula'] },
+      { key: 'licencia_conducir',    label: 'Licencia de conducir',   aliases: ['licenciaconducir','licencia'] },
+      { key: 'vencimiento_licencia', label: 'Vencimiento de licencia',aliases: ['vencimientolicencia'] },
+      { key: 'jefe_inmediato',       label: 'Jefe inmediato',         aliases: ['jefeinmediato','jefe','supervisor'] },
+      { key: 'cargo_critico',        label: 'Cargo crítico',          aliases: ['cargocritico','cargoscriticos'] },
+      { key: 'actividad',            label: 'Actividad / Labor',      aliases: ['actividad','actividadlabor','labor'] },
+      { key: 'padre_madre',          label: '¿Padre / Madre?',        aliases: ['padremadre','hijos'] }
     ],
     DEPARTAMENTOS: [
       { key: 'nombre',       label: 'Nombre *',     aliases: ['nombre','departamento','area','name'] },
@@ -104,15 +122,22 @@
   function autoDetectarMapping() {
     var campos = IMP_CAMPOS[IMP.entidad] || [];
     IMP.mapping = {};
-    campos.forEach(function (campo) {
-      var mejor = -1;
-      IMP.headers.forEach(function (h, i) {
-        var hn = normKey(h);
-        if (campo.aliases.some(function (a) { return hn === a || hn.indexOf(a) !== -1; })) {
-          if (mejor === -1) mejor = i;
-        }
+    var usadas = {}; // columnas ya asignadas, para no repetirlas
+    // Dos pasadas: primero coincidencias exactas, luego parciales.
+    [true, false].forEach(function (exacta) {
+      campos.forEach(function (campo) {
+        if (IMP.mapping[campo.key] !== undefined && IMP.mapping[campo.key] !== -1) return;
+        var mejor = -1;
+        IMP.headers.forEach(function (h, i) {
+          if (mejor !== -1 || usadas[i]) return;
+          var hn = normKey(h);
+          if (campo.aliases.some(function (a) { return exacta ? hn === a : hn.indexOf(a) !== -1; })) {
+            mejor = i;
+          }
+        });
+        IMP.mapping[campo.key] = mejor; // -1 = sin mapear
+        if (mejor !== -1) usadas[mejor] = true;
       });
-      IMP.mapping[campo.key] = mejor; // -1 = sin mapear
     });
   }
 

@@ -869,18 +869,69 @@
 
   <!-- Modal Empleado -->
   <div id="modal" class="modal oculto">
-    <div class="modal-contenido">
+    <div class="modal-contenido modal-grande">
       <div class="modal-cabecera"><h2 id="modalTitulo">Nuevo empleado</h2><button class="cerrar" onclick="cerrarModal()">&times;</button></div>
       <form id="formEmpleado" onsubmit="guardarEmpleado(event)">
         <input type="hidden" id="id">
+
         <div class="campo"><label for="nombre">Nombre completo *</label><input type="text" id="nombre" required maxlength="80"><small class="error" id="errNombre"></small></div>
-        <div class="campo"><label for="cedula">Cédula *</label><input type="text" id="cedula" required placeholder="Solo números y guiones"><small class="error" id="errCedula"></small></div>
-        <div class="campo"><label for="departamento">Departamento</label><select id="departamento"><option value="">— Sin asignar —</option></select></div>
-        <div class="campo"><label for="puesto">Puesto</label><input type="text" id="puesto" maxlength="60"></div>
-        <div class="campo"><label for="fecha_ingreso">Fecha de ingreso *</label><input type="date" id="fecha_ingreso" required><small class="error" id="errFecha"></small></div>
-        <div class="campo"><label for="salario">Salario *</label><input type="number" id="salario" required min="0" step="0.01" placeholder="0.00"><small class="error" id="errSalario"></small></div>
-        <div class="campo"><label for="fecha_nacimiento">Fecha de nacimiento</label><input type="date" id="fecha_nacimiento"></div>
-        <div class="campo"><label for="telefono">Teléfono</label><input type="text" id="telefono" placeholder="+506 8888-7777" maxlength="25"></div>
+        <div class="smtp-fila">
+          <div class="campo smtp-campo"><label for="cedula">Cédula *</label><input type="text" id="cedula" required placeholder="Solo números y guiones"><small class="error" id="errCedula"></small></div>
+          <div class="campo smtp-campo"><label for="vencimiento_cedula">Vencimiento de cédula</label><input type="date" id="vencimiento_cedula"></div>
+        </div>
+        <div class="smtp-fila">
+          <div class="campo smtp-campo"><label for="fecha_nacimiento">Fecha de nacimiento</label><input type="date" id="fecha_nacimiento"></div>
+          <div class="campo smtp-campo"><label for="genero">Género</label>
+            <select id="genero"><option value="">—</option><option value="Masculino">Masculino</option><option value="Femenino">Femenino</option><option value="Otro">Otro</option></select>
+          </div>
+        </div>
+        <div class="smtp-fila">
+          <div class="campo smtp-campo"><label for="estado_civil">Estado civil</label>
+            <select id="estado_civil"><option value="">—</option><option value="Soltero (a)">Soltero (a)</option><option value="Casado (a)">Casado (a)</option><option value="Divorciado (a)">Divorciado (a)</option><option value="Viudo (a)">Viudo (a)</option><option value="Union libre">Unión libre</option></select>
+          </div>
+          <div class="campo smtp-campo"><label for="nacionalidad">Nacionalidad</label><input type="text" id="nacionalidad" maxlength="40" placeholder="Costarricense"></div>
+        </div>
+        <div class="smtp-fila">
+          <div class="campo smtp-campo"><label for="telefono">Teléfono</label><input type="text" id="telefono" placeholder="+506 8888-7777" maxlength="25"></div>
+          <div class="campo smtp-campo"><label for="correo">Correo electrónico</label><input type="email" id="correo" maxlength="80" placeholder="nombre@correo.com"></div>
+        </div>
+        <div class="campo"><label for="direccion">Dirección domiciliar</label><input type="text" id="direccion" maxlength="150" placeholder="Provincia / Cantón / Distrito"></div>
+
+        <div class="smtp-fila">
+          <div class="campo smtp-campo"><label for="departamento">Departamento</label><select id="departamento"><option value="">— Sin asignar —</option></select></div>
+          <div class="campo smtp-campo"><label for="puesto">Puesto</label><input type="text" id="puesto" maxlength="60"></div>
+        </div>
+        <div class="smtp-fila">
+          <div class="campo smtp-campo"><label for="actividad">Actividad / Labor</label><input type="text" id="actividad" maxlength="60"></div>
+          <div class="campo smtp-campo"><label for="jefe_inmediato">Jefe inmediato</label><input type="text" id="jefe_inmediato" maxlength="80"></div>
+        </div>
+        <div class="smtp-fila">
+          <div class="campo smtp-campo"><label for="sede">Sede de trabajo</label><input type="text" id="sede" maxlength="60"></div>
+          <div class="campo smtp-campo"><label for="tipo_nomina">Tipo de nómina</label>
+            <select id="tipo_nomina"><option value="">—</option><option value="Semanal">Semanal</option><option value="Quincenal">Quincenal</option><option value="Mensual">Mensual</option></select>
+          </div>
+        </div>
+        <div class="smtp-fila">
+          <div class="campo smtp-campo"><label for="fecha_ingreso">Fecha de ingreso *</label><input type="date" id="fecha_ingreso" required><small class="error" id="errFecha"></small></div>
+          <div class="campo smtp-campo"><label for="salario">Salario *</label><input type="number" id="salario" required min="0" step="0.01" placeholder="0.00"><small class="error" id="errSalario"></small></div>
+        </div>
+        <div class="smtp-fila">
+          <div class="campo smtp-campo"><label for="cuenta_iban">N° cuenta IBAN</label><input type="text" id="cuenta_iban" maxlength="30" placeholder="CR00000000000000000000"></div>
+          <div class="campo smtp-campo"><label for="carne_ccss">Carné CCSS</label><input type="text" id="carne_ccss" maxlength="20"></div>
+        </div>
+        <div class="smtp-fila">
+          <div class="campo smtp-campo"><label for="licencia_conducir">Licencia de conducir</label><input type="text" id="licencia_conducir" maxlength="20" placeholder="B1, C2... (vacío si no tiene)"></div>
+          <div class="campo smtp-campo"><label for="vencimiento_licencia">Vencimiento de licencia</label><input type="date" id="vencimiento_licencia"></div>
+        </div>
+        <div class="smtp-fila">
+          <div class="campo smtp-campo"><label for="cargo_critico">Cargo crítico</label>
+            <select id="cargo_critico"><option value="">—</option><option value="SI">Sí</option><option value="NO">No</option></select>
+          </div>
+          <div class="campo smtp-campo"><label for="padre_madre">¿Padre / Madre?</label>
+            <select id="padre_madre"><option value="">—</option><option value="Si">Sí</option><option value="No">No</option></select>
+          </div>
+        </div>
+
         <div class="modal-pie"><button type="button" class="btn btn-secundario" onclick="cerrarModal()">Cancelar</button><button type="submit" class="btn btn-primario" id="btnGuardar">Guardar</button></div>
       </form>
     </div>
