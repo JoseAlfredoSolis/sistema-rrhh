@@ -19,7 +19,7 @@
       'vencimiento_cedula','licencia_conducir','vencimiento_licencia','jefe_inmediato','cargo_critico','actividad','padre_madre'],
     Departamentos: ['id','nombre','responsable'],
     Asistencia: ['id','empleado_id','fecha','hora_entrada','hora_salida','horas'],
-    Vacaciones: ['id','empleado_id','fecha_inicio','fecha_fin','dias','estado'],
+    Vacaciones: ['id','empleado_id','fecha_inicio','fecha_fin','dias','estado','notas'],
     Nomina: ['id','empleado_id','mes','salario_base','deducciones','neto'],
     HistorialSalarios: ['id','empleado_id','salario_anterior','salario_nuevo','fecha','notas'],
     Capacitaciones: ['id','empleado_id','curso','institucion','fecha_inicio','fecha_fin','estado','certificado_url'],
@@ -231,6 +231,19 @@
     });
     if (!empleados.length) throw new Error('No se encontraron empleados con nombre en "' + hojaBase + '".');
 
+    // Dos nombres coinciden si sus primeras palabras (hasta 3) son
+    // mutuamente prefijo: tolera plurales, tildes distintas y tipeos
+    // como "Cadena"/"Cadenas" o "Francini"/"Francinny".
+    var _nombresParecidos = function (a, b) {
+      var ta = a.split(' '), tb = b.split(' ');
+      var n = Math.min(ta.length, tb.length, 3);
+      if (n < 2) return false;
+      for (var i = 0; i < n; i++) {
+        if (ta[i].indexOf(tb[i]) !== 0 && tb[i].indexOf(ta[i]) !== 0) return false;
+      }
+      return true;
+    };
+
     var buscarEmpleado = function (nombre) {
       var n = normNombre(nombre);
       if (porNombre[n]) return porNombre[n];
@@ -238,9 +251,8 @@
       for (var i = 0; i < claves.length; i++) {
         if (claves[i].indexOf(n) === 0 || n.indexOf(claves[i]) === 0) return porNombre[claves[i]];
       }
-      var n3 = n.split(' ').slice(0, 3).join(' ');
       for (var j = 0; j < claves.length; j++) {
-        if (n3 && claves[j].split(' ').slice(0, 3).join(' ') === n3) return porNombre[claves[j]];
+        if (_nombresParecidos(n, claves[j])) return porNombre[claves[j]];
       }
       return null;
     };
@@ -305,6 +317,9 @@
       return { id: 'DEP-' + ('00' + (i + 1)).slice(-3), nombre: d, responsable: jefes[0] || '' };
     });
 
+    // Acumulador de registros de vacaciones (días VAC de asistencia + ajustes de saldo).
+    var vacacionesConv = [];
+
     // — Asistencia (+ vacaciones marcadas VAC) —
     var hojaAsis = buscarHoja('asistencia');
     if (hojaAsis) {
@@ -340,11 +355,10 @@
           CARGA.avisos.push('⚠️ Asistencia: no se encontró en la base a: ' + noEncontrados.join(', '));
         }
         // Días VAC consecutivos → solicitudes aprobadas
-        var vacaciones = [];
         Object.keys(vacPorEmp).forEach(function (empId) {
           var dias = vacPorEmp[empId].sort();
           var ini = dias[0], fin = dias[0], n = 1;
-          var cerrar = function () { vacaciones.push({ empleado_id: empId, fecha_inicio: ini, fecha_fin: fin, dias: n, estado: 'aprobada' }); };
+          var cerrar = function () { vacacionesConv.push({ empleado_id: empId, fecha_inicio: ini, fecha_fin: fin, dias: n, estado: 'aprobada', notas: 'Tomadas según hoja de asistencia' }); };
           for (var i = 1; i < dias.length; i++) {
             var sig = new Date(fin + 'T00:00:00'); sig.setDate(sig.getDate() + 1);
             if (dias[i] === sig.toISOString().slice(0, 10)) { fin = dias[i]; n++; }
@@ -352,9 +366,65 @@
           }
           cerrar();
         });
-        if (vacaciones.length) datos.Vacaciones = vacaciones;
       }
     }
+
+    // — Vacaciones: la hoja de la empresa trae SALDOS (días pendientes),
+    //   no solicitudes. Se crea un ajuste de saldo inicial por empleado
+    //   para que el balance del sistema (acumulados − usados) coincida
+    //   con los días pendientes del Excel. —
+    var hojaVac = buscarHoja('vacacion');
+    if (hojaVac) {
+      var fv = _hojaAFilas(wb, hojaVac);
+      if (fv.length > 1) {
+        var hv = fv[0].map(String);
+        var vNom = buscarCol(hv, ['nombredelempleado','nombreempleado','nombre']);
+        var vIng = buscarCol(hv, ['ingreso']);
+        var vTot = buscarCol(hv, ['total']);
+        var hoyISO = new Date().toISOString().slice(0, 10);
+        var vacSinMatch = [];
+        var filasSinNombre = 0;
+        fv.slice(1).forEach(function (f) {
+          var nombre = celda(f, vNom);
+          // Solo filas de datos: deben traer fecha de ingreso en serial.
+          if (!serialAISO(celda(f, vIng))) return;
+          if (!nombre) { filasSinNombre++; return; }
+          if (normNombre(nombre) === 'totales') return;
+          var emp = buscarEmpleado(nombre);
+          if (!emp) { vacSinMatch.push(nombre); return; }
+
+          var totTxt = celda(f, vTot);
+          var pendiente = (totTxt !== '' && isFinite(Number(totTxt))) ? Number(totTxt) : 0;
+
+          // Misma fórmula del backend: 15 días por año desde el ingreso.
+          var fi = new Date(emp.fecha_ingreso + 'T00:00:00');
+          var anios = (Date.now() - fi.getTime()) / (365.25 * 86400000);
+          var acumulados = Math.floor(Math.max(0, anios) * 15);
+          var usados = acumulados - pendiente;
+          if (usados < 0) {
+            CARGA.avisos.push('⚠️ Vacaciones: ' + emp.nombre + ' tiene más días pendientes (' + pendiente +
+              ') que los acumulados por ley (' + acumulados + '); se dejó el saldo en ' + acumulados + '.');
+            usados = 0;
+          }
+          if (usados <= 0) return; // recién ingresado: nada que ajustar
+          vacacionesConv.push({
+            empleado_id: emp.id,
+            fecha_inicio: emp.fecha_ingreso,
+            fecha_fin: hoyISO,
+            dias: usados,
+            estado: 'aprobada',
+            notas: 'Ajuste de saldo inicial (Excel: ' + pendiente + ' días pendientes al ' + hoyISO + ')'
+          });
+        });
+        if (vacSinMatch.length) {
+          CARGA.avisos.push('⚠️ Vacaciones: no se encontró en la base a: ' + vacSinMatch.join(', '));
+        }
+        if (filasSinNombre) {
+          CARGA.avisos.push('⚠️ Vacaciones: ' + filasSinNombre + ' fila(s) con datos pero sin nombre de empleado no se cargaron.');
+        }
+      }
+    }
+    if (vacacionesConv.length) datos.Vacaciones = vacacionesConv;
 
     // — Incapacidades —
     var hojaInc = buscarHoja('incapacidad');

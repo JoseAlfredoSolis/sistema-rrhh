@@ -45,7 +45,7 @@ var ENCABEZADOS = {
                       'vencimiento_cedula', 'licencia_conducir', 'vencimiento_licencia', 'jefe_inmediato', 'cargo_critico', 'actividad', 'padre_madre'],
   Departamentos:     ['id', 'nombre', 'responsable'],
   Asistencia:        ['id', 'empleado_id', 'fecha', 'hora_entrada', 'hora_salida', 'horas'],
-  Vacaciones:        ['id', 'empleado_id', 'fecha_inicio', 'fecha_fin', 'dias', 'estado'],
+  Vacaciones:        ['id', 'empleado_id', 'fecha_inicio', 'fecha_fin', 'dias', 'estado', 'notas'],
   Nomina:            ['id', 'empleado_id', 'mes', 'salario_base', 'deducciones', 'neto'],
   HistorialSalarios: ['id', 'empleado_id', 'salario_anterior', 'salario_nuevo', 'fecha', 'notas'],
   Capacitaciones:    ['id', 'empleado_id', 'curso', 'institucion', 'fecha_inicio', 'fecha_fin', 'estado', 'certificado_url'],
@@ -305,6 +305,11 @@ function listarEmpleados(soloActivos) {
  */
 function formatearFecha(valor) {
   if (!valor) return '';
+  // Las cadenas 'yyyy-mm-dd' se devuelven tal cual: convertirlas a Date
+  // las interpretaría como medianoche UTC y restaría un día en zona CR.
+  if (typeof valor === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(valor.trim())) {
+    return valor.trim();
+  }
   var fecha = (valor instanceof Date) ? valor : new Date(valor);
   if (isNaN(fecha.getTime())) return String(valor);
   return Utilities.formatDate(fecha, Session.getScriptTimeZone(), 'yyyy-MM-dd');
@@ -654,7 +659,7 @@ function crearVacaciones(v) {
   var hoja = getHoja(HOJAS.VACACIONES);
   var id = generarId('VAC');
   hoja.appendRow([id, v.empleado_id, formatearFecha(v.fecha_inicio),
-                  formatearFecha(v.fecha_fin), dias, 'pendiente']);
+                  formatearFecha(v.fecha_fin), dias, 'pendiente', v.notas || '']);
   return { ok: true, mensaje: 'Solicitud creada (' + dias + ' días).', id: id };
 }
 
@@ -1407,6 +1412,10 @@ function _claveDuplicado(tab, fila) {
   if (tab === 'Empleados')     return String(fila.cedula || '').trim();
   if (tab === 'Departamentos') return String(fila.nombre || '').trim().toLowerCase();
   if (tab === 'Feriados')      return formatearFecha(fila.fecha);
+  if (tab === 'Asistencia')    return [fila.empleado_id, formatearFecha(fila.fecha)].join('|');
+  if (tab === 'Vacaciones')    return [fila.empleado_id, formatearFecha(fila.fecha_inicio), formatearFecha(fila.fecha_fin)].join('|');
+  if (tab === 'Incapacidades') return [fila.empleado_id, formatearFecha(fila.fecha_desde), formatearFecha(fila.fecha_hasta)].join('|');
+  if (tab === 'Liquidaciones') return [fila.empleado_id, formatearFecha(fila.fecha_salida)].join('|');
   if (fila && fila.id)         return 'id:' + fila.id;
   return '';
 }
