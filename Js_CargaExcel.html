@@ -100,8 +100,10 @@
       try {
         var wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
         CARGA.avisos = [];
+        CARGA.formulasAnalisis = _analizarFormulas(wb);
         CARGA.datos = _convertirLibro(wb);
         _pintarResumenCarga();
+        _pintarAnalisisFormulas();
       } catch (err) {
         mostrarMensaje('No se pudo leer el archivo: ' + err.message, 'error');
       }
@@ -112,6 +114,48 @@
 
   function _hojaAFilas(wb, nombre) {
     return XLSX.utils.sheet_to_json(wb.Sheets[nombre], { header: 1, raw: true, defval: '' });
+  }
+
+  // Analiza todas las fórmulas en el archivo Excel
+  function _analizarFormulas(wb) {
+    var analisis = {};
+    var totalFormulas = 0;
+    wb.SheetNames.forEach(function (sheetName) {
+      var ws = wb.Sheets[sheetName];
+      var count = 0;
+      for (var cellRef in ws) {
+        if (!cellRef.startsWith('!') && ws[cellRef] && ws[cellRef].f) count++;
+      }
+      if (count > 0) {
+        analisis[sheetName] = count;
+        totalFormulas += count;
+      }
+    });
+    return { total: totalFormulas, porHoja: analisis };
+  }
+
+  // Muestra el análisis de fórmulas si está activado el checkbox
+  function _pintarAnalisisFormulas() {
+    var div = document.getElementById('cargaFormulas');
+    var checkbox = document.getElementById('cargaAnalizarFormulas');
+    if (!checkbox || !checkbox.checked || !CARGA.formulasAnalisis) {
+      div.innerHTML = '';
+      return;
+    }
+    var analisis = CARGA.formulasAnalisis;
+    if (analisis.total === 0) {
+      div.innerHTML = '<em style="color:var(--ok)">✅ Archivo sin fórmulas (valores directos)</em>';
+      return;
+    }
+    var html = '<strong style="color:var(--warn)">⚠️ Análisis de fórmulas:</strong> ' +
+      '<strong>' + analisis.total + ' fórmulas</strong> encontradas.<br>' +
+      '<span style="font-size:11px;color:var(--txt-3)">Por pestaña: ';
+    Object.keys(analisis.porHoja).forEach(function (hoja, i) {
+      if (i > 0) html += ' · ';
+      html += hoja + ': ' + analisis.porHoja[hoja];
+    });
+    html += '</span>';
+    div.innerHTML = html;
   }
 
   // Decide el formato del libro y devuelve { Pestana: [objetos] }.
