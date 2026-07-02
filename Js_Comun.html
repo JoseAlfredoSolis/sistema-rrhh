@@ -9,6 +9,29 @@
   var ROL_ACTUAL = 'consulta'; // 'consulta' | 'rrhh' | 'admin'
   var SESSION_TOKEN = '';
   var _cargandoCount = 0;
+  var _memStore = {}; // respaldo si el navegador bloquea storage en el iframe de Google
+
+  function _leerStorage(tipo, clave) {
+    try {
+      var v = (tipo === 'session' ? sessionStorage : localStorage).getItem(clave);
+      if (v !== null && v !== undefined) return v;
+    } catch (e) {}
+    return _memStore[tipo + ':' + clave] || '';
+  }
+
+  function _guardarStorage(tipo, clave, valor) {
+    _memStore[tipo + ':' + clave] = valor;
+    try {
+      (tipo === 'session' ? sessionStorage : localStorage).setItem(clave, valor);
+    } catch (e) {}
+  }
+
+  function _quitarStorage(tipo, clave) {
+    delete _memStore[tipo + ':' + clave];
+    try {
+      (tipo === 'session' ? sessionStorage : localStorage).removeItem(clave);
+    } catch (e) {}
+  }
 
   var CARGADORES = {
     dashboard:      function () { cargarDashboard(); },
@@ -58,20 +81,20 @@
 
   window.addEventListener('load', function () {
     // Restaurar dark mode preferido
-    if (localStorage.getItem('rrhh-dark') === '1') {
+    if (_leerStorage('local', 'rrhh-dark') === '1') {
       document.body.classList.add('dark');
       var btn = document.getElementById('btnDarkMode');
       if (btn) btn.textContent = '☀️';
     }
     // Restaurar sidebar colapsado
-    if (localStorage.getItem('rrhh-sb-collapsed') === '1') {
+    if (_leerStorage('local', 'rrhh-sb-collapsed') === '1') {
       var sb = document.getElementById('sidebar');
       var btnC = document.getElementById('btnColapsar');
       if (sb) sb.classList.add('collapsed');
       if (btnC) btnC.title = 'Mostrar menú';
     }
     refrescarEmpleadosSelect(function () {
-      SESSION_TOKEN = sessionStorage.getItem('rrhh-token') || '';
+      SESSION_TOKEN = _leerStorage('session', 'rrhh-token');
       if (SESSION_TOKEN) {
         llamarBackend('renovarSesion', [SESSION_TOKEN], function (res) {
           if (res && res.ok && res.token) {
@@ -117,7 +140,7 @@
   // ── Modo oscuro ───────────────────────────────────────────
   function toggleDarkMode() {
     var dark = document.body.classList.toggle('dark');
-    localStorage.setItem('rrhh-dark', dark ? '1' : '0');
+    _guardarStorage('local', 'rrhh-dark', dark ? '1' : '0');
     var btn = document.getElementById('btnDarkMode');
     if (btn) btn.textContent = dark ? '☀️' : '🌙';
   }
@@ -171,8 +194,8 @@
 
   function guardarTokenSesion(token) {
     SESSION_TOKEN = token || '';
-    if (token) sessionStorage.setItem('rrhh-token', token);
-    else sessionStorage.removeItem('rrhh-token');
+    if (token) _guardarStorage('session', 'rrhh-token', token);
+    else _quitarStorage('session', 'rrhh-token');
   }
 
   function establecerRol(rol) {
@@ -282,7 +305,7 @@
     mostrarCargando(true);
     args = (args || []).slice();
     if (fn !== 'verificarPIN' && fn !== 'renovarSesion') {
-      args.push(SESSION_TOKEN || sessionStorage.getItem('rrhh-token') || '');
+      args.push(SESSION_TOKEN || _leerStorage('session', 'rrhh-token'));
     }
     var runner = google.script.run
       .withSuccessHandler(function (res) {
@@ -323,7 +346,7 @@
     var sb  = document.getElementById('sidebar');
     var btn = document.getElementById('btnColapsar');
     var collapsed = sb.classList.toggle('collapsed');
-    localStorage.setItem('rrhh-sb-collapsed', collapsed ? '1' : '0');
+    _guardarStorage('local', 'rrhh-sb-collapsed', collapsed ? '1' : '0');
     if (btn) btn.title = collapsed ? 'Mostrar menú' : 'Ocultar menú';
   }
 
