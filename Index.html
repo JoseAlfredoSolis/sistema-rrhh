@@ -601,6 +601,18 @@
         <div id="estadoConexion" class="config-estado">Cargando estado...</div>
       </div>
 
+      <!-- Permisos OAuth de Google -->
+      <div class="config-bloque">
+        <h3>Permisos de Google</h3>
+        <div id="estadoOAuth" class="config-estado">Verificando...</div>
+        <p class="config-ayuda">
+          Si la consola muestra <code>jquery-3.6.0.min.js</code> y <code>createOAuthDialog</code>,
+          es un fallo del diálogo de autorización de <strong>Google</strong>, no de esta aplicación.
+          Solución: en el editor de Apps Script, menú <strong>Sistema RRHH → Autorizar aplicación</strong>
+          (o ejecuta la función <code>autorizarSistema()</code> una vez) y vuelve a abrir la web app.
+        </p>
+      </div>
+
       <!-- Conectar por ID -->
       <div class="config-bloque">
         <h3>Conectar una hoja por ID</h3>
@@ -1122,6 +1134,7 @@
   </div>
 
   <!-- Librerías + lógica JS (include = mismo origen, sin CDN) -->
+  <?!= include('Lib_Jquery'); ?>
   <?!= include('Lib_Chart'); ?>
   <?!= include('Lib_Xlsx'); ?>
   <?!= include('Js_Comun'); ?>

@@ -8,9 +8,26 @@
       pintarEstadoConexion(info);
       pintarPestanas(info.pestanas || []);
     });
+    cargarEstadoOAuth();
     cargarConfigCorreo();
     cargarEstadoRespaldo();
     cargarConfigRoles();
+  }
+
+  function cargarEstadoOAuth() {
+    llamarBackend('estadoAutorizacionGoogle', [], function (st) {
+      var el = document.getElementById('estadoOAuth');
+      if (!el) return;
+      if (st && st.autorizado) {
+        el.className = 'config-estado ok-conexion';
+        el.innerHTML = '✅ <strong>Permisos de Google activos</strong> — la web app puede acceder a Sheets, Drive y correo.';
+      } else {
+        el.className = 'config-estado error-conexion';
+        el.innerHTML =
+          '⚠️ <strong>Faltan permisos de Google</strong> — autoriza desde el editor ' +
+          '(menú Sistema RRHH → Autorizar aplicación).';
+      }
+    });
   }
 
   function pintarEstadoConexion(info) {
