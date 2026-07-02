@@ -564,17 +564,61 @@ function calcularHoras(horaEntrada, horaSalida) {
   return Math.round((diff / 60) * 100) / 100;
 }
 
-/** Lista la asistencia, agregando el nombre del empleado. */
+/** Verifica si una fecha es feriado. */
+function esFeriado(fecha) {
+  var feriados = leerTabla(HOJAS.FERIADOS);
+  var fechaStr = typeof fecha === 'string' ? fecha : formatearFecha(fecha);
+  return feriados.some(function (f) {
+    return formatearFecha(f.fecha) === fechaStr;
+  });
+}
+
+/** Verifica si una fecha es sábado o domingo. */
+function esFinDeSemana(fecha) {
+  var d = typeof fecha === 'string' ? new Date(fecha + 'T00:00:00') : fecha;
+  var dia = d.getDay();
+  return dia === 0 || dia === 6; // 0=domingo, 6=sábado
+}
+
+/** Lista la asistencia, agregando información de feriados y tipos de marcas. */
 function listarAsistencia() {
   var registros = leerTabla(HOJAS.ASISTENCIA);
   var nombres = mapaEmpleados();
+
   registros.forEach(function (r) {
     r.fecha = formatearFecha(r.fecha);
     r.hora_entrada = formatearHora(r.hora_entrada);
     r.hora_salida = formatearHora(r.hora_salida);
     r.empleado_nombre = nombres[r.empleado_id] || '(desconocido)';
     r.horas = Number(r.horas) || 0;
+
+    // Enriquecer con información de feriados y tipo de marca
+    r.es_feriado = esFeriado(r.fecha);
+    r.es_fin_de_semana = esFinDeSemana(r.fecha);
+
+    // Detectar tipo de marca (VAC, CCSS, INS, presente normal)
+    var marca = String(r.hora_entrada).toLowerCase();
+    if (marca === 'vac') {
+      r.tipo_marca = 'Vacación';
+      r.clasificacion = 'vacacion';
+    } else if (marca === 'ccss' || marca === 'ins') {
+      r.tipo_marca = marca.toUpperCase() + ' (Incapacidad)';
+      r.clasificacion = 'incapacidad';
+    } else if (r.es_feriado) {
+      r.tipo_marca = 'Feriado';
+      r.clasificacion = 'feriado';
+    } else if (r.es_fin_de_semana) {
+      r.tipo_marca = 'Fin de semana';
+      r.clasificacion = 'fin_de_semana';
+    } else if (r.hora_entrada && r.hora_salida) {
+      r.tipo_marca = 'Presente (' + r.horas + 'h)';
+      r.clasificacion = 'presente';
+    } else {
+      r.tipo_marca = 'Ausente';
+      r.clasificacion = 'ausente';
+    }
   });
+
   return registros;
 }
 
