@@ -12,14 +12,16 @@
   });
 
   function cargarReportes() {
-    if (typeof Chart === 'undefined') {
-      mostrarCargando(true);
-      setTimeout(cargarReportes, 200);
-      return;
-    }
-    llamarBackend('obtenerReportes', [], function (r) {
-      ULTIMOS_REPORTES = r;
-      dibujarReportes(r);
+    cargarLibreriaLocal('chart', function () {
+      if (typeof Chart === 'undefined') {
+        mostrarCargando(true);
+        setTimeout(cargarReportes, 200);
+        return;
+      }
+      llamarBackend('obtenerReportes', [], function (r) {
+        ULTIMOS_REPORTES = r;
+        dibujarReportes(r);
+      });
     });
   }
 

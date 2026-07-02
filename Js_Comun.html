@@ -80,19 +80,22 @@
   };
 
   window.addEventListener('load', function () {
-    // Restaurar dark mode preferido
     if (_leerStorage('local', 'rrhh-dark') === '1') {
       document.body.classList.add('dark');
       var btn = document.getElementById('btnDarkMode');
       if (btn) btn.textContent = '☀️';
     }
-    // Restaurar sidebar colapsado
     if (_leerStorage('local', 'rrhh-sb-collapsed') === '1') {
       var sb = document.getElementById('sidebar');
       var btnC = document.getElementById('btnColapsar');
       if (sb) sb.classList.add('collapsed');
       if (btnC) btnC.title = 'Mostrar menú';
     }
+    mostrarVista('dashboard');
+    iniciarSesionApp();
+  });
+
+  function iniciarSesionApp() {
     refrescarEmpleadosSelect(function () {
       SESSION_TOKEN = _leerStorage('session', 'rrhh-token');
       if (SESSION_TOKEN) {
@@ -103,16 +106,19 @@
           } else {
             mostrarModalPin();
           }
-          mostrarVista('dashboard');
           actualizarBadge();
         });
       } else {
-        mostrarVista('dashboard');
         actualizarBadge();
         mostrarModalPin();
       }
     });
-  });
+  }
+
+  function mostrarBannerAuth(visible) {
+    var el = document.getElementById('bannerAuth');
+    if (el) el.classList.toggle('oculto', !visible);
+  }
 
   // ── Navegación ────────────────────────────────────────────
   function mostrarVista(nombre) {
@@ -285,6 +291,45 @@
     plugins: { legend: { labels: { font: { family: 'Segoe UI', size: 12 } } } }
   };
 
+  var _libsCargadas = {};
+
+  function cargarLibreriaLocal(nombre, alListo) {
+    if (_libsCargadas[nombre]) {
+      alListo();
+      return;
+    }
+    if (nombre === 'chart' && typeof Chart !== 'undefined') {
+      _libsCargadas.chart = true;
+      alListo();
+      return;
+    }
+    if (nombre === 'xlsx' && typeof XLSX !== 'undefined') {
+      _libsCargadas.xlsx = true;
+      alListo();
+      return;
+    }
+    google.script.run
+      .withSuccessHandler(function (html) {
+        var m = html.match(/<script[^>]*>([\s\S]*)<\/script>/i);
+        if (!m) {
+          mostrarMensaje('No se pudo cargar la librería ' + nombre + '.', 'error');
+          return;
+        }
+        var s = document.createElement('script');
+        s.textContent = m[1];
+        document.head.appendChild(s);
+        _libsCargadas[nombre] = true;
+        alListo();
+      })
+      .withFailureHandler(function (err) {
+        mostrarMensaje('Error al cargar ' + nombre + ': ' + err.message, 'error');
+        if (/auth|permiso|authorization|denied/i.test(err.message)) {
+          mostrarBannerAuth(true);
+        }
+      })
+      .obtenerScriptLibreria(nombre);
+  }
+
   function badge(valor, clase) {
     return '<span class="badge ' + (clase || valor) + '">' + escapar(valor) + '</span>';
   }
@@ -345,25 +390,31 @@
       })
       .withFailureHandler(function (err) {
         mostrarCargando(false);
-        mostrarMensaje('Error: ' + err.message, 'error');
+        var msg = err.message || String(err);
+        if (/auth|permiso|authorization|ScriptError/i.test(msg)) {
+          mostrarBannerAuth(true);
+        }
+        mostrarMensaje('Error: ' + msg, 'error');
       });
     runner[fn].apply(runner, args);
   }
 
-  // ── Exportar a Excel (SheetJS embebido en Lib_Xlsx) ───────
+  // ── Exportar a Excel (SheetJS bajo demanda) ───────────────
   function exportarTabla(tablaId, nombre) {
-    if (typeof XLSX === 'undefined') {
-      mostrarMensaje('La librería XLSX no está cargada.', 'error');
-      return;
-    }
     var tabla = document.getElementById(tablaId);
     if (!tabla) { mostrarMensaje('Tabla no encontrada.', 'error'); return; }
-    var clone = tabla.cloneNode(true);
-    clone.querySelectorAll('.no-print').forEach(function (el) { el.remove(); });
-    var wb = XLSX.utils.book_new();
-    var ws = XLSX.utils.table_to_sheet(clone);
-    XLSX.utils.book_append_sheet(wb, ws, nombre || 'Datos');
-    XLSX.writeFile(wb, (nombre || 'datos') + '_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+    cargarLibreriaLocal('xlsx', function () {
+      if (typeof XLSX === 'undefined') {
+        mostrarMensaje('La librería XLSX no está cargada.', 'error');
+        return;
+      }
+      var clone = tabla.cloneNode(true);
+      clone.querySelectorAll('.no-print').forEach(function (el) { el.remove(); });
+      var wb = XLSX.utils.book_new();
+      var ws = XLSX.utils.table_to_sheet(clone);
+      XLSX.utils.book_append_sheet(wb, ws, nombre || 'Datos');
+      XLSX.writeFile(wb, (nombre || 'datos') + '_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+    });
   }
 
   // ── Sidebar colapsable ────────────────────────────────────

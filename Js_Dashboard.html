@@ -12,11 +12,12 @@
   });
 
   function cargarDashboard() {
-    if (typeof Chart === 'undefined') {
-      setTimeout(cargarDashboard, 200);
-      return;
-    }
-    llamarBackend('obtenerDashboard', [], function (d) {
+    cargarLibreriaLocal('chart', function () {
+      if (typeof Chart === 'undefined') {
+        setTimeout(cargarDashboard, 200);
+        return;
+      }
+      llamarBackend('obtenerDashboard', [], function (d) {
       ULTIMO_DASHBOARD = d;
       var tarjetas = [
         { num: d.empleadosActivos,            lbl: 'Empleados activos',      icono: '👤' },
@@ -38,6 +39,7 @@
         cont.appendChild(div);
       });
       _dibujarGraficasDashboard(d);
+    });
     });
   }
 

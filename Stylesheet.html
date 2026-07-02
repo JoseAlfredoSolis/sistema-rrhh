@@ -62,8 +62,11 @@ html {
 
 html, body {
   width: 100%;
+  max-width: 100%;
   min-height: 100%;
   height: auto;
+  margin: 0;
+  padding: 0;
   overflow-x: hidden;
   overflow-y: auto;
 }
@@ -79,9 +82,10 @@ body {
 /* ── App layout (sidebar + main) ─────────────────────────── */
 .app-layout {
   display: flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
   width: 100%;
-  min-height: 100vh;
-  min-height: 100dvh;
+  min-height: 100%;
   height: auto;
   overflow: visible;
 }
@@ -90,6 +94,7 @@ body {
 .sidebar {
   width: var(--sb-w);
   min-width: var(--sb-w);
+  flex-shrink: 0;
   background: var(--sb-bg);
   display: flex;
   flex-direction: column;
@@ -97,6 +102,16 @@ body {
   overflow-x: hidden;
   z-index: 100;
   transition: transform .22s cubic-bezier(.4,0,.2,1);
+}
+
+@media (min-width: 769px) {
+  .sidebar {
+    position: sticky;
+    top: 0;
+    align-self: flex-start;
+    max-height: 100vh;
+    max-height: 100dvh;
+  }
 }
 
 /* Brand / logo */
@@ -187,8 +202,7 @@ body {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
-  min-height: 100dvh;
+  min-height: 100%;
   height: auto;
   overflow: visible;
 }
@@ -806,6 +820,32 @@ form { padding: 16px 20px; }
 
 /* ── Utilidades ──────────────────────────────────────────── */
 .oculto { display: none !important; }
+
+/* Aviso permisos Google (OAuth) */
+.banner-auth {
+  position: sticky;
+  top: 0;
+  z-index: 300;
+  background: #fef3c7;
+  color: #92400e;
+  border-bottom: 1px solid #f59e0b;
+  padding: 10px 40px 10px 16px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.banner-auth code { font-size: 12px; background: rgba(0,0,0,.06); padding: 1px 4px; border-radius: 4px; }
+.banner-auth-cerrar {
+  position: absolute;
+  right: 10px;
+  top: 8px;
+  border: none;
+  background: transparent;
+  font-size: 20px;
+  cursor: pointer;
+  color: inherit;
+  line-height: 1;
+}
+body.dark .banner-auth { background: #451a03; color: #fcd34d; border-color: #b45309; }
 
 /* ── Responsive (móvil) ──────────────────────────────────── */
 @media (max-width: 1024px) {

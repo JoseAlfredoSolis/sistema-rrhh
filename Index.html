@@ -8,6 +8,12 @@
   <?!= include('Stylesheet'); ?>
 </head>
 <body>
+<div id="bannerAuth" class="banner-auth oculto" role="alert">
+  <strong>Permisos de Google pendientes.</strong>
+  Abre el editor de Apps Script → ejecuta <code>autorizarSistema()</code> o menú
+  <strong>Sistema RRHH → Autorizar aplicación</strong>, luego recarga esta página.
+  <button type="button" class="banner-auth-cerrar" onclick="document.getElementById('bannerAuth').classList.add('oculto')">×</button>
+</div>
 <div class="app-layout">
 
   <!-- ═══════════ SIDEBAR ═══════════ -->
@@ -1133,10 +1139,7 @@
     </div>
   </div>
 
-  <!-- Librerías + lógica JS (include = mismo origen, sin CDN) -->
-  <?!= include('Lib_Jquery'); ?>
-  <?!= include('Lib_Chart'); ?>
-  <?!= include('Lib_Xlsx'); ?>
+  <!-- Lógica JS (librerías Chart/XLSX se cargan bajo demanda) -->
   <?!= include('Js_Comun'); ?>
   <?!= include('Js_Importar'); ?>
   <?!= include('Js_Alertas'); ?>

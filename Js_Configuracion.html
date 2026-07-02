@@ -21,11 +21,13 @@
       if (st && st.autorizado) {
         el.className = 'config-estado ok-conexion';
         el.innerHTML = '✅ <strong>Permisos de Google activos</strong> — la web app puede acceder a Sheets, Drive y correo.';
+        mostrarBannerAuth(false);
       } else {
         el.className = 'config-estado error-conexion';
         el.innerHTML =
           '⚠️ <strong>Faltan permisos de Google</strong> — autoriza desde el editor ' +
-          '(menú Sistema RRHH → Autorizar aplicación).';
+          '(menú Sistema RRHH → Autorizar aplicación). No uses el diálogo web si falla jQuery.';
+        mostrarBannerAuth(true);
       }
     });
   }

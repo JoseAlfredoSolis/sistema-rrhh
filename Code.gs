@@ -77,6 +77,17 @@ function include(nombreArchivo) {
   return HtmlService.createHtmlOutputFromFile(nombreArchivo).getContent();
 }
 
+/**
+ * Devuelve el contenido de una librería JS embebida (Lib_*.html).
+ * Se carga bajo demanda desde el cliente para no bloquear el primer render.
+ */
+function obtenerScriptLibreria(nombre) {
+  var mapa = { chart: 'Lib_Chart', xlsx: 'Lib_Xlsx' };
+  var archivo = mapa[nombre];
+  if (!archivo) throw new Error('Librería no permitida: ' + nombre);
+  return HtmlService.createHtmlOutputFromFile(archivo).getContent();
+}
+
 
 // ---- UTILIDADES REUTILIZABLES DE BASE DE DATOS --------------------
 
