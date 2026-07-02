@@ -754,6 +754,108 @@ function eliminarNomina(id) {
 // MÓDULO: DASHBOARD (totales)
 // ===================================================================
 
+/** Genera alertas automáticas basadas en las fórmulas del Excel. */
+function obtenerAlertas() {
+  var hoy = new Date();
+  var hace31dias = new Date(hoy.getTime() - 31 * 24 * 60 * 60 * 1000);
+  var hace30dias = new Date(hoy.getTime() - 30 * 24 * 60 * 60 * 1000);
+  var hace90dias = new Date(hoy.getTime() - 90 * 24 * 60 * 60 * 1000);
+
+  var alertas = [];
+  var empleados = leerTabla(HOJAS.EMPLEADOS);
+
+  empleados.forEach(function (emp) {
+    // Alerta: Cédula próxima a vencer (< 31 días)
+    if (emp.vencimiento_cedula) {
+      var fechaCed = new Date(emp.vencimiento_cedula + 'T00:00:00');
+      if (fechaCed >= hace31dias && fechaCed <= hoy) {
+        alertas.push({
+          tipo: 'cedula_vencida',
+          empleado: emp.nombre,
+          empleado_id: emp.id,
+          mensaje: 'Cédula VENCIDA',
+          fecha: emp.vencimiento_cedula,
+          urgencia: 'crítica'
+        });
+      } else if (fechaCed > hoy && fechaCed <= new Date(hoy.getTime() + 31 * 24 * 60 * 60 * 1000)) {
+        alertas.push({
+          tipo: 'cedula_proxima',
+          empleado: emp.nombre,
+          empleado_id: emp.id,
+          mensaje: 'Cédula próxima a vencer',
+          fecha: emp.vencimiento_cedula,
+          urgencia: 'alta'
+        });
+      }
+    }
+
+    // Alerta: Licencia próxima a vencer
+    if (emp.vencimiento_licencia) {
+      var fechaLic = new Date(emp.vencimiento_licencia + 'T00:00:00');
+      if (fechaLic >= hace31dias && fechaLic <= hoy) {
+        alertas.push({
+          tipo: 'licencia_vencida',
+          empleado: emp.nombre,
+          empleado_id: emp.id,
+          mensaje: 'Licencia de conducir VENCIDA',
+          fecha: emp.vencimiento_licencia,
+          urgencia: 'media'
+        });
+      } else if (fechaLic > hoy && fechaLic <= new Date(hoy.getTime() + 31 * 24 * 60 * 60 * 1000)) {
+        alertas.push({
+          tipo: 'licencia_proxima',
+          empleado: emp.nombre,
+          empleado_id: emp.id,
+          mensaje: 'Licencia próxima a vencer',
+          fecha: emp.vencimiento_licencia,
+          urgencia: 'media'
+        });
+      }
+    }
+
+    // Alerta: Evaluación anual próxima (cada 12 meses desde contratación)
+    if (emp.fecha_ingreso) {
+      var fechaIng = new Date(emp.fecha_ingreso + 'T00:00:00');
+      var proxEval = new Date(fechaIng.getTime() + 365 * 24 * 60 * 60 * 1000);
+      while (proxEval < hoy) {
+        proxEval = new Date(proxEval.getTime() + 365 * 24 * 60 * 60 * 1000);
+      }
+      if (proxEval >= hoy && proxEval <= new Date(hoy.getTime() + 29 * 24 * 60 * 60 * 1000)) {
+        alertas.push({
+          tipo: 'evaluacion_proxima',
+          empleado: emp.nombre,
+          empleado_id: emp.id,
+          mensaje: 'Evaluación anual próxima',
+          fecha: Utilities.formatDate(proxEval, Session.getScriptTimeZone(), 'yyyy-MM-dd'),
+          urgencia: 'baja'
+        });
+      }
+    }
+
+    // Alerta: Período de prueba próximo a vencer (90 días)
+    if (emp.fecha_ingreso) {
+      var fechaIng2 = new Date(emp.fecha_ingreso + 'T00:00:00');
+      var finPrueba = new Date(fechaIng2.getTime() + 90 * 24 * 60 * 60 * 1000);
+      if (finPrueba >= hace30dias && finPrueba <= new Date(hoy.getTime() + 31 * 24 * 60 * 60 * 1000) && finPrueba > hoy) {
+        alertas.push({
+          tipo: 'prueba_proxima',
+          empleado: emp.nombre,
+          empleado_id: emp.id,
+          mensaje: 'Período de prueba próximo a vencer',
+          fecha: Utilities.formatDate(finPrueba, Session.getScriptTimeZone(), 'yyyy-MM-dd'),
+          urgencia: 'media'
+        });
+      }
+    }
+  });
+
+  // Ordenar por urgencia
+  var orden = { crítica: 0, alta: 1, media: 2, baja: 3 };
+  alertas.sort(function (a, b) { return orden[a.urgencia] - orden[b.urgencia]; });
+
+  return alertas;
+}
+
 /** Devuelve cifras resumen para el panel principal. */
 function obtenerDashboard() {
   var empleados = leerTabla(HOJAS.EMPLEADOS);
@@ -779,6 +881,9 @@ function obtenerDashboard() {
     return suma + (Number(e.salario) || 0);
   }, 0);
 
+  // Obtener alertas
+  var alertas = obtenerAlertas();
+
   return {
     totalEmpleados: empleados.length,
     empleadosActivos: activos.length,
@@ -788,7 +893,10 @@ function obtenerDashboard() {
     mesActual: mesActual,
     nominasMesActual: nominaMes.length,
     totalNetoMes: Math.round(totalNeto * 100) / 100,
-    masaSalarial: Math.round(masaSalarial * 100) / 100
+    masaSalarial: Math.round(masaSalarial * 100) / 100,
+    alertas: alertas,
+    alertasCriticas: alertas.filter(function (a) { return a.urgencia === 'crítica'; }).length,
+    alertasAltas: alertas.filter(function (a) { return a.urgencia === 'alta'; }).length
   };
 }
 

@@ -7,6 +7,11 @@
 
   function cargarDashboard() {
     llamarBackend('obtenerDashboard', [], function(d) {
+      // Mostrar alertas si hay
+      if (d.alertas && d.alertas.length > 0) {
+        _mostrarAlertas(d.alertas);
+      }
+
       var tarjetas = [
         { num: d.empleadosActivos,             lbl: 'Empleados activos',     icono: '👤' },
         { num: d.totalDepartamentos,           lbl: 'Departamentos',          icono: '🏢' },
@@ -29,6 +34,39 @@
 
       // Gráficas
       _cargarGraficas(d);
+    });
+  }
+
+  function _mostrarAlertas(alertas) {
+    var cont = document.getElementById('tarjetasDashboard');
+    if (!cont) return;
+
+    var divAlertas = document.getElementById('dashAlertas');
+    if (!divAlertas) {
+      divAlertas = document.createElement('div');
+      divAlertas.id = 'dashAlertas';
+      cont.parentNode.insertBefore(divAlertas, cont);
+    }
+
+    divAlertas.innerHTML = '<h3 style="margin-top:0;color:var(--txt-1)">⚠️ Alertas automáticas</h3>';
+
+    var iconos = {
+      cedula_vencida: '🆔',
+      cedula_proxima: '⏰',
+      licencia_vencida: '🚗',
+      licencia_proxima: '⏰',
+      evaluacion_proxima: '📊',
+      prueba_proxima: '🆕'
+    };
+
+    alertas.forEach(function(a) {
+      var div = document.createElement('div');
+      var colorUrgencia = { crítica: '#ef4444', alta: '#f97316', media: '#f59e0b', baja: '#6366f1' };
+      div.style.cssText = 'padding:10px;margin-bottom:8px;background:'+colorUrgencia[a.urgencia]+'20;' +
+        'border-left:3px solid '+colorUrgencia[a.urgencia]+';border-radius:4px;font-size:13px';
+      div.innerHTML = (iconos[a.tipo] || '⚠️') + ' <strong>' + escapar(a.empleado) + ':</strong> ' +
+        escapar(a.mensaje) + ' <span style="color:var(--txt-3)">('+escapar(a.fecha)+')</span>';
+      divAlertas.appendChild(div);
     });
   }
 
