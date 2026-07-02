@@ -2715,22 +2715,98 @@ function listarLiquidaciones(empleadoId) {
   });
 }
 
+/** Calcula automáticamente el monto de liquidación según la ley. */
+function calcularLiquidacion(empleadoId, fechaSalida) {
+  var emp = leerTabla(HOJAS.EMPLEADOS).filter(function (e) {
+    return String(e.id) === String(empleadoId);
+  })[0];
+  if (!emp) return { ok: false, mensaje: 'Empleado no encontrado.' };
+
+  var fechaSal = typeof fechaSalida === 'string' ? new Date(fechaSalida + 'T00:00:00') : fechaSalida;
+  var fechaIng = new Date(emp.fecha_ingreso + 'T00:00:00');
+
+  var salarioDiario = (Number(emp.salario) || 0) / 30; // Salario mensual / 30 días
+  var detalles = [];
+  var total = 0;
+
+  // 1. Vacaciones no tomadas
+  var balance = obtenerBalanceVacaciones(empleadoId);
+  var diasVacacionesNoTomadas = balance.diasDisponibles || 0;
+  var montoVacaciones = diasVacacionesNoTomadas * salarioDiario;
+  if (montoVacaciones > 0) {
+    detalles.push({
+      concepto: 'Vacaciones no tomadas',
+      dias: diasVacacionesNoTomadas,
+      monto: Math.round(montoVacaciones * 100) / 100
+    });
+    total += montoVacaciones;
+  }
+
+  // 2. Cesantía (1 mes por año trabajado)
+  var aniosTrabajados = (fechaSal - fechaIng) / (365.25 * 24 * 60 * 60 * 1000);
+  var cesantia = Math.floor(aniosTrabajados) * (Number(emp.salario) || 0);
+  if (cesantia > 0) {
+    detalles.push({
+      concepto: 'Cesantía (' + Math.floor(aniosTrabajados) + ' año(s))',
+      dias: null,
+      monto: cesantia
+    });
+    total += cesantia;
+  }
+
+  // 3. Preaviso (si aplica - 30 días de salario si no se cumple período)
+  // Se calcula según ley, pero aquí es simplificado
+
+  return {
+    ok: true,
+    empleado: emp.nombre,
+    fechaIngreso: emp.fecha_ingreso,
+    fechaSalida: formatearFecha(fechaSalida),
+    aniosTrabajados: Math.round(aniosTrabajados * 100) / 100,
+    salarioMensual: Number(emp.salario) || 0,
+    salarioDiario: Math.round(salarioDiario * 100) / 100,
+    detalles: detalles,
+    totalCalculado: Math.round(total * 100) / 100
+  };
+}
+
 function crearLiquidacion(datos) {
   if (!datos || !datos.empleado_id) return { ok: false, mensaje: 'Selecciona un empleado.' };
   if (!datos.fecha_salida || isNaN(new Date(datos.fecha_salida).getTime())) {
     return { ok: false, mensaje: 'La fecha de salida no es válida.' };
   }
+
+  // Si no proporciona monto, calcular automáticamente
   var monto = Number(datos.monto);
+  var calculoAuto = null;
+  if (isNaN(monto) || monto === 0 || datos.calcular_automatico) {
+    calculoAuto = calcularLiquidacion(datos.empleado_id, datos.fecha_salida);
+    if (!calculoAuto.ok) return calculoAuto;
+    monto = calculoAuto.totalCalculado;
+  }
+
   if (isNaN(monto) || monto < 0) return { ok: false, mensaje: 'El monto debe ser un número mayor o igual a 0.' };
+
   var hoja = getHoja(HOJAS.LIQUIDACIONES);
   var id   = generarId('LIQ');
+  var notasCompletas = (datos.notas || '') +
+    (calculoAuto ? '\n[Cálculo automático: vacaciones no tomadas + cesantía]' : '');
+
   hoja.appendRow([id, datos.empleado_id, formatearFecha(datos.fecha_salida),
     datos.motivo || '', formatearFecha(datos.fecha_calculo || hoy()), monto,
-    datos.estado || 'pendiente', datos.notas || '']);
-  registrarBitacora('crear', 'Liquidacion', id, 'Liquidación de ' + monto);
+    datos.estado || 'pendiente', notasCompletas]);
+
+  registrarBitacora('crear', 'Liquidacion', id, 'Liquidación de ' + monto + ' para ' + datos.empleado_id);
+
   // Opcional: dar de baja al empleado en el mismo paso.
   if (datos.inactivar) cambiarEstadoEmpleado(datos.empleado_id, 'inactivo');
-  return { ok: true, mensaje: 'Liquidación registrada.' };
+
+  return {
+    ok: true,
+    mensaje: 'Liquidación registrada por ' + monto + '.',
+    id: id,
+    calculo: calculoAuto
+  };
 }
 
 function actualizarLiquidacion(datos) {
