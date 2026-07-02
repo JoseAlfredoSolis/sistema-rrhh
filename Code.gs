@@ -643,7 +643,7 @@ function listarVacaciones() {
   return lista;
 }
 
-/** Crea una solicitud de vacaciones (nace 'pendiente'). */
+/** Crea una solicitud de vacaciones (nace 'pendiente'). Valida días disponibles. */
 function crearVacaciones(v) {
   if (!v || !v.empleado_id) return { ok: false, mensaje: 'Selecciona un empleado.' };
   if (!v.fecha_inicio || isNaN(new Date(v.fecha_inicio).getTime())) {
@@ -655,15 +655,40 @@ function crearVacaciones(v) {
   if (new Date(v.fecha_fin) < new Date(v.fecha_inicio)) {
     return { ok: false, mensaje: 'La fecha de fin no puede ser anterior a la de inicio.' };
   }
+
   var dias = calcularDias(v.fecha_inicio, v.fecha_fin);
+
+  // Validar que hay suficientes días disponibles
+  var balance = obtenerBalanceVacaciones(v.empleado_id);
+  if (!balance.ok) return balance;
+
+  if (dias > balance.diasDisponibles) {
+    return {
+      ok: false,
+      mensaje: 'No hay suficientes días disponibles. ' +
+               'Tienes ' + balance.diasDisponibles + ' días disponibles, ' +
+               'pero solicitaste ' + dias + ' días. ' +
+               '(Acumulados: ' + balance.diasAcumulados + ', Usados: ' + balance.diasUsados + ')'
+    };
+  }
+
   var hoja = getHoja(HOJAS.VACACIONES);
   var id = generarId('VAC');
   hoja.appendRow([id, v.empleado_id, formatearFecha(v.fecha_inicio),
                   formatearFecha(v.fecha_fin), dias, 'pendiente', v.notas || '']);
-  return { ok: true, mensaje: 'Solicitud creada (' + dias + ' días).', id: id };
+
+  registrarBitacora('crear', 'Vacaciones', id,
+    v.empleado_id + ' solicitó ' + dias + ' días de vacaciones');
+
+  return {
+    ok: true,
+    mensaje: 'Solicitud creada (' + dias + ' días de ' + balance.diasDisponibles + ' disponibles).',
+    id: id,
+    balance: balance
+  };
 }
 
-/** Cambia el estado de una solicitud (aprobar / rechazar). */
+/** Cambia el estado de una solicitud (aprobar / rechazar). Valida si es posible aprobar. */
 function cambiarEstadoVacaciones(id, nuevoEstado) {
   if (['pendiente', 'aprobada', 'rechazada'].indexOf(nuevoEstado) === -1) {
     return { ok: false, mensaje: 'Estado no válido.' };
@@ -671,7 +696,32 @@ function cambiarEstadoVacaciones(id, nuevoEstado) {
   var hoja = getHoja(HOJAS.VACACIONES);
   var fila = buscarFilaPorId(hoja, id);
   if (fila === -1) return { ok: false, mensaje: 'No se encontró la solicitud.' };
+
+  // Leer la solicitud actual
+  var datos = leerTabla(HOJAS.VACACIONES);
+  var solicitud = datos.filter(function (s) { return String(s.id) === String(id); })[0];
+  if (!solicitud) return { ok: false, mensaje: 'No se encontró la solicitud.' };
+
+  // Si es para aprobar, validar que hay días disponibles
+  if (nuevoEstado === 'aprobada') {
+    var balance = obtenerBalanceVacaciones(solicitud.empleado_id);
+    if (!balance.ok) return balance;
+
+    var diasSolicitud = Number(solicitud.dias) || 0;
+    if (diasSolicitud > balance.diasDisponibles) {
+      return {
+        ok: false,
+        mensaje: 'No se puede aprobar. El empleado tiene ' + balance.diasDisponibles +
+                 ' días disponibles, pero solicita ' + diasSolicitud + ' días.'
+      };
+    }
+  }
+
   hoja.getRange(fila, 6).setValue(nuevoEstado); // columna 6 = estado
+
+  registrarBitacora('modificar', 'Vacaciones', id,
+    'Estado cambió a: ' + nuevoEstado);
+
   return { ok: true, mensaje: 'Solicitud ' + nuevoEstado + '.' };
 }
 
