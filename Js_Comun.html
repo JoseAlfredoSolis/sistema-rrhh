@@ -398,56 +398,5 @@
     });
   }
 
-  // ── Select2 initialization ────────────────────────────────────
-  /**
-   * Inicializa Select2 en todos los selects con busca y mejor UX.
-   * Se ejecuta automáticamente después de cargar cada vista.
-   */
-  function inicializarSelect2() {
-    if (typeof $ === 'undefined' || !$.fn.select2) return;
-
-    // Select simple (empleado, departamento, etc)
-    $('select').not('.select2-hidden-accessible').select2({
-      language: 'es',
-      placeholder: 'Selecciona una opción...',
-      allowClear: true,
-      width: '100%',
-      minimumInputLength: 0,
-      templateResult: function (data) {
-        if (!data.id) return data.text;
-        return $('<span>' + escapar(data.text) + '</span>');
-      },
-      templateSelection: function (data) {
-        if (!data.id) return data.text;
-        return escapar(data.text);
-      },
-      matcher: function (params, data) {
-        if ($.trim(params.term) === '') return data;
-        var term = params.term.toLowerCase();
-        var text = data.text.toLowerCase();
-        if (text.indexOf(term) > -1) return data;
-        return null;
-      }
-    });
-
-    // Aplicar Select2 a los que ya están inicializados
-    $('.select2-hidden-accessible').each(function () {
-      $(this).select2({
-        language: 'es',
-        placeholder: 'Selecciona una opción...',
-        allowClear: true,
-        width: '100%'
-      });
-    });
-  }
-
-  // Inicializar Select2 después de cargar cada vista
-  var originalCargadores = Object.assign({}, CARGADORES);
-  Object.keys(CARGADORES).forEach(function (vista) {
-    var original = CARGADORES[vista];
-    CARGADORES[vista] = function () {
-      original();
-      setTimeout(inicializarSelect2, 100);
-    };
-  });
+  // Select2 fue removido - usa select HTML nativo
 </script>
