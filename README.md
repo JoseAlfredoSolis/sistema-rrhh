@@ -75,6 +75,41 @@ clasp deploy --description "RRHH v2"
 
 ---
 
+## Desplegar desde GitHub Actions (nube de GitHub)
+
+**GitHub solo guarda el código.** La app **corre en Google Apps Script**, no en GitHub.
+El agente en la nube puede hacer `git push` a GitHub, pero **no** puede entrar a tu
+cuenta de Google sin credenciales.
+
+Para que un push a `main` suba automáticamente a Apps Script:
+
+### 1. Obtener credenciales clasp (una vez, en tu PC)
+
+```bash
+npm install -g @google/clasp
+clasp login
+```
+
+En Linux/Mac, el archivo queda en `~/.clasprc.json`. Copia **todo** su contenido.
+
+### 2. Secretos en GitHub
+
+Repo → **Settings → Secrets and variables → Actions → New repository secret**
+
+| Secreto | Valor |
+|---------|--------|
+| `APPS_SCRIPT_ID` | ID del proyecto (⚙ Configuración en script.google.com) |
+| `CLASPRC_JSON` | Contenido completo de `~/.clasprc.json` |
+
+### 3. Ejecutar el deploy
+
+- Haz **merge a `main`**, o
+- **Actions → Deploy Apps Script → Run workflow**
+
+En el resumen del workflow aparece la URL **`/exec`**.
+
+---
+
 ## Comandos útiles
 | Comando | Qué hace |
 |---------|----------|
