@@ -8,9 +8,28 @@
       pintarEstadoConexion(info);
       pintarPestanas(info.pestanas || []);
     });
+    cargarEstadoOAuth();
     cargarConfigCorreo();
     cargarEstadoRespaldo();
     cargarConfigRoles();
+  }
+
+  function cargarEstadoOAuth() {
+    llamarBackend('estadoAutorizacionGoogle', [], function (st) {
+      var el = document.getElementById('estadoOAuth');
+      if (!el) return;
+      if (st && st.autorizado) {
+        el.className = 'config-estado ok-conexion';
+        el.innerHTML = '✅ <strong>Permisos de Google activos</strong> — la web app puede acceder a Sheets, Drive y correo.';
+        mostrarBannerAuth(false);
+      } else {
+        el.className = 'config-estado error-conexion';
+        el.innerHTML =
+          '⚠️ <strong>Faltan permisos de Google</strong> — autoriza desde el editor ' +
+          '(menú Sistema RRHH → Autorizar aplicación). No uses el diálogo web si falla jQuery.';
+        mostrarBannerAuth(true);
+      }
+    });
   }
 
   function pintarEstadoConexion(info) {
@@ -125,16 +144,18 @@
   function cargarConfigRoles() {
     if (!esAdmin()) return;
     llamarBackend('obtenerConfigRoles', [], function (cfg) {
+      if (!cfg || cfg.ok === false) return;
       var pa = document.getElementById('pinAdmin');
       var pr = document.getElementById('pinRrhh');
-      if (pa) pa.placeholder = cfg.pinAdmin ? '••••  (configurado)' : 'PIN de admin';
-      if (pr) pr.placeholder = cfg.pinRrhh  ? '••••  (configurado)' : 'PIN de RRHH';
+      if (pa) pa.placeholder = cfg.tienePinAdmin ? '••••  (configurado)' : 'PIN de admin';
+      if (pr) pr.placeholder = cfg.tienePinRrhh  ? '••••  (configurado)' : 'PIN de RRHH';
       if (pa) pa.value = '';
       if (pr) pr.value = '';
     });
   }
 
   function guardarRoles() {
+    if (!esAdmin()) { mostrarMensaje('Solo administradores pueden cambiar los PINs.', 'error'); return; }
     var pa = document.getElementById('pinAdmin').value.trim();
     var pr = document.getElementById('pinRrhh').value.trim();
     if (!pa && !pr) { mostrarMensaje('Escribe al menos un PIN para actualizar.', 'error'); return; }

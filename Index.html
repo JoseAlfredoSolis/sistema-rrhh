@@ -3,15 +3,12 @@
 <head>
   <base target="_top">
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, viewport-fit=cover">
   <title>Sistema RRHH v24</title>
 
-  <!-- Stylesheet personalizado -->
+  <!-- Librerías JS embebidas (mismo origen que la app — sin CDN externo) -->
   <?!= include('Stylesheet'); ?>
-
-  <!-- NOTA: Todas las librerías CDN desactivadas para evitar problemas de jQuery en Google Apps Script -->
-  <!-- SheetJS desactivado -->
-  <!-- Google Charts desactivado -->
 
   <style>
     /* Reset de emergencia para Google Apps Script */
@@ -20,6 +17,12 @@
   </style>
 </head>
 <body>
+<div id="bannerAuth" class="banner-auth oculto" role="alert">
+  <strong>Permisos de Google pendientes.</strong>
+  Abre el editor de Apps Script → ejecuta <code>autorizarSistema()</code> o menú
+  <strong>Sistema RRHH → Autorizar aplicación</strong>, luego recarga esta página.
+  <button type="button" class="banner-auth-cerrar" onclick="document.getElementById('bannerAuth').classList.add('oculto')">×</button>
+</div>
 <div class="app-layout">
 
   <!-- ═══════════ SIDEBAR ═══════════ -->
@@ -114,7 +117,7 @@
 
     <div class="sidebar-footer">
       <button class="btn-darkmode" id="btnDarkMode" onclick="toggleDarkMode()" title="Modo oscuro">🌙</button>
-      <span>v9 · Google Apps Script</span>
+      <span class="app-version" title="Versión desplegada del Sistema RRHH">Sistema RRHH · v13</span>
     </div>
   </aside>
 
@@ -130,13 +133,14 @@
         <div id="searchDropdown" class="search-dropdown oculto"></div>
       </div>
       <div class="topbar-right">
+        <div id="rolBadge" class="rol-badge oculto" title="Cambiar usuario"></div>
         <div id="cargando" class="cargando oculto"><span class="spinner"></span> Cargando...</div>
       </div>
     </header>
 
     <!-- Notificaciones -->
     <div class="msg-wrapper">
-      <div id="mensaje" class="mensaje oculto"></div>
+      <div id="mensaje" class="mensaje oculto" role="status" aria-live="polite"></div>
     </div>
 
     <!-- Vistas -->
@@ -253,10 +257,23 @@
       </div>
       <div class="tabla-envoltorio">
         <table class="tabla" id="tablaAsistencia">
-          <thead><tr><th>Empleado</th><th>Fecha</th><th>Entrada</th><th>Salida</th><th>Horas</th><th class="no-print">Acciones</th></tr></thead>
+          <thead><tr><th scope="col">Empleado</th><th scope="col">Fecha</th><th scope="col">Entrada</th><th scope="col">Salida</th><th scope="col">Horas</th><th class="no-print" scope="col">Acciones</th></tr></thead>
           <tbody id="cuerpoAsistencia"></tbody>
         </table>
         <p id="sinAsistencia" class="sin-datos oculto">No hay registros de asistencia.</p>
+      </div>
+      <div class="config-bloque" style="margin-top:20px">
+        <h3>Resumen mensual de asistencia</h3>
+        <div class="filtros" style="margin-bottom:10px">
+          <input type="month" id="filtroMesAsi" onchange="cargarResumenAsistencia()">
+        </div>
+        <div class="tabla-envoltorio">
+          <table class="tabla" id="tablaResumenAsi">
+            <thead><tr><th scope="col">Empleado</th><th scope="col">Departamento</th><th scope="col">Días</th><th scope="col">Horas</th></tr></thead>
+            <tbody id="cuerpoResumenAsi"></tbody>
+          </table>
+          <p id="sinResumenAsi" class="sin-datos oculto">Sin datos para el mes seleccionado.</p>
+        </div>
       </div>
     </section>
 
@@ -420,9 +437,9 @@
       <!-- WhatsApp -->
       <div class="config-bloque">
         <h3>📱 Notificaciones por WhatsApp (CallMeBot)</h3>
-        <p class="config-ayuda">Recibe alertas también en WhatsApp. Requiere activar el bot primero: envía el mensaje <code>/start</code> al número <strong>+34 644 60 99 76</strong> por WhatsApp y guarda la API Key que te devuelven.</p>
+        <p class="config-ayuda">Recibe alertas en WhatsApp usando <strong>CallMeBot</strong> (gratuito). Pasos: (1) Envía <code>I allow callmebot to send me messages</code> al <strong>+34 644 60 99 76</strong> por WhatsApp. (2) Guarda la API Key que te responde el bot. (3) Configura tu número con código de país.</p>
         <label class="toggle" style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-          <input type="checkbox" id="wpActivo" onchange="guardarConfigWhatsApp()">
+          <input type="checkbox" id="wpActivo">
           <span class="toggle-pista"></span>
           <span style="font-size:13px">Activar notificaciones WhatsApp</span>
         </label>
@@ -436,10 +453,49 @@
             <input type="password" id="wpApiKey" placeholder="••••••••">
           </div>
         </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <button class="btn btn-primario" onclick="guardarConfigWhatsApp()">Guardar</button>
-          <button class="btn btn-secundario" onclick="probarWhatsApp()">🧪 Enviar prueba</button>
+
+        <p class="config-ayuda" style="margin:12px 0 8px"><strong>Alertas a enviar por WhatsApp:</strong></p>
+        <div class="alerta-fila">
+          <div class="alerta-info"><strong>🏖 Vacaciones pendientes</strong><span>Mismas alertas que el correo diario.</span></div>
+          <label class="toggle"><input type="checkbox" id="wpAlertaVac"><span class="toggle-pista"></span></label>
         </div>
+        <div class="alerta-fila">
+          <div class="alerta-info"><strong>💰 Nómina pendiente</strong><span>Empleados activos sin nómina del mes.</span></div>
+          <label class="toggle"><input type="checkbox" id="wpAlertaNom"><span class="toggle-pista"></span></label>
+        </div>
+        <div class="alerta-fila">
+          <div class="alerta-info"><strong>📊 Resumen semanal</strong><span>Los lunes, resumen del sistema.</span></div>
+          <label class="toggle"><input type="checkbox" id="wpAlertaResumen"><span class="toggle-pista"></span></label>
+        </div>
+        <div class="alerta-fila">
+          <div class="alerta-info"><strong>🎂 Cumpleaños del mes</strong><span>El 1° de cada mes.</span></div>
+          <label class="toggle"><input type="checkbox" id="wpAlertaCumple"><span class="toggle-pista"></span></label>
+        </div>
+        <div class="alerta-fila">
+          <div class="alerta-info"><strong>🔔 Nueva solicitud de vacaciones</strong><span>Aviso inmediato al crear una solicitud.</span></div>
+          <label class="toggle"><input type="checkbox" id="wpNotifNuevaVac"><span class="toggle-pista"></span></label>
+        </div>
+        <div class="alerta-fila">
+          <div class="alerta-info"><strong>✅ Vacación aprobada o rechazada</strong><span>Aviso al cambiar el estado de una solicitud.</span></div>
+          <label class="toggle"><input type="checkbox" id="wpNotifVacDecidida"><span class="toggle-pista"></span></label>
+        </div>
+        <div class="alerta-fila">
+          <div class="alerta-info"><strong>💰 Nómina generada</strong><span>Aviso al generar el recibo de un empleado.</span></div>
+          <label class="toggle"><input type="checkbox" id="wpNotifNominaGen"><span class="toggle-pista"></span></label>
+        </div>
+
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">
+          <button class="btn btn-primario" onclick="guardarConfigWhatsApp()">Guardar</button>
+          <button class="btn btn-secundario" onclick="probarWhatsApp('general')">🧪 Prueba general</button>
+          <button class="btn btn-secundario" onclick="probarWhatsApp('vacaciones')">Prueba vacaciones</button>
+          <button class="btn btn-secundario" onclick="probarWhatsApp('resumen')">Prueba resumen</button>
+        </div>
+
+        <div class="campo" style="margin-top:16px">
+          <label for="wpMensajeManual">Enviar mensaje personalizado</label>
+          <textarea id="wpMensajeManual" rows="3" placeholder="Escribe un mensaje para enviar ahora por WhatsApp..." style="width:100%;resize:vertical"></textarea>
+        </div>
+        <button class="btn btn-secundario" onclick="enviarWhatsAppManual()" style="margin-top:8px">📤 Enviar mensaje</button>
         <div id="wpEstado" style="margin-top:8px;font-size:13px"></div>
       </div>
 
@@ -451,7 +507,7 @@
       <!-- Trigger automático -->
       <div class="config-bloque">
         <h3>⏰ Verificación automática diaria</h3>
-        <p class="config-ayuda">Activa el envío automático de alertas todos los días a las 8 a.m. Requiere que al menos un destinatario esté configurado.</p>
+        <p class="config-ayuda">Activa el envío automático de alertas todos los días a las 8 a.m. Funciona con correo, WhatsApp o ambos.</p>
         <div id="estadoTrigger" class="config-estado" style="margin-bottom:12px">Verificando...</div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <button class="btn btn-primario" onclick="activarTrigger()">▶ Activar envío diario</button>
@@ -567,6 +623,18 @@
       <div class="config-bloque">
         <h3>Hoja conectada</h3>
         <div id="estadoConexion" class="config-estado">Cargando estado...</div>
+      </div>
+
+      <!-- Permisos OAuth de Google -->
+      <div class="config-bloque">
+        <h3>Permisos de Google</h3>
+        <div id="estadoOAuth" class="config-estado">Verificando...</div>
+        <p class="config-ayuda">
+          Si la consola muestra <code>jquery-3.6.0.min.js</code> y <code>createOAuthDialog</code>,
+          es un fallo del diálogo de autorización de <strong>Google</strong>, no de esta aplicación.
+          Solución: en el editor de Apps Script, menú <strong>Sistema RRHH → Autorizar aplicación</strong>
+          (o ejecuta la función <code>autorizarSistema()</code> una vez) y vuelve a abrir la web app.
+        </p>
       </div>
 
       <!-- Conectar por ID -->
@@ -725,8 +793,8 @@
         <div id="estadoRespaldo" class="config-estado" style="margin-bottom:12px">Verificando...</div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <button class="btn btn-primario" onclick="hacerRespaldoAhora()">💾 Respaldar ahora</button>
-          <button class="btn btn-secundario" onclick="activarRespaldo()">▶ Activar respaldo semanal</button>
-          <button class="btn btn-secundario" onclick="desactivarRespaldo()">⏹ Desactivar</button>
+          <button class="btn btn-secundario" onclick="activarRespaldoSemanal()">▶ Activar respaldo semanal</button>
+          <button class="btn btn-secundario" onclick="desactivarRespaldoSemanal()">⏹ Desactivar</button>
         </div>
         <div id="respaldoEstado" style="margin-top:10px;font-size:13px"></div>
       </div>
@@ -1042,6 +1110,7 @@
         <div class="campo"><label for="nomMes">Mes *</label><input type="month" id="nomMes" required></div>
         <div class="campo"><label>Salario base</label><input type="text" id="nomSalarioBase" disabled placeholder="Se toma del empleado"></div>
         <div class="campo"><label for="nomDeducciones">Deducciones *</label><input type="number" id="nomDeducciones" required min="0" step="0.01" value="0"><small class="error" id="errNomDed"></small></div>
+        <div id="nomDesglose" class="ded-preview-wrap"></div>
         <div class="modal-pie"><button type="button" class="btn btn-secundario" onclick="cerrarModalNomina()">Cancelar</button><button type="submit" class="btn btn-primario" id="btnGuardarNomina">Generar</button></div>
       </form>
     </div>
@@ -1303,10 +1372,7 @@
     </div>
   </div>
 
-  <!-- Indicador de rol activo -->
-  <div id="rolBadge" class="rol-badge oculto"></div>
-
-  <!-- Lógica JS (un include por módulo + comunes) -->
+  <!-- Lógica JS (librerías Chart/XLSX se cargan bajo demanda) -->
   <?!= include('Js_Comun'); ?>
   <?!= include('Js_Importar'); ?>
   <?!= include('Js_Alertas'); ?>

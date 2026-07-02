@@ -7,6 +7,31 @@
 
   var EMPLEADOS_SELECT = [];
   var ROL_ACTUAL = 'consulta'; // 'consulta' | 'rrhh' | 'admin'
+  var SESSION_TOKEN = '';
+  var _cargandoCount = 0;
+  var _memStore = {}; // respaldo si el navegador bloquea storage en el iframe de Google
+
+  function _leerStorage(tipo, clave) {
+    try {
+      var v = (tipo === 'session' ? sessionStorage : localStorage).getItem(clave);
+      if (v !== null && v !== undefined) return v;
+    } catch (e) {}
+    return _memStore[tipo + ':' + clave] || '';
+  }
+
+  function _guardarStorage(tipo, clave, valor) {
+    _memStore[tipo + ':' + clave] = valor;
+    try {
+      (tipo === 'session' ? sessionStorage : localStorage).setItem(clave, valor);
+    } catch (e) {}
+  }
+
+  function _quitarStorage(tipo, clave) {
+    delete _memStore[tipo + ':' + clave];
+    try {
+      (tipo === 'session' ? sessionStorage : localStorage).removeItem(clave);
+    } catch (e) {}
+  }
 
   var CARGADORES = {
     dashboard:      function () { cargarDashboard(); },
@@ -61,25 +86,55 @@
   };
 
   window.addEventListener('load', function () {
-    // Restaurar dark mode preferido
-    if (localStorage.getItem('rrhh-dark') === '1') {
+    ajustarShellGas();
+    window.addEventListener('resize', ajustarShellGas);
+    if (_leerStorage('local', 'rrhh-dark') === '1') {
       document.body.classList.add('dark');
       var btn = document.getElementById('btnDarkMode');
       if (btn) btn.textContent = '☀️';
     }
-    // Restaurar sidebar colapsado
-    if (localStorage.getItem('rrhh-sb-collapsed') === '1') {
+    if (_leerStorage('local', 'rrhh-sb-collapsed') === '1') {
       var sb = document.getElementById('sidebar');
       var btnC = document.getElementById('btnColapsar');
       if (sb) sb.classList.add('collapsed');
       if (btnC) btnC.title = 'Mostrar menú';
     }
-    refrescarEmpleadosSelect(function () {
-      mostrarVista('dashboard');
-      actualizarBadge();
-      mostrarModalPin();
-    });
+    mostrarVista('dashboard');
+    iniciarSesionApp();
   });
+
+  function iniciarSesionApp() {
+    refrescarEmpleadosSelect(function () {
+      SESSION_TOKEN = _leerStorage('session', 'rrhh-token');
+      if (SESSION_TOKEN) {
+        llamarBackend('renovarSesion', [SESSION_TOKEN], function (res) {
+          if (res && res.ok && res.token) {
+            guardarTokenSesion(res.token);
+            establecerRol(res.rol);
+          } else {
+            mostrarModalPin();
+          }
+          actualizarBadge();
+        });
+      } else {
+        actualizarBadge();
+        mostrarModalPin();
+      }
+    });
+  }
+
+  function mostrarBannerAuth(visible) {
+    var el = document.getElementById('bannerAuth');
+    if (el) el.classList.toggle('oculto', !visible);
+  }
+
+  /** Detecta iframe de Google (URL Implementar) y ajusta clases CSS. */
+  function ajustarShellGas() {
+    var enShell = window.self !== window.top ||
+      /userCodeAppPanel|script\.google\.com/i.test(window.location.href);
+    document.documentElement.classList.toggle('gas-shell', enShell);
+    document.body.classList.toggle('gas-shell', enShell);
+  }
 
   // ── Navegación ────────────────────────────────────────────
   function mostrarVista(nombre) {
@@ -107,7 +162,7 @@
   // ── Modo oscuro ───────────────────────────────────────────
   function toggleDarkMode() {
     var dark = document.body.classList.toggle('dark');
-    localStorage.setItem('rrhh-dark', dark ? '1' : '0');
+    _guardarStorage('local', 'rrhh-dark', dark ? '1' : '0');
     var btn = document.getElementById('btnDarkMode');
     if (btn) btn.textContent = dark ? '☀️' : '🌙';
   }
@@ -140,7 +195,10 @@
 
   function cerrarModalPin() {
     document.getElementById('modalPin').classList.add('oculto');
-    establecerRol('consulta');
+    llamarBackend('verificarPIN', [''], function (res) {
+      if (res && res.token) guardarTokenSesion(res.token);
+      establecerRol((res && res.rol) ? res.rol : 'consulta');
+    });
   }
 
   function verificarPinUI() {
@@ -151,8 +209,15 @@
         return;
       }
       document.getElementById('modalPin').classList.add('oculto');
+      if (res.token) guardarTokenSesion(res.token);
       establecerRol(res.rol);
     });
+  }
+
+  function guardarTokenSesion(token) {
+    SESSION_TOKEN = token || '';
+    if (token) _guardarStorage('session', 'rrhh-token', token);
+    else _quitarStorage('session', 'rrhh-token');
   }
 
   function establecerRol(rol) {
@@ -174,6 +239,7 @@
       if (confirm('¿Cambiar de usuario?')) {
         document.getElementById('pinInput').value = '';
         document.getElementById('pinError').textContent = '';
+        guardarTokenSesion('');
         mostrarModalPin();
       }
     };
@@ -184,7 +250,9 @@
 
   // ── Indicador de carga ────────────────────────────────────
   function mostrarCargando(visible) {
-    document.getElementById('cargando').classList.toggle('oculto', !visible);
+    _cargandoCount += visible ? 1 : -1;
+    if (_cargandoCount < 0) _cargandoCount = 0;
+    document.getElementById('cargando').classList.toggle('oculto', _cargandoCount === 0);
   }
 
   // ── Mensajes ──────────────────────────────────────────────
@@ -200,12 +268,82 @@
   // ── Helpers de formato ────────────────────────────────────
   function escapar(txt) {
     return String(txt == null ? '' : txt)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function escaparAttr(txt) {
+    return escapar(txt).replace(/`/g, '&#96;');
   }
 
   function formatoDinero(n) {
     var num = Number(n) || 0;
     return '₡' + num.toLocaleString('es', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  // ── Gráficos Chart.js (Lib_Chart embebido) ─────────────────
+  var _chartInst = {};
+
+  function destruirChart(id) {
+    if (_chartInst[id]) {
+      _chartInst[id].destroy();
+      delete _chartInst[id];
+    }
+  }
+
+  function prepararCanvasGrafico(contenedorId) {
+    var cont = document.getElementById(contenedorId);
+    if (!cont) return null;
+    destruirChart(contenedorId);
+    cont.innerHTML = '';
+    var canvas = document.createElement('canvas');
+    cont.appendChild(canvas);
+    return canvas;
+  }
+
+  var CHART_OPTS_BASE = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { labels: { font: { family: 'Segoe UI', size: 12 } } } }
+  };
+
+  var _libsCargadas = {};
+
+  function cargarLibreriaLocal(nombre, alListo) {
+    if (_libsCargadas[nombre]) {
+      alListo();
+      return;
+    }
+    if (nombre === 'chart' && typeof Chart !== 'undefined') {
+      _libsCargadas.chart = true;
+      alListo();
+      return;
+    }
+    if (nombre === 'xlsx' && typeof XLSX !== 'undefined') {
+      _libsCargadas.xlsx = true;
+      alListo();
+      return;
+    }
+    google.script.run
+      .withSuccessHandler(function (html) {
+        var m = html.match(/<script[^>]*>([\s\S]*)<\/script>/i);
+        if (!m) {
+          mostrarMensaje('No se pudo cargar la librería ' + nombre + '.', 'error');
+          return;
+        }
+        var s = document.createElement('script');
+        s.textContent = m[1];
+        document.head.appendChild(s);
+        _libsCargadas[nombre] = true;
+        alListo();
+      })
+      .withFailureHandler(function (err) {
+        mostrarMensaje('Error al cargar ' + nombre + ': ' + err.message, 'error');
+        if (/auth|permiso|authorization|denied/i.test(err.message)) {
+          mostrarBannerAuth(true);
+        }
+      })
+      .obtenerScriptLibreria(nombre);
   }
 
   function badge(valor, clase) {
@@ -252,33 +390,47 @@
   // ── Backend helper ────────────────────────────────────────
   function llamarBackend(fn, args, alExito) {
     mostrarCargando(true);
+    args = (args || []).slice();
+    if (fn !== 'verificarPIN' && fn !== 'renovarSesion') {
+      args.push(SESSION_TOKEN || _leerStorage('session', 'rrhh-token'));
+    }
     var runner = google.script.run
       .withSuccessHandler(function (res) {
         mostrarCargando(false);
+        if (res && res.ok === false && res.mensaje && (
+          res.mensaje.indexOf('Sesión') !== -1 || res.mensaje.indexOf('permisos') !== -1
+        )) {
+          mostrarMensaje(res.mensaje, 'error');
+        }
         alExito(res);
       })
       .withFailureHandler(function (err) {
         mostrarCargando(false);
-        mostrarMensaje('Error: ' + err.message, 'error');
+        var msg = err.message || String(err);
+        if (/auth|permiso|authorization|ScriptError/i.test(msg)) {
+          mostrarBannerAuth(true);
+        }
+        mostrarMensaje('Error: ' + msg, 'error');
       });
-    runner[fn].apply(runner, args || []);
+    runner[fn].apply(runner, args);
   }
 
-  // ── Exportar a Excel (SheetJS) ────────────────────────────
+  // ── Exportar a Excel (SheetJS bajo demanda) ───────────────
   function exportarTabla(tablaId, nombre) {
-    if (typeof XLSX === 'undefined') {
-      mostrarMensaje('La librería XLSX no está cargada.', 'error');
-      return;
-    }
     var tabla = document.getElementById(tablaId);
     if (!tabla) { mostrarMensaje('Tabla no encontrada.', 'error'); return; }
-    // Clonar sin columnas no-print (Acciones)
-    var clone = tabla.cloneNode(true);
-    clone.querySelectorAll('.no-print').forEach(function (el) { el.remove(); });
-    var wb = XLSX.utils.book_new();
-    var ws = XLSX.utils.table_to_sheet(clone);
-    XLSX.utils.book_append_sheet(wb, ws, nombre || 'Datos');
-    XLSX.writeFile(wb, (nombre || 'datos') + '_' + new Date().toISOString().slice(0,10) + '.xlsx');
+    cargarLibreriaLocal('xlsx', function () {
+      if (typeof XLSX === 'undefined') {
+        mostrarMensaje('La librería XLSX no está cargada.', 'error');
+        return;
+      }
+      var clone = tabla.cloneNode(true);
+      clone.querySelectorAll('.no-print').forEach(function (el) { el.remove(); });
+      var wb = XLSX.utils.book_new();
+      var ws = XLSX.utils.table_to_sheet(clone);
+      XLSX.utils.book_append_sheet(wb, ws, nombre || 'Datos');
+      XLSX.writeFile(wb, (nombre || 'datos') + '_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+    });
   }
 
   // ── Sidebar colapsable ────────────────────────────────────
@@ -286,7 +438,7 @@
     var sb  = document.getElementById('sidebar');
     var btn = document.getElementById('btnColapsar');
     var collapsed = sb.classList.toggle('collapsed');
-    localStorage.setItem('rrhh-sb-collapsed', collapsed ? '1' : '0');
+    _guardarStorage('local', 'rrhh-sb-collapsed', collapsed ? '1' : '0');
     if (btn) btn.title = collapsed ? 'Mostrar menú' : 'Ocultar menú';
   }
 
@@ -306,10 +458,11 @@
           dd.classList.remove('oculto'); return;
         }
         dd.innerHTML = res.map(function (r) {
-          var ico = { empleado:'👤', departamento:'🏢', capacitacion:'📚', activo:'💻' }[r.tipo] || '🔍';
-          return '<div class="sd-item" onclick="irAResultado(\''+escapar(r.tipo)+'\',\''+escapar(r.id)+'\')">'+
+          var tipo = (r.entidad || r.tipo || '').toLowerCase();
+          var ico = { empleado:'👤', departamento:'🏢', capacitacion:'📚', activo:'💻' }[tipo] || '🔍';
+          return '<div class="sd-item" onclick="irAResultado(\''+escaparAttr(r.vista||tipo)+'\',\''+escaparAttr(r.id)+'\')">'+
             '<span class="sd-ico">'+ico+'</span>'+
-            '<span class="sd-txt"><strong>'+escapar(r.nombre)+'</strong><span class="sd-sub">'+escapar(r.subtexto||r.tipo)+'</span></span>'+
+            '<span class="sd-txt"><strong>'+escapar(r.titulo||r.nombre)+'</strong><span class="sd-sub">'+escapar(r.subtitulo||r.subtexto||tipo)+'</span></span>'+
           '</div>';
         }).join('');
         dd.classList.remove('oculto');
@@ -317,11 +470,11 @@
     }, 300);
   }
 
-  function irAResultado(tipo, id) {
-    var destino = { empleado:'empleados', departamento:'departamentos', capacitacion:'capacitaciones', activo:'activos' }[tipo] || 'empleados';
+  function irAResultado(vista, id) {
     document.getElementById('searchDropdown').classList.add('oculto');
     document.getElementById('busquedaGlobal').value = '';
-    mostrarVista(destino);
+    mostrarVista(vista || 'empleados');
+    window._resultadoBusquedaId = id || '';
   }
 
   document.addEventListener('click', function (e) {

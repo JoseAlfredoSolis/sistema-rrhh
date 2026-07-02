@@ -20,8 +20,10 @@
           '<td>'+formatoDinero(n.salario_base)+'</td>'+
           '<td>'+formatoDinero(n.deducciones)+'</td>'+
           '<td style="font-weight:600;color:var(--ok)">'+formatoDinero(n.neto)+'</td>'+
-          '<td class="no-print"><button class="btn-mini" onclick="verDesgloseCR(\''+n.empleado_id+'\',\''+escapar(n.empleado_nombre)+'\')">Desglose</button>'+
-            '<button class="btn-mini peligro" onclick="eliminarNom(\''+n.id+'\')">Eliminar</button></td>';
+          '<td class="no-print">' +
+            (puedeEditar() ? '<button class="btn-mini" onclick="verDesgloseCR(\''+escaparAttr(n.empleado_id)+'\',\''+escaparAttr(n.empleado_nombre)+'\')">Desglose</button>'+
+            '<button class="btn-mini peligro" onclick="eliminarNom(\''+escaparAttr(n.id)+'\')">Eliminar</button>' : '—') +
+          '</td>';
         cuerpo.appendChild(tr);
       });
       document.getElementById('totalNomina').textContent = formatoDinero(total);
@@ -29,6 +31,7 @@
   }
 
   function abrirFormNomina() {
+    if (!puedeEditar()) { mostrarMensaje('Sin permisos para generar nómina.', 'error'); return; }
     document.getElementById('formNomina').reset();
     document.getElementById('errNomDed').textContent = '';
     document.getElementById('nomSalarioBase').value = '';
@@ -88,11 +91,13 @@
 
   function guardarNomina(evento) {
     evento.preventDefault();
+    if (!puedeEditar()) { mostrarMensaje('Sin permisos.', 'error'); return; }
     document.getElementById('errNomDed').textContent = '';
     var datos = {
       empleado_id:  document.getElementById('nomEmpleado').value,
       mes:          document.getElementById('nomMes').value,
-      deducciones:  document.getElementById('nomDeducciones').value
+      deducciones:  document.getElementById('nomDeducciones').value,
+      autoDeducciones: false
     };
     if (!datos.empleado_id) { mostrarMensaje('Selecciona un empleado.', 'error'); return; }
     var ded = Number(datos.deducciones);
@@ -101,20 +106,15 @@
     }
     var btn = document.getElementById('btnGuardarNomina');
     btn.disabled = true; btn.textContent = 'Generando...';
-    google.script.run
-      .withSuccessHandler(function(res) {
-        btn.disabled = false; btn.textContent = 'Generar';
-        if (res.ok) { cerrarModalNomina(); mostrarMensaje(res.mensaje,'exito'); cargarNomina(); }
-        else mostrarMensaje(res.mensaje,'error');
-      })
-      .withFailureHandler(function(err) {
-        btn.disabled = false; btn.textContent = 'Generar';
-        mostrarMensaje('Error: '+err.message,'error');
-      })
-      .generarNomina(datos);
+    llamarBackend('generarNomina', [datos], function(res) {
+      btn.disabled = false; btn.textContent = 'Generar';
+      if (res.ok) { cerrarModalNomina(); mostrarMensaje(res.mensaje,'exito'); cargarNomina(); }
+      else mostrarMensaje(res.mensaje,'error');
+    });
   }
 
   function eliminarNom(id) {
+    if (!puedeEditar()) { mostrarMensaje('Sin permisos.', 'error'); return; }
     if (!confirm('¿Eliminar este registro de nómina?')) return;
     llamarBackend('eliminarNomina', [id], function(res) {
       mostrarMensaje(res.mensaje, res.ok?'exito':'error');

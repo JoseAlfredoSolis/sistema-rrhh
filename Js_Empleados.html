@@ -6,26 +6,17 @@
   var EMPLEADOS = [];
 
   function cargarEmpleados() {
-    mostrarCargando(true);
     var soloActivos = document.getElementById('soloActivos').checked;
-    google.script.run
-      .withSuccessHandler(function (lista) {
-        EMPLEADOS = lista || [];
-        mostrarCargando(false);
-        llenarSelectDepartamentosEmpleado();
-        _llenarFiltroDepartamento();
-        filtrarTabla();
-      })
-      .withFailureHandler(function (err) {
-        mostrarCargando(false);
-        mostrarMensaje('Error al cargar empleados: ' + err.message, 'error');
-      })
-      .listarEmpleados(soloActivos);
+    llamarBackend('listarEmpleados', [soloActivos], function (lista) {
+      EMPLEADOS = lista || [];
+      llenarSelectDepartamentosEmpleado();
+      _llenarFiltroDepartamento();
+      filtrarTabla();
+    });
   }
 
   function llenarSelectDepartamentosEmpleado() {
-    google.script.run
-      .withSuccessHandler(function (nombres) {
+    llamarBackend('listarNombresDepartamentos', [], function (nombres) {
         var select = document.getElementById('departamento');
         select.length = 1;
         (nombres || []).forEach(function (nombre) {
@@ -33,8 +24,7 @@
           opt.value = nombre; opt.textContent = nombre;
           select.appendChild(opt);
         });
-      })
-      .listarNombresDepartamentos();
+    });
   }
 
   function _llenarFiltroDepartamento() {
@@ -71,10 +61,10 @@
     visibles.forEach(function (e) {
       var esActivo = String(e.estado).toLowerCase() === 'activo';
       var accionesCRUD = puedeEditar()
-        ? '<button class="btn-mini" onclick="editarEmpleado(\'' + e.id + '\')">Editar</button>' +
+        ? '<button class="btn-mini" onclick="editarEmpleado(\'' + escaparAttr(e.id) + '\')">Editar</button>' +
           (esActivo
-            ? '<button class="btn-mini peligro" onclick="cambiarEstado(\'' + e.id + '\',\'inactivo\')">Baja</button>'
-            : '<button class="btn-mini" onclick="cambiarEstado(\'' + e.id + '\',\'activo\')">Activar</button>')
+            ? '<button class="btn-mini peligro" onclick="cambiarEstado(\'' + escaparAttr(e.id) + '\',\'inactivo\')">Baja</button>'
+            : '<button class="btn-mini" onclick="cambiarEstado(\'' + escaparAttr(e.id) + '\',\'activo\')">Activar</button>')
         : '<span style="color:var(--txt-3);font-size:12px">Solo lectura</span>';
       var tr = document.createElement('tr');
       tr.innerHTML =
@@ -86,7 +76,7 @@
         '<td>' + formatoDinero(e.salario) + '</td>' +
         '<td>' + badge(esActivo ? 'activo' : 'inactivo') + '</td>' +
         '<td class="no-print">' + accionesCRUD +
-          '<button class="btn-mini" onclick="verHistorial(\'' + e.id + '\',\'' + escapar(e.nombre) + '\')">📈</button>' +
+          '<button class="btn-mini" onclick="verHistorial(\'' + escaparAttr(e.id) + '\',\'' + escaparAttr(e.nombre) + '\')">📈</button>' +
         '</td>';
       cuerpo.appendChild(tr);
     });
@@ -205,22 +195,16 @@
     btn.disabled = true; btn.textContent = 'Guardando...';
     var fn = datos.id ? 'actualizarEmpleado' : 'crearEmpleado';
 
-    google.script.run
-      .withSuccessHandler(function (res) {
-        btn.disabled = false; btn.textContent = 'Guardar';
-        if (res.ok) {
-          cerrarModal();
-          mostrarMensaje(res.mensaje, 'exito');
-          cargarEmpleados();
-          refrescarEmpleadosSelect();
-          actualizarBadge();
-        } else { mostrarMensaje(res.mensaje, 'error'); }
-      })
-      .withFailureHandler(function (err) {
-        btn.disabled = false; btn.textContent = 'Guardar';
-        mostrarMensaje('Error: ' + err.message, 'error');
-      })
-      [fn](datos);
+    llamarBackend(fn, [datos], function (res) {
+      btn.disabled = false; btn.textContent = 'Guardar';
+      if (res.ok) {
+        cerrarModal();
+        mostrarMensaje(res.mensaje, 'exito');
+        cargarEmpleados();
+        refrescarEmpleadosSelect();
+        actualizarBadge();
+      } else { mostrarMensaje(res.mensaje, 'error'); }
+    });
   }
 
   function cambiarEstado(id, nuevoEstado) {

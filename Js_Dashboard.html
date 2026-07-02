@@ -1,39 +1,51 @@
 <script>
   /* ============================================================
-     MÓDULO DASHBOARD — v10 (con Chart.js)
+     MÓDULO DASHBOARD — v12 (Chart.js local vía Lib_Chart)
      ============================================================ */
-  var _chartDeptos = null;
-  var _chartNomina = null;
+  var ULTIMO_DASHBOARD = null;
+
+  window.addEventListener('resize', function () {
+    if (ULTIMO_DASHBOARD &&
+        !document.getElementById('vista-dashboard').classList.contains('oculto')) {
+      _dibujarGraficasDashboard(ULTIMO_DASHBOARD);
+    }
+  });
 
   function cargarDashboard() {
-    llamarBackend('obtenerDashboard', [], function(d) {
+    cargarLibreriaLocal('chart', function () {
+      if (typeof Chart === 'undefined') {
+        setTimeout(cargarDashboard, 200);
+        return;
+      }
+      llamarBackend('obtenerDashboard', [], function (d) {
+      ULTIMO_DASHBOARD = d;
+
       // Mostrar alertas si hay
       if (d.alertas && d.alertas.length > 0) {
         _mostrarAlertas(d.alertas);
       }
 
       var tarjetas = [
-        { num: d.empleadosActivos,             lbl: 'Empleados activos',     icono: '👤' },
-        { num: d.totalDepartamentos,           lbl: 'Departamentos',          icono: '🏢' },
-        { num: d.vacacionesPendientes,         lbl: 'Vacaciones pendientes',  icono: '🌴' },
-        { num: formatoDinero(d.masaSalarial),  lbl: 'Masa salarial',          icono: '💰' },
-        { num: d.nominasMesActual,             lbl: 'Nóminas ' + d.mesActual, icono: '📋' },
-        { num: formatoDinero(d.totalNetoMes),  lbl: 'Neto pagado este mes',   icono: '💳' }
+        { num: d.empleadosActivos,            lbl: 'Empleados activos',      icono: '👤' },
+        { num: d.totalDepartamentos,          lbl: 'Departamentos',           icono: '🏢' },
+        { num: d.vacacionesPendientes,        lbl: 'Vacaciones pendientes',   icono: '🌴' },
+        { num: formatoDinero(d.masaSalarial), lbl: 'Masa salarial',           icono: '💰' },
+        { num: d.nominasMesActual,            lbl: 'Nóminas ' + d.mesActual,  icono: '📋' },
+        { num: formatoDinero(d.totalNetoMes), lbl: 'Neto pagado este mes',    icono: '💳' }
       ];
       var cont = document.getElementById('tarjetasDashboard');
       cont.innerHTML = '';
-      tarjetas.forEach(function(t) {
+      tarjetas.forEach(function (t) {
         var div = document.createElement('div');
         div.className = 'tarjeta';
         div.innerHTML =
-          '<div style="font-size:24px;margin-bottom:4px">'+t.icono+'</div>'+
-          '<div class="num">'+escapar(t.num)+'</div>'+
-          '<div class="lbl">'+escapar(t.lbl)+'</div>';
+          '<div style="font-size:24px;margin-bottom:4px">' + t.icono + '</div>' +
+          '<div class="num">' + escapar(t.num) + '</div>' +
+          '<div class="lbl">' + escapar(t.lbl) + '</div>';
         cont.appendChild(div);
       });
-
-      // Gráficas
-      _cargarGraficas(d);
+      _dibujarGraficasDashboard(d);
+    });
     });
   }
 
@@ -70,60 +82,98 @@
     });
   }
 
-  function _cargarGraficas(d) {
+  function _dibujarGraficasDashboard(d) {
     var cont = document.getElementById('tarjetasDashboard');
     var wrapper = document.getElementById('dashGraficas');
     if (!wrapper) {
       wrapper = document.createElement('div');
       wrapper.id = 'dashGraficas';
-      wrapper.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:24px';
+      wrapper.className = 'dash-graficas-grid';
       cont.parentNode.insertBefore(wrapper, cont.nextSibling);
     }
     wrapper.innerHTML =
-      '<div class="dash-chart-card"><h3 class="dash-chart-titulo">Empleados por departamento</h3><canvas id="chartDeptos" height="220"></canvas></div>'+
-      '<div class="dash-chart-card"><h3 class="dash-chart-titulo">Nómina neta últimos meses</h3><canvas id="chartNomina" height="220"></canvas></div>';
+      '<div class="dash-chart-card">' +
+        '<h3 class="dash-chart-titulo">Empleados por departamento</h3>' +
+        '<div id="dashChartDeptos" class="dash-chart-canvas"></div>' +
+        '<p class="sin-datos oculto" id="dashChartDeptosVacio">Sin datos de departamentos.</p>' +
+      '</div>' +
+      '<div class="dash-chart-card">' +
+        '<h3 class="dash-chart-titulo">Nómina neta últimos meses</h3>' +
+        '<div id="dashChartNomina" class="dash-chart-canvas"></div>' +
+        '<p class="sin-datos oculto" id="dashChartNominaVacio">Sin registros de nómina.</p>' +
+      '</div>';
 
-    if (typeof Chart === 'undefined') return;
+    var deptos = d.empleadosPorDepto || [];
+    var elDep = document.getElementById('dashChartDeptos');
+    var elDepVacio = document.getElementById('dashChartDeptosVacio');
+    if (deptos.length) {
+      elDep.style.display = '';
+      elDepVacio.classList.add('oculto');
+      var canvasDep = prepararCanvasGrafico('dashChartDeptos');
+      _chartInst.dashChartDeptos = new Chart(canvasDep, {
+        type: 'bar',
+        data: {
+          labels: deptos.map(function (x) { return x.nombre; }),
+          datasets: [{
+            label: 'Empleados',
+            data: deptos.map(function (x) { return Number(x.total) || 0; }),
+            backgroundColor: '#4f46e5',
+            borderRadius: 6
+          }]
+        },
+        options: Object.assign({}, CHART_OPTS_BASE, {
+          plugins: { legend: { display: false } },
+          scales: {
+            y: { beginAtZero: true, ticks: { precision: 0 } }
+          }
+        })
+      });
+    } else {
+      elDep.style.display = 'none';
+      elDepVacio.classList.remove('oculto');
+    }
 
-    // Destruir instancias previas
-    if (_chartDeptos) { _chartDeptos.destroy(); _chartDeptos = null; }
-    if (_chartNomina) { _chartNomina.destroy(); _chartNomina = null; }
-
-    // Departamentos (barras)
-    var deptos  = d.empleadosPorDepto || [];
-    var colores = ['#6366f1','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#84cc16','#f97316'];
-    _chartDeptos = new Chart(document.getElementById('chartDeptos').getContext('2d'), {
-      type: 'bar',
-      data: {
-        labels: deptos.map(function(x){ return x.nombre; }),
-        datasets: [{
-          label: 'Empleados', data: deptos.map(function(x){ return x.total; }),
-          backgroundColor: deptos.map(function(_,i){ return colores[i%colores.length]+'cc'; }),
-          borderRadius: 6, borderSkipped: false
-        }]
-      },
-      options: { responsive:true, plugins:{ legend:{ display:false } }, scales:{ y:{ beginAtZero:true, ticks:{ stepSize:1 } } } }
-    });
-
-    // Nómina histórica (línea)
     var nomHist = d.nominaHistorica || [];
-    _chartNomina = new Chart(document.getElementById('chartNomina').getContext('2d'), {
-      type: 'line',
-      data: {
-        labels: nomHist.map(function(x){ return x.mes; }),
-        datasets: [{
-          label: 'Neto pagado', data: nomHist.map(function(x){ return x.neto; }),
-          borderColor:'#6366f1', backgroundColor:'#6366f133',
-          fill:true, tension:0.4, pointRadius:4
-        }]
-      },
-      options: {
-        responsive:true,
-        plugins:{ legend:{ display:false } },
-        scales:{ y:{ beginAtZero:true, ticks:{ callback:function(v){ return '₡'+Math.round(v/1000)+'k'; } } } }
-      }
-    });
+    var elNom = document.getElementById('dashChartNomina');
+    var elNomVacio = document.getElementById('dashChartNominaVacio');
+    if (nomHist.length) {
+      elNom.style.display = '';
+      elNomVacio.classList.add('oculto');
+      var canvasNom = prepararCanvasGrafico('dashChartNomina');
+      _chartInst.dashChartNomina = new Chart(canvasNom, {
+        type: 'line',
+        data: {
+          labels: nomHist.map(function (x) { return x.mes; }),
+          datasets: [{
+            label: 'Neto',
+            data: nomHist.map(function (x) { return Number(x.neto) || 0; }),
+            borderColor: '#4f46e5',
+            backgroundColor: 'rgba(79, 70, 229, 0.12)',
+            fill: true,
+            tension: 0.35,
+            pointRadius: 4
+          }]
+        },
+        options: Object.assign({}, CHART_OPTS_BASE, {
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: function (ctx) { return formatoDinero(ctx.parsed.y); }
+              }
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: { callback: function (v) { return formatoDinero(v); } }
+            }
+          }
+        })
+      });
+    } else {
+      elNom.style.display = 'none';
+      elNomVacio.classList.remove('oculto');
+    }
   }
 </script>
-<!-- Chart.js desactivado temporalmente - causa problemas de caché jQuery -->
-<!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script> -->

@@ -91,28 +91,34 @@
 
     var reader = new FileReader();
     reader.onload = function (e) {
-      try {
-        var data = new Uint8Array(e.target.result);
-        var wb   = XLSX.read(data, { type: 'array', cellDates: true });
-        var ws   = wb.Sheets[wb.SheetNames[0]];
-        var json = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-
-        if (json.length < 2) {
-          mostrarMensaje('El archivo está vacío o solo tiene encabezados.', 'error');
+      cargarLibreriaLocal('xlsx', function () {
+        if (typeof XLSX === 'undefined') {
+          mostrarMensaje('La librería XLSX no está cargada.', 'error');
           return;
         }
+        try {
+          var data = new Uint8Array(e.target.result);
+          var wb   = XLSX.read(data, { type: 'array', cellDates: true });
+          var ws   = wb.Sheets[wb.SheetNames[0]];
+          var json = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
 
-        IMP.headers = json[0].map(function (h) { return String(h); });
-        IMP.filas   = json.slice(1).filter(function (r) {
-          return r.some(function (c) { return String(c).trim() !== ''; });
-        });
+          if (json.length < 2) {
+            mostrarMensaje('El archivo está vacío o solo tiene encabezados.', 'error');
+            return;
+          }
 
-        autoDetectarMapping();
-        pintarMappingUI();
-        mostrarPasoImport(2);
-      } catch (err) {
-        mostrarMensaje('No se pudo leer el archivo: ' + err.message, 'error');
-      }
+          IMP.headers = json[0].map(function (h) { return String(h); });
+          IMP.filas   = json.slice(1).filter(function (r) {
+            return r.some(function (c) { return String(c).trim() !== ''; });
+          });
+
+          autoDetectarMapping();
+          pintarMappingUI();
+          mostrarPasoImport(2);
+        } catch (err) {
+          mostrarMensaje('No se pudo leer el archivo: ' + err.message, 'error');
+        }
+      });
     };
     reader.readAsArrayBuffer(file);
   }
@@ -248,4 +254,32 @@
     html += '</div>';
     document.getElementById('importResultados').innerHTML = html;
   }
+
+  (function initImportDnD() {
+    window.addEventListener('load', function () {
+      var drop = document.getElementById('importDrop');
+      var input = document.getElementById('importFile');
+      if (!drop || !input) return;
+      ['dragenter', 'dragover'].forEach(function (ev) {
+        drop.addEventListener(ev, function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          drop.classList.add('import-drop-hover');
+        });
+      });
+      ['dragleave', 'drop'].forEach(function (ev) {
+        drop.addEventListener(ev, function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          drop.classList.remove('import-drop-hover');
+        });
+      });
+      drop.addEventListener('drop', function (e) {
+        var files = e.dataTransfer && e.dataTransfer.files;
+        if (!files || !files.length) return;
+        input.files = files;
+        leerArchivo(input);
+      });
+    });
+  })();
 </script>

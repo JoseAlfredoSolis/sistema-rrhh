@@ -4,28 +4,56 @@
      ============================================================ */
 
   function cargarAsistencia() {
-    llamarBackend('listarAsistencia', [], function (lista) {
+    var empId = (document.getElementById('filtroEmpAsi') || {}).value || '';
+    var fechaDesde = (document.getElementById('filtroFechaAsi') || {}).value || '';
+    llenarSelectEmpleadosFiltro('filtroEmpAsi');
+    llamarBackend('listarAsistencia', [empId, fechaDesde], function (lista) {
       var cuerpo = document.getElementById('cuerpoAsistencia');
       cuerpo.innerHTML = '';
       document.getElementById('sinAsistencia').classList.toggle('oculto', (lista || []).length > 0);
       (lista || []).forEach(function (a) {
         var tr = document.createElement('tr');
+        var btnElim = puedeEditar()
+          ? '<button class="btn-mini peligro" onclick="eliminarAsist(\'' + escaparAttr(a.id) + '\')">Eliminar</button>'
+          : '';
         tr.innerHTML =
           '<td>' + escapar(a.empleado_nombre) + '</td>' +
           '<td>' + escapar(a.fecha) + '</td>' +
           '<td>' + escapar(a.hora_entrada) + '</td>' +
           '<td>' + escapar(a.hora_salida) + '</td>' +
           '<td>' + escapar(a.horas) + ' h</td>' +
-          '<td><button class="btn-mini peligro" onclick="eliminarAsist(\'' + a.id + '\')">Eliminar</button></td>';
+          '<td class="no-print">' + btnElim + '</td>';
+        cuerpo.appendChild(tr);
+      });
+      cargarResumenAsistencia();
+    });
+  }
+
+  function cargarResumenAsistencia() {
+    var mesInput = document.getElementById('filtroMesAsi');
+    if (!mesInput) return;
+    if (!mesInput.value) mesInput.value = new Date().toISOString().slice(0, 7);
+    llamarBackend('listarResumenAsistencia', [mesInput.value], function (lista) {
+      var cuerpo = document.getElementById('cuerpoResumenAsi');
+      if (!cuerpo) return;
+      cuerpo.innerHTML = '';
+      document.getElementById('sinResumenAsi').classList.toggle('oculto', (lista || []).length > 0);
+      (lista || []).forEach(function (r) {
+        var tr = document.createElement('tr');
+        tr.innerHTML =
+          '<td>' + escapar(r.nombre) + '</td>' +
+          '<td>' + escapar(r.departamento) + '</td>' +
+          '<td>' + escapar(r.dias) + '</td>' +
+          '<td>' + escapar(r.horas) + ' h</td>';
         cuerpo.appendChild(tr);
       });
     });
   }
 
   function abrirFormAsistencia() {
+    if (!puedeEditar()) { mostrarMensaje('Sin permisos para registrar asistencia.', 'error'); return; }
     document.getElementById('formAsistencia').reset();
     llenarSelectEmpleados('asiEmpleado');
-    // Fecha de hoy por defecto.
     document.getElementById('asiFecha').value = new Date().toISOString().slice(0, 10);
     document.getElementById('modalAsistencia').classList.remove('oculto');
   }
@@ -34,6 +62,7 @@
 
   function guardarAsistencia(evento) {
     evento.preventDefault();
+    if (!puedeEditar()) { mostrarMensaje('Sin permisos.', 'error'); return; }
     var datos = {
       empleado_id: document.getElementById('asiEmpleado').value,
       fecha: document.getElementById('asiFecha').value,
@@ -44,23 +73,20 @@
 
     var btn = document.getElementById('btnGuardarAsistencia');
     btn.disabled = true; btn.textContent = 'Guardando...';
-    google.script.run
-      .withSuccessHandler(function (res) {
-        btn.disabled = false; btn.textContent = 'Guardar';
-        if (res.ok) {
-          cerrarModalAsistencia();
-          mostrarMensaje(res.mensaje, 'exito');
-          cargarAsistencia();
-        } else { mostrarMensaje(res.mensaje, 'error'); }
-      })
-      .withFailureHandler(function (err) {
-        btn.disabled = false; btn.textContent = 'Guardar';
-        mostrarMensaje('Error: ' + err.message, 'error');
-      })
-      .crearAsistencia(datos);
+    llamarBackend('crearAsistencia', [datos], function (res) {
+      btn.disabled = false; btn.textContent = 'Guardar';
+      if (res.ok) {
+        cerrarModalAsistencia();
+        mostrarMensaje(res.mensaje, 'exito');
+        cargarAsistencia();
+      } else {
+        mostrarMensaje(res.mensaje, 'error');
+      }
+    });
   }
 
   function eliminarAsist(id) {
+    if (!puedeEditar()) { mostrarMensaje('Sin permisos.', 'error'); return; }
     if (!confirm('¿Eliminar este registro de asistencia?')) return;
     llamarBackend('eliminarAsistencia', [id], function (res) {
       mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');

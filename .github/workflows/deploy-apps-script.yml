@@ -1,0 +1,68 @@
+# Sube el código a Google Apps Script y crea una implementación web.
+# Requiere secretos en GitHub: APPS_SCRIPT_ID y CLASPRC_JSON (ver README).
+
+name: Deploy Apps Script
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Instalar clasp
+        run: npm install -g @google/clasp
+
+      - name: Configurar credenciales clasp
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          if [ -z "$CLASPRC_JSON" ]; then
+            echo "::error::Falta el secreto CLASPRC_JSON en GitHub"
+            exit 1
+          fi
+          mkdir -p ~/.clasprc
+          echo "$CLASPRC_JSON" > ~/.clasprc.json
+
+      - name: Configurar Script ID
+        env:
+          APPS_SCRIPT_ID: ${{ secrets.APPS_SCRIPT_ID }}
+        run: |
+          if [ -z "$APPS_SCRIPT_ID" ]; then
+            echo "::error::Falta el secreto APPS_SCRIPT_ID en GitHub"
+            exit 1
+          fi
+          echo "{\"scriptId\":\"$APPS_SCRIPT_ID\",\"rootDir\":\".\"}" > .clasp.json
+
+      - name: Subir archivos (clasp push)
+        run: clasp push --force
+
+      - name: Crear implementación web
+        id: deploy
+        run: |
+          DEPLOY=$(clasp deploy --description "GitHub ${{ github.sha }}" 2>&1)
+          echo "$DEPLOY"
+          DEPLOY_ID=$(echo "$DEPLOY" | grep -oE 'AKfycb[a-zA-Z0-9_-]+' | head -1)
+          if [ -n "$DEPLOY_ID" ]; then
+            echo "url=https://script.google.com/macros/s/${DEPLOY_ID}/exec" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Resumen
+        run: |
+          echo "## Implementación" >> "$GITHUB_STEP_SUMMARY"
+          clasp deployments >> "$GITHUB_STEP_SUMMARY" || true
+          if [ -n "${{ steps.deploy.outputs.url }}" ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "**URL /exec:** ${{ steps.deploy.outputs.url }}" >> "$GITHUB_STEP_SUMMARY"
+          fi
