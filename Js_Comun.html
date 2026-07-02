@@ -259,6 +259,32 @@
     return '₡' + num.toLocaleString('es', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
+  // ── Gráficos Chart.js (Lib_Chart embebido) ─────────────────
+  var _chartInst = {};
+
+  function destruirChart(id) {
+    if (_chartInst[id]) {
+      _chartInst[id].destroy();
+      delete _chartInst[id];
+    }
+  }
+
+  function prepararCanvasGrafico(contenedorId) {
+    var cont = document.getElementById(contenedorId);
+    if (!cont) return null;
+    destruirChart(contenedorId);
+    cont.innerHTML = '';
+    var canvas = document.createElement('canvas');
+    cont.appendChild(canvas);
+    return canvas;
+  }
+
+  var CHART_OPTS_BASE = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { labels: { font: { family: 'Segoe UI', size: 12 } } } }
+  };
+
   function badge(valor, clase) {
     return '<span class="badge ' + (clase || valor) + '">' + escapar(valor) + '</span>';
   }
@@ -324,31 +350,20 @@
     runner[fn].apply(runner, args);
   }
 
-  // ── Exportar a Excel (SheetJS, carga bajo demanda) ───────
-  function cargarXlsxLib() {
-    if (typeof XLSX !== 'undefined') return Promise.resolve();
-    return new Promise(function (resolve, reject) {
-      var s = document.createElement('script');
-      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-      s.onload = function () { resolve(); };
-      s.onerror = function () { reject(new Error('No se pudo cargar la biblioteca XLSX')); };
-      document.head.appendChild(s);
-    });
-  }
-
+  // ── Exportar a Excel (SheetJS embebido en Lib_Xlsx) ───────
   function exportarTabla(tablaId, nombre) {
+    if (typeof XLSX === 'undefined') {
+      mostrarMensaje('La librería XLSX no está cargada.', 'error');
+      return;
+    }
     var tabla = document.getElementById(tablaId);
     if (!tabla) { mostrarMensaje('Tabla no encontrada.', 'error'); return; }
-    cargarXlsxLib().then(function () {
-      var clone = tabla.cloneNode(true);
-      clone.querySelectorAll('.no-print').forEach(function (el) { el.remove(); });
-      var wb = XLSX.utils.book_new();
-      var ws = XLSX.utils.table_to_sheet(clone);
-      XLSX.utils.book_append_sheet(wb, ws, nombre || 'Datos');
-      XLSX.writeFile(wb, (nombre || 'datos') + '_' + new Date().toISOString().slice(0, 10) + '.xlsx');
-    }).catch(function () {
-      mostrarMensaje('La librería XLSX no está cargada.', 'error');
-    });
+    var clone = tabla.cloneNode(true);
+    clone.querySelectorAll('.no-print').forEach(function (el) { el.remove(); });
+    var wb = XLSX.utils.book_new();
+    var ws = XLSX.utils.table_to_sheet(clone);
+    XLSX.utils.book_append_sheet(wb, ws, nombre || 'Datos');
+    XLSX.writeFile(wb, (nombre || 'datos') + '_' + new Date().toISOString().slice(0, 10) + '.xlsx');
   }
 
   // ── Sidebar colapsable ────────────────────────────────────

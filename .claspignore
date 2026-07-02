@@ -6,6 +6,6 @@
 .clasp.json
 .claspignore
 .git/**
-node_modules/**
+vendor/**
 package.json
 package-lock.json

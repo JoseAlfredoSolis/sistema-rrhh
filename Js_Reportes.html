@@ -1,32 +1,20 @@
 <script>
   /* ============================================================
-     MÓDULO REPORTES (frontend)
-     Dibuja gráficos con Google Charts a partir de los datos
-     agregados que devuelve obtenerReportes() en el backend.
+     MÓDULO REPORTES — Chart.js local (Lib_Chart)
      ============================================================ */
+  var ULTIMOS_REPORTES = null;
 
-  var CHARTS_LISTAS = false;   // ¿ya cargó la librería de Google Charts?
-  var ULTIMOS_REPORTES = null; // último dataset recibido (para redibujar al cambiar tamaño)
-
-  // Cargar la librería de gráficos al iniciar.
-  if (window.google && google.charts) {
-    google.charts.load('current', { packages: ['corechart', 'bar'] });
-    google.charts.setOnLoadCallback(function () { CHARTS_LISTAS = true; });
-  }
-
-  // Redibuja al cambiar el tamaño de la ventana (gráficos responsive).
   window.addEventListener('resize', function () {
-    if (CHARTS_LISTAS && ULTIMOS_REPORTES &&
+    if (ULTIMOS_REPORTES &&
         !document.getElementById('vista-reportes').classList.contains('oculto')) {
       dibujarReportes(ULTIMOS_REPORTES);
     }
   });
 
   function cargarReportes() {
-    // Si la librería aún no terminó de cargar, reintentamos en breve.
-    if (!CHARTS_LISTAS) {
+    if (typeof Chart === 'undefined') {
       mostrarCargando(true);
-      setTimeout(cargarReportes, 250);
+      setTimeout(cargarReportes, 200);
       return;
     }
     llamarBackend('obtenerReportes', [], function (r) {
@@ -36,76 +24,115 @@
   }
 
   function dibujarReportes(r) {
-    graficoPastel('grafDepartamentos', 'Departamento', r.empleadosPorDepartamento);
-    graficoDona('grafEstado', 'Estado', r.empleadosPorEstado, ['#16a34a', '#9ca3af']);
-    graficoColumnas('grafNomina', 'Mes', 'Neto', r.nominaPorMes, '#2563eb', true);
-    graficoBarras('grafHoras', 'Empleado', 'Horas', r.horasPorEmpleado, '#7c3aed');
-    graficoPastel('grafVacaciones', 'Estado', r.vacacionesPorEstado);
+    graficoPastel('grafDepartamentos', r.empleadosPorDepartamento);
+    graficoDona('grafEstado', r.empleadosPorEstado, ['#16a34a', '#9ca3af', '#f59e0b', '#ef4444']);
+    graficoColumnas('grafNomina', r.nominaPorMes, '#2563eb', true);
+    graficoBarras('grafHoras', r.horasPorEmpleado, '#7c3aed');
+    graficoPastel('grafVacaciones', r.vacacionesPorEstado);
   }
 
-  // ---- Helpers de dibujo ----
-
-  // Muestra/oculta el mensaje "sin datos" asociado a un gráfico.
   function alternarVacio(idDiv, hayDatos) {
     var aviso = document.querySelector('.grafico-vacio[data-for="' + idDiv + '"]');
     if (aviso) aviso.classList.toggle('oculto', hayDatos);
     document.getElementById(idDiv).style.display = hayDatos ? '' : 'none';
   }
 
-  var OPCIONES_BASE = {
-    chartArea: { width: '85%', height: '75%' },
-    legend: { position: 'bottom', textStyle: { fontSize: 12 } },
-    fontName: 'Segoe UI',
-    height: 300
-  };
-
-  function graficoPastel(idDiv, etiqueta, datos) {
+  function graficoPastel(idDiv, datos) {
     var hay = datos && datos.length > 0;
     alternarVacio(idDiv, hay);
     if (!hay) return;
-    var tabla = [[etiqueta, 'Cantidad']].concat(datos);
-    var data = google.visualization.arrayToDataTable(tabla);
-    var opciones = Object.assign({}, OPCIONES_BASE, { pieHole: 0 });
-    new google.visualization.PieChart(document.getElementById(idDiv)).draw(data, opciones);
+    var canvas = prepararCanvasGrafico(idDiv);
+    _chartInst[idDiv] = new Chart(canvas, {
+      type: 'pie',
+      data: {
+        labels: datos.map(function (d) { return d[0]; }),
+        datasets: [{
+          data: datos.map(function (d) { return Number(d[1]) || 0; })
+        }]
+      },
+      options: Object.assign({}, CHART_OPTS_BASE, {
+        plugins: { legend: { position: 'bottom' } }
+      })
+    });
   }
 
-  function graficoDona(idDiv, etiqueta, datos, colores) {
+  function graficoDona(idDiv, datos, colores) {
     var hay = datos && datos.some(function (d) { return d[1] > 0; });
     alternarVacio(idDiv, hay);
     if (!hay) return;
-    var tabla = [[etiqueta, 'Cantidad']].concat(datos);
-    var data = google.visualization.arrayToDataTable(tabla);
-    var opciones = Object.assign({}, OPCIONES_BASE, { pieHole: 0.4, colors: colores });
-    new google.visualization.PieChart(document.getElementById(idDiv)).draw(data, opciones);
+    var canvas = prepararCanvasGrafico(idDiv);
+    _chartInst[idDiv] = new Chart(canvas, {
+      type: 'doughnut',
+      data: {
+        labels: datos.map(function (d) { return d[0]; }),
+        datasets: [{
+          data: datos.map(function (d) { return Number(d[1]) || 0; }),
+          backgroundColor: colores
+        }]
+      },
+      options: Object.assign({}, CHART_OPTS_BASE, {
+        cutout: '40%',
+        plugins: { legend: { position: 'bottom' } }
+      })
+    });
   }
 
-  function graficoColumnas(idDiv, ejeX, ejeY, datos, color, esDinero) {
+  function graficoColumnas(idDiv, datos, color, esDinero) {
     var hay = datos && datos.length > 0;
     alternarVacio(idDiv, hay);
     if (!hay) return;
-    var tabla = [[ejeX, ejeY]].concat(datos);
-    var data = google.visualization.arrayToDataTable(tabla);
-    var opciones = Object.assign({}, OPCIONES_BASE, {
-      colors: [color],
-      legend: { position: 'none' },
-      vAxis: { format: esDinero ? 'currency' : undefined }
+    var canvas = prepararCanvasGrafico(idDiv);
+    _chartInst[idDiv] = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: datos.map(function (d) { return d[0]; }),
+        datasets: [{
+          label: esDinero ? 'Neto' : 'Cantidad',
+          data: datos.map(function (d) { return Number(d[1]) || 0; }),
+          backgroundColor: color,
+          borderRadius: 6
+        }]
+      },
+      options: Object.assign({}, CHART_OPTS_BASE, {
+        plugins: {
+          legend: { display: false },
+          tooltip: esDinero ? {
+            callbacks: { label: function (ctx) { return formatoDinero(ctx.parsed.y); } }
+          } : {}
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: esDinero ? { callback: function (v) { return formatoDinero(v); } } : {}
+          }
+        }
+      })
     });
-    new google.visualization.ColumnChart(document.getElementById(idDiv)).draw(data, opciones);
   }
 
-  function graficoBarras(idDiv, ejeX, ejeY, datos, color) {
+  function graficoBarras(idDiv, datos, color) {
     var hay = datos && datos.length > 0;
     alternarVacio(idDiv, hay);
     if (!hay) return;
-    var tabla = [[ejeX, ejeY]].concat(datos);
-    var data = google.visualization.arrayToDataTable(tabla);
-    // Altura proporcional al número de empleados (mínimo 300).
-    var alto = Math.max(300, datos.length * 38 + 80);
-    var opciones = Object.assign({}, OPCIONES_BASE, {
-      colors: [color],
-      legend: { position: 'none' },
-      height: alto
+    var cont = document.getElementById(idDiv);
+    cont.style.height = Math.max(280, datos.length * 38 + 80) + 'px';
+    var canvas = prepararCanvasGrafico(idDiv);
+    _chartInst[idDiv] = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: datos.map(function (d) { return d[0]; }),
+        datasets: [{
+          label: 'Horas',
+          data: datos.map(function (d) { return Number(d[1]) || 0; }),
+          backgroundColor: color,
+          borderRadius: 6
+        }]
+      },
+      options: Object.assign({}, CHART_OPTS_BASE, {
+        indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: { x: { beginAtZero: true } }
+      })
     });
-    new google.visualization.BarChart(document.getElementById(idDiv)).draw(data, opciones);
   }
 </script>

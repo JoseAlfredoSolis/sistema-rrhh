@@ -4,9 +4,7 @@
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <!-- Librería de gráficos de Google (gstatic — compatible con iframe GAS) -->
-  <script src="https://www.gstatic.com/charts/loader.js"></script>
-  <!-- XLSX se carga bajo demanda al exportar (evita avisos de Tracking Prevention) -->
+  <!-- Librerías JS embebidas (mismo origen que la app — sin CDN externo) -->
   <?!= include('Stylesheet'); ?>
 </head>
 <body>
@@ -1123,7 +1121,9 @@
     </div>
   </div>
 
-  <!-- Lógica JS (un include por módulo + comunes) -->
+  <!-- Librerías + lógica JS (include = mismo origen, sin CDN) -->
+  <?!= include('Lib_Chart'); ?>
+  <?!= include('Lib_Xlsx'); ?>
   <?!= include('Js_Comun'); ?>
   <?!= include('Js_Importar'); ?>
   <?!= include('Js_Alertas'); ?>
