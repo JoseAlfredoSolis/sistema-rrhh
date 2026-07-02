@@ -826,6 +826,32 @@ h4 { font-size: 16px; font-weight: 600; }
   .select2-dropdown { max-height: 200px !important; }
 }
 
+/* ── Version Badge ────────────────────────────────────────────– */
+.version-badge {
+  position: fixed;
+  bottom: 12px;
+  right: 16px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--txt-4);
+  background: rgba(99, 102, 241, 0.1);
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  z-index: 50;
+  user-select: none;
+  pointer-events: none;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  transition: all var(--trans-slow);
+}
+
+.version-badge:hover {
+  color: var(--p);
+  background: rgba(99, 102, 241, 0.15);
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
 @media (max-width: 768px) {
   :root { --sb-w: 0; }
   .sidebar { transform: translateX(-100%); }
