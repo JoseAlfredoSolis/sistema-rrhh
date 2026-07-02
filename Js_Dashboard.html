@@ -38,7 +38,7 @@
     if (!wrapper) {
       wrapper = document.createElement('div');
       wrapper.id = 'dashGraficas';
-      wrapper.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:24px';
+      wrapper.className = 'dash-graficas-grid';
       cont.parentNode.insertBefore(wrapper, cont.nextSibling);
     }
     wrapper.innerHTML =

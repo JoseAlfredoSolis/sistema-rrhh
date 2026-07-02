@@ -3,8 +3,11 @@
 <head>
   <base target="_top">
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <!-- Librería de gráficos de Google -->
   <script src="https://www.gstatic.com/charts/loader.js"></script>
+  <!-- Chart.js para dashboard -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
   <!-- SheetJS: parsea .xlsx/.xls/.csv en el cliente, sin servidor -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <?!= include('Stylesheet'); ?>
@@ -95,7 +98,7 @@
 
     <div class="sidebar-footer">
       <button class="btn-darkmode" id="btnDarkMode" onclick="toggleDarkMode()" title="Modo oscuro">🌙</button>
-      <span>v9 · Google Apps Script</span>
+      <span>v10 · Google Apps Script</span>
     </div>
   </aside>
 
@@ -111,6 +114,7 @@
         <div id="searchDropdown" class="search-dropdown oculto"></div>
       </div>
       <div class="topbar-right">
+        <div id="rolBadge" class="rol-badge oculto" title="Cambiar usuario"></div>
         <div id="cargando" class="cargando oculto"><span class="spinner"></span> Cargando...</div>
       </div>
     </header>
@@ -1121,9 +1125,6 @@
       </div>
     </div>
   </div>
-
-  <!-- Indicador de rol activo -->
-  <div id="rolBadge" class="rol-badge oculto"></div>
 
   <!-- Lógica JS (un include por módulo + comunes) -->
   <?!= include('Js_Comun'); ?>

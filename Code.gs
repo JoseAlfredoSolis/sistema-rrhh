@@ -64,7 +64,8 @@ function doGet() {
   return HtmlService.createTemplateFromFile('Index')
     .evaluate()
     .setTitle('Sistema RRHH')
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
 /**
@@ -818,6 +819,25 @@ function obtenerDashboard() {
     return suma + (Number(e.salario) || 0);
   }, 0);
 
+  var porDepto = {};
+  activos.forEach(function (e) {
+    var dep = String(e.departamento || '').trim() || 'Sin asignar';
+    porDepto[dep] = (porDepto[dep] || 0) + 1;
+  });
+  var empleadosPorDepto = Object.keys(porDepto).map(function (d) {
+    return { nombre: d, total: porDepto[d] };
+  });
+
+  var nominaMesMap = {};
+  leerTabla(HOJAS.NOMINA).forEach(function (n) {
+    var mes = String(n.mes);
+    if (!mes) return;
+    nominaMesMap[mes] = (nominaMesMap[mes] || 0) + (Number(n.neto) || 0);
+  });
+  var nominaHistorica = Object.keys(nominaMesMap).sort().slice(-6).map(function (mes) {
+    return { mes: mes, neto: Math.round(nominaMesMap[mes] * 100) / 100 };
+  });
+
   return {
     totalEmpleados: empleados.length,
     empleadosActivos: activos.length,
@@ -827,7 +847,9 @@ function obtenerDashboard() {
     mesActual: mesActual,
     nominasMesActual: nominaMes.length,
     totalNetoMes: Math.round(totalNeto * 100) / 100,
-    masaSalarial: Math.round(masaSalarial * 100) / 100
+    masaSalarial: Math.round(masaSalarial * 100) / 100,
+    empleadosPorDepto: empleadosPorDepto,
+    nominaHistorica: nominaHistorica
   };
 }
 
