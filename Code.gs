@@ -1811,16 +1811,61 @@ function listarHistorialSalario(empleadoId) {
 
 
 // ===================================================================
+// UTILIDADES DE CÁLCULO DE NÓMINA (Semanal vs Quincenal)
+// ===================================================================
+
+/**
+ * Calcula el salario diario según la periodicidad de pago.
+ * @param {number} salarioBase - Salario mensual
+ * @param {string} tipoNomina - 'semanal' o 'quincenal'
+ * @return {number} Salario diario
+ */
+function calcularSalarioDiario(salarioBase, tipoNomina) {
+  var salario = Number(salarioBase) || 0;
+  var tipo = String(tipoNomina).toLowerCase().trim();
+
+  if (tipo === 'semanal') {
+    return Math.round((salario / 7) * 100) / 100;
+  } else if (tipo === 'quincenal') {
+    return Math.round((salario / 15) * 100) / 100;
+  } else {
+    return Math.round((salario / 30) * 100) / 100;
+  }
+}
+
+/**
+ * Obtiene información del empleado con cálculos según periodicidad.
+ */
+function obtenerEmpleadoCompleto(empleadoId) {
+  var emp = leerTabla(HOJAS.EMPLEADOS).filter(function (e) {
+    return String(e.id) === String(empleadoId);
+  })[0];
+  if (!emp) return null;
+
+  var tipo = String(emp.tipo_nomina).toLowerCase().trim() || 'mensual';
+  var diasPeriodo = tipo === 'semanal' ? 7 : (tipo === 'quincenal' ? 15 : 30);
+
+  return {
+    id: emp.id,
+    nombre: emp.nombre,
+    salario: Number(emp.salario) || 0,
+    tipo_nomina: tipo,
+    dias_periodo: diasPeriodo,
+    salario_diario: calcularSalarioDiario(emp.salario, tipo),
+    fecha_ingreso: emp.fecha_ingreso,
+    estado: emp.estado
+  };
+}
+
+// ===================================================================
 // MÓDULO: BALANCE DE VACACIONES
 // ===================================================================
 
 function obtenerBalanceVacaciones(empleadoId) {
-  var emp = leerTabla(HOJAS.EMPLEADOS).filter(function (e) {
-    return String(e.id) === String(empleadoId);
-  })[0];
+  var emp = obtenerEmpleadoCompleto(empleadoId);
   if (!emp) return { ok: false, mensaje: 'Empleado no encontrado.' };
 
-  var diasPorAnio   = 15; // días mínimos legales en Costa Rica
+  var diasPorAnio   = 15;
   var fechaIngreso  = new Date(emp.fecha_ingreso);
   var ahora         = new Date();
   var aniosTrabajados = (ahora - fechaIngreso) / (365.25 * 24 * 60 * 60 * 1000);
@@ -1833,12 +1878,19 @@ function obtenerBalanceVacaciones(empleadoId) {
     })
     .reduce(function (sum, v) { return sum + (Number(v.dias) || 0); }, 0);
 
+  var diasDisponibles = Math.max(0, diasAcumulados - diasUsados);
+
   return {
     ok: true,
-    nombre:          emp.nombre,
-    diasAcumulados:  diasAcumulados,
-    diasUsados:      diasUsados,
-    diasDisponibles: Math.max(0, diasAcumulados - diasUsados)
+    nombre:             emp.nombre,
+    tipo_nomina:        emp.tipo_nomina,
+    dias_periodo:       emp.dias_periodo,
+    salario:            emp.salario,
+    salario_diario:     emp.salario_diario,
+    diasAcumulados:     diasAcumulados,
+    diasUsados:         diasUsados,
+    diasDisponibles:    diasDisponibles,
+    valor_vacaciones:   Math.round(diasDisponibles * emp.salario_diario * 100) / 100
   };
 }
 
@@ -2715,28 +2767,26 @@ function listarLiquidaciones(empleadoId) {
   });
 }
 
-/** Calcula automáticamente el monto de liquidación según la ley. */
+/** Calcula automáticamente el monto de liquidación según la ley y tipo de nómina. */
 function calcularLiquidacion(empleadoId, fechaSalida) {
-  var emp = leerTabla(HOJAS.EMPLEADOS).filter(function (e) {
-    return String(e.id) === String(empleadoId);
-  })[0];
+  var emp = obtenerEmpleadoCompleto(empleadoId);
   if (!emp) return { ok: false, mensaje: 'Empleado no encontrado.' };
 
   var fechaSal = typeof fechaSalida === 'string' ? new Date(fechaSalida + 'T00:00:00') : fechaSalida;
   var fechaIng = new Date(emp.fecha_ingreso + 'T00:00:00');
 
-  var salarioDiario = (Number(emp.salario) || 0) / 30; // Salario mensual / 30 días
   var detalles = [];
   var total = 0;
 
   // 1. Vacaciones no tomadas
   var balance = obtenerBalanceVacaciones(empleadoId);
   var diasVacacionesNoTomadas = balance.diasDisponibles || 0;
-  var montoVacaciones = diasVacacionesNoTomadas * salarioDiario;
+  var montoVacaciones = diasVacacionesNoTomadas * emp.salario_diario;
   if (montoVacaciones > 0) {
     detalles.push({
-      concepto: 'Vacaciones no tomadas',
+      concepto: 'Vacaciones no tomadas (' + diasVacacionesNoTomadas + ' días)',
       dias: diasVacacionesNoTomadas,
+      salario_diario: Math.round(emp.salario_diario * 100) / 100,
       monto: Math.round(montoVacaciones * 100) / 100
     });
     total += montoVacaciones;
@@ -2744,27 +2794,27 @@ function calcularLiquidacion(empleadoId, fechaSalida) {
 
   // 2. Cesantía (1 mes por año trabajado)
   var aniosTrabajados = (fechaSal - fechaIng) / (365.25 * 24 * 60 * 60 * 1000);
-  var cesantia = Math.floor(aniosTrabajados) * (Number(emp.salario) || 0);
+  var cesantia = Math.floor(aniosTrabajados) * emp.salario;
   if (cesantia > 0) {
     detalles.push({
-      concepto: 'Cesantía (' + Math.floor(aniosTrabajados) + ' año(s))',
+      concepto: 'Cesantía (' + Math.floor(aniosTrabajados) + ' año(s) × salario mensual)',
       dias: null,
+      salario_diario: null,
       monto: cesantia
     });
     total += cesantia;
   }
 
-  // 3. Preaviso (si aplica - 30 días de salario si no se cumple período)
-  // Se calcula según ley, pero aquí es simplificado
-
   return {
     ok: true,
     empleado: emp.nombre,
+    tipo_nomina: emp.tipo_nomina,
+    dias_periodo: emp.dias_periodo,
     fechaIngreso: emp.fecha_ingreso,
     fechaSalida: formatearFecha(fechaSalida),
     aniosTrabajados: Math.round(aniosTrabajados * 100) / 100,
-    salarioMensual: Number(emp.salario) || 0,
-    salarioDiario: Math.round(salarioDiario * 100) / 100,
+    salarioMensual: emp.salario,
+    salarioDiario: Math.round(emp.salario_diario * 100) / 100,
     detalles: detalles,
     totalCalculado: Math.round(total * 100) / 100
   };
