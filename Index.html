@@ -4,12 +4,9 @@
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <!-- Librería de gráficos de Google -->
+  <!-- Librería de gráficos de Google (gstatic — compatible con iframe GAS) -->
   <script src="https://www.gstatic.com/charts/loader.js"></script>
-  <!-- Chart.js para dashboard -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-  <!-- SheetJS: parsea .xlsx/.xls/.csv en el cliente, sin servidor -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <!-- XLSX se carga bajo demanda al exportar (evita avisos de Tracking Prevention) -->
   <?!= include('Stylesheet'); ?>
 </head>
 <body>

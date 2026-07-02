@@ -324,21 +324,31 @@
     runner[fn].apply(runner, args);
   }
 
-  // ── Exportar a Excel (SheetJS) ────────────────────────────
+  // ── Exportar a Excel (SheetJS, carga bajo demanda) ───────
+  function cargarXlsxLib() {
+    if (typeof XLSX !== 'undefined') return Promise.resolve();
+    return new Promise(function (resolve, reject) {
+      var s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      s.onload = function () { resolve(); };
+      s.onerror = function () { reject(new Error('No se pudo cargar la biblioteca XLSX')); };
+      document.head.appendChild(s);
+    });
+  }
+
   function exportarTabla(tablaId, nombre) {
-    if (typeof XLSX === 'undefined') {
-      mostrarMensaje('La librería XLSX no está cargada.', 'error');
-      return;
-    }
     var tabla = document.getElementById(tablaId);
     if (!tabla) { mostrarMensaje('Tabla no encontrada.', 'error'); return; }
-    // Clonar sin columnas no-print (Acciones)
-    var clone = tabla.cloneNode(true);
-    clone.querySelectorAll('.no-print').forEach(function (el) { el.remove(); });
-    var wb = XLSX.utils.book_new();
-    var ws = XLSX.utils.table_to_sheet(clone);
-    XLSX.utils.book_append_sheet(wb, ws, nombre || 'Datos');
-    XLSX.writeFile(wb, (nombre || 'datos') + '_' + new Date().toISOString().slice(0,10) + '.xlsx');
+    cargarXlsxLib().then(function () {
+      var clone = tabla.cloneNode(true);
+      clone.querySelectorAll('.no-print').forEach(function (el) { el.remove(); });
+      var wb = XLSX.utils.book_new();
+      var ws = XLSX.utils.table_to_sheet(clone);
+      XLSX.utils.book_append_sheet(wb, ws, nombre || 'Datos');
+      XLSX.writeFile(wb, (nombre || 'datos') + '_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+    }).catch(function () {
+      mostrarMensaje('La librería XLSX no está cargada.', 'error');
+    });
   }
 
   // ── Sidebar colapsable ────────────────────────────────────

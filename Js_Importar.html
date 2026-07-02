@@ -73,28 +73,32 @@
 
     var reader = new FileReader();
     reader.onload = function (e) {
-      try {
-        var data = new Uint8Array(e.target.result);
-        var wb   = XLSX.read(data, { type: 'array', cellDates: true });
-        var ws   = wb.Sheets[wb.SheetNames[0]];
-        var json = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      cargarXlsxLib().then(function () {
+        try {
+          var data = new Uint8Array(e.target.result);
+          var wb   = XLSX.read(data, { type: 'array', cellDates: true });
+          var ws   = wb.Sheets[wb.SheetNames[0]];
+          var json = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
 
-        if (json.length < 2) {
-          mostrarMensaje('El archivo está vacío o solo tiene encabezados.', 'error');
-          return;
+          if (json.length < 2) {
+            mostrarMensaje('El archivo está vacío o solo tiene encabezados.', 'error');
+            return;
+          }
+
+          IMP.headers = json[0].map(function (h) { return String(h); });
+          IMP.filas   = json.slice(1).filter(function (r) {
+            return r.some(function (c) { return String(c).trim() !== ''; });
+          });
+
+          autoDetectarMapping();
+          pintarMappingUI();
+          mostrarPasoImport(2);
+        } catch (err) {
+          mostrarMensaje('No se pudo leer el archivo: ' + err.message, 'error');
         }
-
-        IMP.headers = json[0].map(function (h) { return String(h); });
-        IMP.filas   = json.slice(1).filter(function (r) {
-          return r.some(function (c) { return String(c).trim() !== ''; });
-        });
-
-        autoDetectarMapping();
-        pintarMappingUI();
-        mostrarPasoImport(2);
-      } catch (err) {
-        mostrarMensaje('No se pudo leer el archivo: ' + err.message, 'error');
-      }
+      }).catch(function () {
+        mostrarMensaje('No se pudo cargar la biblioteca para leer Excel.', 'error');
+      });
     };
     reader.readAsArrayBuffer(file);
   }
