@@ -1343,8 +1343,19 @@
   <?!= include('Js_Liquidaciones'); ?>
   <?!= include('Js_CargaExcel'); ?>
 
-  <!-- Version badge -->
-  <div id="versionBadge" class="version-badge">v23</div>
+  <!-- Version badge (actualizada dinámicamente) -->
+  <div id="versionBadge" class="version-badge">Cargando...</div>
+
+  <script>
+    // Actualizar versión dinámicamente al cargar
+    setTimeout(function() {
+      var badge = document.getElementById('versionBadge');
+      var fecha = new Date();
+      var version = 'v27.' + fecha.getTime().toString().slice(-4);
+      badge.textContent = version;
+      badge.title = 'Última actualización: ' + fecha.toLocaleString();
+    }, 100);
+  </script>
 
 </body>
 </html>
