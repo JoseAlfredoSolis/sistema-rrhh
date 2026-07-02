@@ -381,48 +381,73 @@
         var vNom = buscarCol(hv, ['nombredelempleado','nombreempleado','nombre']);
         var vIng = buscarCol(hv, ['ingreso']);
         var vTot = buscarCol(hv, ['total']);
-        var hoyISO = new Date().toISOString().slice(0, 10);
-        var vacSinMatch = [];
-        var filasSinNombre = 0;
-        fv.slice(1).forEach(function (f) {
-          var nombre = celda(f, vNom);
-          // Solo filas de datos: deben traer fecha de ingreso en serial.
-          if (!serialAISO(celda(f, vIng))) return;
-          if (!nombre) { filasSinNombre++; return; }
-          if (normNombre(nombre) === 'totales') return;
-          var emp = buscarEmpleado(nombre);
-          if (!emp) { vacSinMatch.push(nombre); return; }
+        if (vNom === -1) {
+          CARGA.avisos.push('⚠️ Vacaciones: no se encontró columna de "Nombre de Empleado".');
+        }
+        if (vIng === -1) {
+          CARGA.avisos.push('⚠️ Vacaciones: no se encontró columna de "Ingreso".');
+        }
+        if (vTot === -1) {
+          CARGA.avisos.push('⚠️ Vacaciones: no se encontró columna de "Total" (saldo).');
+        }
+        if (vNom !== -1 && vIng !== -1 && vTot !== -1) {
+          var hoyISO = new Date().toISOString().slice(0, 10);
+          var vacSinMatch = [];
+          var filasSinNombre = 0;
+          var filasRevisadas = 0;
+          var filasSinIngreso = 0;
+          fv.slice(1).forEach(function (f) {
+            filasRevisadas++;
+            var nombre = celda(f, vNom);
+            var ingresoRaw = celda(f, vIng);
+            // Solo filas de datos: deben traer fecha de ingreso en serial.
+            if (!serialAISO(ingresoRaw)) { filasSinIngreso++; return; }
+            if (!nombre) { filasSinNombre++; return; }
+            if (normNombre(nombre) === 'totales') return;
+            var emp = buscarEmpleado(nombre);
+            if (!emp) { vacSinMatch.push(nombre); return; }
 
-          var totTxt = celda(f, vTot);
-          var pendiente = (totTxt !== '' && isFinite(Number(totTxt))) ? Number(totTxt) : 0;
+            var totTxt = celda(f, vTot);
+            var pendiente = (totTxt !== '' && isFinite(Number(totTxt))) ? Number(totTxt) : 0;
 
-          // Misma fórmula del backend: 15 días por año desde el ingreso.
-          var fi = new Date(emp.fecha_ingreso + 'T00:00:00');
-          var anios = (Date.now() - fi.getTime()) / (365.25 * 86400000);
-          var acumulados = Math.floor(Math.max(0, anios) * 15);
-          var usados = acumulados - pendiente;
-          if (usados < 0) {
-            CARGA.avisos.push('⚠️ Vacaciones: ' + emp.nombre + ' tiene más días pendientes (' + pendiente +
-              ') que los acumulados por ley (' + acumulados + '); se dejó el saldo en ' + acumulados + '.');
-            usados = 0;
-          }
-          if (usados <= 0) return; // recién ingresado: nada que ajustar
-          vacacionesConv.push({
-            empleado_id: emp.id,
-            fecha_inicio: emp.fecha_ingreso,
-            fecha_fin: hoyISO,
-            dias: usados,
-            estado: 'aprobada',
-            notas: 'Ajuste de saldo inicial (Excel: ' + pendiente + ' días pendientes al ' + hoyISO + ')'
+            // Misma fórmula del backend: 15 días por año desde el ingreso.
+            var fi = new Date(emp.fecha_ingreso + 'T00:00:00');
+            var anios = (Date.now() - fi.getTime()) / (365.25 * 86400000);
+            var acumulados = Math.floor(Math.max(0, anios) * 15);
+            var usados = acumulados - pendiente;
+            if (usados < 0) {
+              CARGA.avisos.push('⚠️ Vacaciones: ' + emp.nombre + ' tiene más días pendientes (' + pendiente +
+                ') que los acumulados por ley (' + acumulados + '); se dejó el saldo en ' + acumulados + '.');
+              usados = 0;
+            }
+            if (usados <= 0) return; // recién ingresado: nada que ajustar
+            vacacionesConv.push({
+              empleado_id: emp.id,
+              fecha_inicio: emp.fecha_ingreso,
+              fecha_fin: hoyISO,
+              dias: usados,
+              estado: 'aprobada',
+              notas: 'Ajuste de saldo inicial (Excel: ' + pendiente + ' días pendientes al ' + hoyISO + ')'
+            });
           });
-        });
-        if (vacSinMatch.length) {
-          CARGA.avisos.push('⚠️ Vacaciones: no se encontró en la base a: ' + vacSinMatch.join(', '));
+          if (vacSinMatch.length) {
+            CARGA.avisos.push('⚠️ Vacaciones: no se encontró en la base a: ' + vacSinMatch.join(', '));
+          }
+          if (filasSinNombre) {
+            CARGA.avisos.push('⚠️ Vacaciones: ' + filasSinNombre + ' fila(s) sin nombre de empleado.');
+          }
+          if (filasSinIngreso) {
+            CARGA.avisos.push('⚠️ Vacaciones: ' + filasSinIngreso + ' fila(s) sin fecha de ingreso válida.');
+          }
+          if (vacacionesConv.length === 0 && filasRevisadas > 0) {
+            CARGA.avisos.push('⚠️ Vacaciones: se revisaron ' + filasRevisadas + ' filas pero ninguna generó registros válidos. Verifica los nombres y fechas.');
+          }
         }
-        if (filasSinNombre) {
-          CARGA.avisos.push('⚠️ Vacaciones: ' + filasSinNombre + ' fila(s) con datos pero sin nombre de empleado no se cargaron.');
-        }
+      } else {
+        CARGA.avisos.push('⚠️ Vacaciones: la hoja está vacía.');
       }
+    } else {
+      CARGA.avisos.push('ℹ️ Vacaciones: no se encontró hoja VACACIONES.');
     }
     if (vacacionesConv.length) datos.Vacaciones = vacacionesConv;
 
