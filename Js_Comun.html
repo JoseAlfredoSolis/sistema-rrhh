@@ -80,6 +80,8 @@
   };
 
   window.addEventListener('load', function () {
+    ajustarShellGas();
+    window.addEventListener('resize', ajustarShellGas);
     if (_leerStorage('local', 'rrhh-dark') === '1') {
       document.body.classList.add('dark');
       var btn = document.getElementById('btnDarkMode');
@@ -118,6 +120,14 @@
   function mostrarBannerAuth(visible) {
     var el = document.getElementById('bannerAuth');
     if (el) el.classList.toggle('oculto', !visible);
+  }
+
+  /** Detecta iframe de Google (URL Implementar) y ajusta clases CSS. */
+  function ajustarShellGas() {
+    var enShell = window.self !== window.top ||
+      /userCodeAppPanel|script\.google\.com/i.test(window.location.href);
+    document.documentElement.classList.toggle('gas-shell', enShell);
+    document.body.classList.toggle('gas-shell', enShell);
   }
 
   // ── Navegación ────────────────────────────────────────────

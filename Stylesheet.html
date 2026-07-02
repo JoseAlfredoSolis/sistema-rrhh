@@ -219,7 +219,8 @@ body {
   padding: 0 16px;
   flex-shrink: 0;
   box-shadow: var(--sh-xs);
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  min-width: 0;
 }
 
 .topbar-right {
@@ -442,7 +443,9 @@ body {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
   box-shadow: var(--sh-s);
 }
 
@@ -847,19 +850,49 @@ form { padding: 16px 20px; }
 }
 body.dark .banner-auth { background: #451a03; color: #fcd34d; border-color: #b45309; }
 
-/* ── Responsive (móvil) ──────────────────────────────────── */
-@media (max-width: 1024px) {
-  .topbar-search { width: 180px; }
-  .topbar-search:focus { width: 220px; }
+/* ── Shell de Google Apps Script (iframe / URL Implementar) ─ */
+html.gas-shell,
+html.gas-shell body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
-@media (max-width: 768px) {
-  .sidebar {
+html.gas-shell .app-layout {
+  min-height: auto;
+  max-width: 100%;
+}
+
+html.gas-shell .sidebar {
+  position: relative;
+  top: auto;
+  align-self: stretch;
+  max-height: none;
+}
+
+html.gas-shell .main-area {
+  min-width: 0;
+  flex: 1 1 auto;
+  max-width: 100%;
+}
+
+html.gas-shell .contenido {
+  padding: 16px 16px 40px;
+  max-width: 100%;
+}
+
+/* En iframe estrecho (típico en Edge + URL Implementar) usar menú móvil antes */
+@media (max-width: 960px) {
+  .sidebar,
+  html.gas-shell .sidebar {
     position: fixed;
     inset: 0 auto 0 0;
     transform: translateX(-100%);
+    max-height: none;
+    align-self: auto;
   }
-  .sidebar.open  { transform: translateX(0); box-shadow: var(--sh-l); }
+  .sidebar.open,
+  html.gas-shell .sidebar.open { transform: translateX(0); box-shadow: var(--sh-l); }
   .sidebar-overlay { display: block; }
 
   .topbar-toggle { display: flex; }
@@ -874,6 +907,12 @@ body.dark .banner-auth { background: #451a03; color: #fcd34d; border-color: #b45
   #buscador { min-width: 0; width: 100%; }
 
   .tarjetas { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ── Responsive (móvil) ──────────────────────────────────── */
+@media (max-width: 1024px) {
+  .topbar-search { width: 160px; }
+  .topbar-search:focus { width: 200px; }
 }
 
 @media (max-width: 480px) {
