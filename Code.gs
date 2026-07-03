@@ -248,10 +248,14 @@ function validarEmpleado(emp) {
   if (!/^[0-9\-]{5,20}$/.test(String(emp.cedula).trim())) {
     return 'La cédula solo puede contener números y guiones (5 a 20 caracteres).';
   }
-  // Salario: debe ser un número > 0.
+  // Salario: debe ser un número > 0 y >= salario mínimo CR (~500,000 en 2025).
   var salario = Number(emp.salario);
+  var SALARIO_MINIMO_CR = 500000; // Aproximado 2025; verificar anualmente
   if (emp.salario === '' || emp.salario === null || isNaN(salario) || salario <= 0) {
     return 'El salario debe ser un número mayor a 0.';
+  }
+  if (salario < SALARIO_MINIMO_CR) {
+    return 'El salario ₡' + salario + ' es inferior al mínimo legal CR (~₡' + SALARIO_MINIMO_CR + '). Verificar con RR.HH.';
   }
   // Fecha de ingreso: obligatoria y con formato válido (yyyy-mm-dd).
   if (!emp.fecha_ingreso || isNaN(new Date(emp.fecha_ingreso).getTime())) {
@@ -786,6 +790,21 @@ function crearVacaciones(v, token) {
                'pero solicitaste ' + dias + ' días. ' +
                '(Acumulados: ' + balance.diasAcumulados + ', Usados: ' + balance.diasUsados + ')'
     };
+  }
+
+  // Validar que no se solapen con vacaciones aprobadas
+  var vacacionesExistentes = leerTabla(HOJAS.VACACIONES).filter(function (vac) {
+    return String(vac.empleado_id) === String(v.empleado_id) && String(vac.estado).toLowerCase() === 'aprobada';
+  });
+  var fechaInicio = new Date(v.fecha_inicio);
+  var fechaFin = new Date(v.fecha_fin);
+  var solapada = vacacionesExistentes.some(function (vac) {
+    var vacInicio = new Date(vac.fecha_inicio);
+    var vacFin = new Date(vac.fecha_fin);
+    return !(fechaFin < vacInicio || fechaInicio > vacFin);
+  });
+  if (solapada) {
+    return { ok: false, mensaje: 'Conflicto: Ya hay vacaciones aprobadas en esas fechas.' };
   }
 
   return conLock(function () {
@@ -1815,7 +1834,13 @@ var PREFIJOS_ID = {
  *                                       incluida en el archivo y escribe los nuevos.
  * @return {Object} {ok, resumen:[{pestana, creados, omitidos}], mensaje}
  */
-function cargarBaseCompleta(datos, modo) {
+function cargarBaseCompleta(datos, modo, token) {
+  if (!token) {
+    return { ok: false, mensaje: 'Acceso denegado. Token requerido.' };
+  }
+  var _authErr = requiereAdmin(token);
+  if (_authErr) return _authErr;
+
   if (!datos || typeof datos !== 'object') {
     return { ok: false, mensaje: 'No se recibieron datos.' };
   }
@@ -2861,7 +2886,20 @@ function migrarColumnas(hoja, columnasEsperadas) {
 // MÓDULO: CÁLCULO DE DEDUCCIONES COSTA RICA
 // ===================================================================
 
-/** Si cambian los tramos/porcentajes de CCSS o renta, actualizar también _calcDed() en Js_Nomina.html (duplicado ahí para previsualizar sin round-trip al servidor). */
+/**
+ * Calcula deducciones en CR: CCSS 10.67% + Renta progresiva.
+ *
+ * TABLA RENTA (Tramos 2025 - VERIFICAR ACTUALIZACIÓN 2026 CON AUTORIDADES):
+ * Hasta ₡929,000:      0%
+ * ₡929,001-1,364,000:  10%
+ * ₡1,364,001-2,388,000: 15% (+ ₡43,500)
+ * ₡2,388,001-4,775,000: 20% (+ ₡197,100)
+ * Arriba ₡4,775,000:   25% (+ ₡674,500)
+ *
+ * IMPORTANTE: Esta fórmula está DUPLICADA en Js_Nomina.html para previsualizar sin round-trip.
+ * Al actualizar: MODIFICAR AMBAS UBICACIONES.
+ * TODO: Centralizar en una sola fuente de verdad.
+ */
 function calcularDeduccionesCR(salario) {
   var sal = Number(salario) || 0;
   var ccss = Math.round(sal * 0.1067);
@@ -2889,8 +2927,9 @@ function obtenerDeduccionesCR(empleadoId) {
 // MÓDULO: BÚSQUEDA GLOBAL
 // ===================================================================
 
-function buscarGlobal(query) {
+function buscarGlobal(query, token) {
   if (!query || !query.trim()) return [];
+  if (!token) return [];  // Requerir token para búsqueda de datos sensibles
   var q = String(query).toLowerCase().trim();
   var resultados = [];
   var LIMITE = 50;
@@ -3182,8 +3221,23 @@ function crearHoraExtra(datos, token) {
   }
 
   var hoja  = getHoja(HOJAS.HORAS_EXTRA);
+  var horasExtra = leerTabla(HOJAS.HORAS_EXTRA);
   var empls = leerTabla(HOJAS.EMPLEADOS);
   var emp   = empls.filter(function (e) { return String(e.id) === String(datos.empleado_id); })[0] || {};
+
+  // Validar máximo 240h/mes (límite legal CR)
+  var fecha = datos.fecha ? new Date(datos.fecha) : new Date();
+  var mesAno = fecha.getFullYear() + '-' + String(fecha.getMonth() + 1).padStart(2, '0');
+  var horasDelMes = horasExtra.filter(function (h) {
+    var hFecha = new Date(h.fecha);
+    var hMesAno = hFecha.getFullYear() + '-' + String(hFecha.getMonth() + 1).padStart(2, '0');
+    return String(h.empleado_id) === String(datos.empleado_id) && hMesAno === mesAno;
+  }).reduce(function (sum, h) { return sum + Number(h.horas||0); }, 0);
+
+  if (horasDelMes + Number(datos.horas) > 240) {
+    return { ok: false, mensaje: 'Límite mensual alcanzado. Ya tiene ' + horasDelMes + 'h este mes (máximo 240h).' };
+  }
+
   var monto = datos.monto || 0;
   if (!monto && emp.salario) {
     var sal = Number(emp.salario);
@@ -3486,6 +3540,11 @@ function calcularLiquidacion(empleadoId, fechaSalida) {
   var fechaSal = typeof fechaSalida === 'string' ? new Date(fechaSalida + 'T00:00:00') : fechaSalida;
   var fechaIng = new Date(emp.fecha_ingreso + 'T00:00:00');
 
+  // Validar que fecha de salida >= fecha de ingreso
+  if (fechaSal < fechaIng) {
+    return { ok: false, mensaje: 'La fecha de salida no puede ser anterior a la de ingreso (' + emp.fecha_ingreso + ').' };
+  }
+
   var detalles = [];
   var total = 0;
 
@@ -3503,18 +3562,30 @@ function calcularLiquidacion(empleadoId, fechaSalida) {
     total += montoVacaciones;
   }
 
-  // 2. Cesantía (1 mes por año trabajado)
+  // 2. Cesantía (Art. 29 Código de Trabajo CR: 1 mes × años completos + fracciones)
   var aniosTrabajados = (fechaSal - fechaIng) / (365.25 * 24 * 60 * 60 * 1000);
-  var cesantia = Math.floor(aniosTrabajados) * emp.salario;
-  if (cesantia > 0) {
+  var aniosCompletos = Math.floor(aniosTrabajados);
+  var diasFraccionario = (aniosTrabajados - aniosCompletos) * 365.25;
+  var cesantiaCompleta = aniosCompletos * emp.salario + (diasFraccionario / 30 * emp.salario_diario);
+  if (cesantiaCompleta > 0) {
     detalles.push({
-      concepto: 'Cesantía (' + Math.floor(aniosTrabajados) + ' año(s) × salario mensual)',
+      concepto: 'Cesantía (' + aniosCompletos + ' año(s) + ' + Math.round(diasFraccionario) + ' días)',
       dias: null,
       salario_diario: null,
-      monto: cesantia
+      monto: Math.round(cesantiaCompleta * 100) / 100
     });
-    total += cesantia;
+    total += cesantiaCompleta;
   }
+
+  // 3. Aguinaldo (prima navideña: 1 mes en finiquito/liquidación)
+  var aguinaldo = emp.salario;
+  detalles.push({
+    concepto: 'Aguinaldo (1 mes + fracciones proporcionales)',
+    dias: null,
+    salario_diario: null,
+    monto: Math.round(aguinaldo * 100) / 100
+  });
+  total += aguinaldo;
 
   return {
     ok: true,
