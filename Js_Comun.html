@@ -85,6 +85,46 @@
     liquidaciones:  'Liquidaciones laborales'
   };
 
+  // ── Iconografía SVG (reemplaza los emojis del menú por un set
+  //    consistente, estilo trazo fino, sin depender de fuentes externas) ──
+  var _SVG_ATTR = 'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"';
+  var ICONOS_NAV = {
+    dashboard:      '<line x1="4" y1="20" x2="4" y2="12"/><line x1="9.5" y1="20" x2="9.5" y2="5"/><line x1="15" y1="20" x2="15" y2="10"/><line x1="20.5" y1="20" x2="20.5" y2="14"/>',
+    empleados:      '<circle cx="12" cy="8" r="3.3"/><path d="M5 20c0-3.6 3.1-6.2 7-6.2s7 2.6 7 6.2"/>',
+    departamentos:  '<rect x="3.5" y="4" width="9" height="16"/><rect x="12.5" y="9" width="8" height="11"/><line x1="7" y1="8" x2="7" y2="8"/><line x1="16.5" y1="13" x2="16.5" y2="13"/>',
+    asistencia:     '<circle cx="12" cy="12" r="8.5"/><polyline points="12,7.5 12,12 15.5,14"/>',
+    vacaciones:     '<circle cx="12" cy="12" r="4"/><line x1="12" y1="2.5" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="21.5"/><line x1="2.5" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="21.5" y2="12"/><line x1="5.3" y1="5.3" x2="7" y2="7"/><line x1="17" y1="17" x2="18.7" y2="18.7"/><line x1="5.3" y1="18.7" x2="7" y2="17"/><line x1="17" y1="7" x2="18.7" y2="5.3"/>',
+    nomina:         '<rect x="2.5" y="6" width="19" height="13" rx="2"/><path d="M2.5 10h19"/><circle cx="16.5" cy="14.5" r="1.6"/>',
+    reportes:       '<polyline points="3.5,17 9,11 13,14.5 20.5,6.5"/><polyline points="14.5,6.5 20.5,6.5 20.5,12.5"/>',
+    expediente:     '<rect x="3" y="4.5" width="18" height="15" rx="2"/><circle cx="9" cy="10.5" r="2.2"/><path d="M5.5 16.5c.6-2 2-3 3.5-3s2.9 1 3.5 3"/><line x1="14.5" y1="9" x2="18.5" y2="9"/><line x1="14.5" y1="12.5" x2="18.5" y2="12.5"/>',
+    capacitaciones: '<path d="M12 6.5c-1.8-1.4-4.4-2-7.5-2v12.5c3.1 0 5.7.6 7.5 2 1.8-1.4 4.4-2 7.5-2V4.5c-3.1 0-5.7.6-7.5 2Z"/><line x1="12" y1="6.5" x2="12" y2="19"/>',
+    evaluaciones:   '<polygon points="12,3 14.7,9 21.3,9.6 16.3,13.9 17.8,20.4 12,17 6.2,20.4 7.7,13.9 2.7,9.6 9.3,9"/>',
+    documentos:     '<path d="M3.5 6.5c0-1.1.9-2 2-2h4l2 2h7c1.1 0 2 .9 2 2v9c0 1.1-.9 2-2 2h-13c-1.1 0-2-.9-2-2Z"/>',
+    prestamos:      '<rect x="2.5" y="5.5" width="19" height="13" rx="2"/><line x1="2.5" y1="9.5" x2="21.5" y2="9.5"/><line x1="5.5" y1="14.5" x2="10" y2="14.5"/>',
+    horasextra:     '<circle cx="12" cy="13" r="8"/><polyline points="12,9 12,13 15,15"/><line x1="9" y1="2.5" x2="15" y2="2.5"/><line x1="12" y1="2.5" x2="12" y2="5"/>',
+    activos:        '<rect x="3" y="4.5" width="18" height="12" rx="1.5"/><line x1="8" y1="20" x2="16" y2="20"/><line x1="12" y1="16.5" x2="12" y2="20"/>',
+    turnos:         '<polyline points="4,9 4,4.5 8.5,4.5"/><path d="M4 9a8 8 0 1 1 2 5.2"/><polyline points="20,15 20,19.5 15.5,19.5"/><path d="M20 15a8 8 0 0 1-13.8 4.6"/>',
+    incapacidades:  '<path d="M4.5 12.5h4l1.5-3 2.5 6 1.5-3h5.5"/><rect x="3" y="5" width="18" height="14" rx="2"/>',
+    liquidaciones:  '<path d="M6.5 3.5h8l4 4v13a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z"/><line x1="8.5" y1="11" x2="15.5" y2="11"/><line x1="8.5" y1="14.5" x2="15.5" y2="14.5"/><line x1="8.5" y1="18" x2="12.5" y2="18"/>',
+    calendario:     '<rect x="3" y="4.5" width="18" height="16" rx="2"/><line x1="3" y1="9.5" x2="21" y2="9.5"/><line x1="8" y1="2.5" x2="8" y2="6.5"/><line x1="16" y1="2.5" x2="16" y2="6.5"/>',
+    organigrama:    '<rect x="9" y="3" width="6" height="4.5" rx="1"/><rect x="3" y="16.5" width="6" height="4.5" rx="1"/><rect x="15" y="16.5" width="6" height="4.5" rx="1"/><path d="M12 7.5v4M6 16.5v-3a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v3"/>',
+    feriados:       '<path d="M5 21V4l1.5-1.2L8 4l1.5-1.2L11 4l1.5-1.2L14 4V13"/><path d="M5 6h9l3 3.5-3 3.5H5"/>',
+    alertas:        '<path d="M6 10a6 6 0 0 1 12 0c0 4.5 1.5 6 1.5 6h-15S6 14.5 6 10Z"/><path d="M10 19a2 2 0 0 0 4 0"/>',
+    bitacora:       '<rect x="5" y="3.5" width="14" height="17" rx="2"/><rect x="9" y="2" width="6" height="3" rx="1"/><line x1="8" y1="10.5" x2="16" y2="10.5"/><line x1="8" y1="14" x2="16" y2="14"/><line x1="8" y1="17.5" x2="13" y2="17.5"/>',
+    configuracion:  '<circle cx="12" cy="12" r="3"/><path d="M19.4 13.5a7.9 7.9 0 0 0 0-3l2-1.5-2-3.5-2.4.7a8 8 0 0 0-2.6-1.5L14 2h-4l-.4 2.7a8 8 0 0 0-2.6 1.5l-2.4-.7-2 3.5 2 1.5a7.9 7.9 0 0 0 0 3l-2 1.5 2 3.5 2.4-.7a8 8 0 0 0 2.6 1.5L10 22h4l.4-2.7a8 8 0 0 0 2.6-1.5l2.4.7 2-3.5Z"/>'
+  };
+
+  function aplicarIconosNav() {
+    document.querySelectorAll('.nav-item[data-vista]').forEach(function (btn) {
+      var vista = btn.getAttribute('data-vista');
+      var svg = ICONOS_NAV[vista];
+      var icono = btn.querySelector('.nav-icon');
+      if (svg && icono) {
+        icono.innerHTML = '<svg ' + _SVG_ATTR + '>' + svg + '</svg>';
+      }
+    });
+  }
+
   window.addEventListener('load', function () {
     ajustarShellGas();
     window.addEventListener('resize', ajustarShellGas);
@@ -99,6 +139,7 @@
       if (sb) sb.classList.add('collapsed');
       if (btnC) btnC.title = 'Mostrar menú';
     }
+    aplicarIconosNav();
     mostrarVista('dashboard');
     iniciarSesionApp();
   });
