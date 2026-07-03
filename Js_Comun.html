@@ -120,8 +120,13 @@
       var svg = ICONOS_NAV[vista];
       var icono = btn.querySelector('.nav-icon');
       if (svg && icono) {
-        icono.innerHTML = '<svg ' + _SVG_ATTR + '>' + svg + '</svg>';
+        icono.innerHTML = '<svg aria-hidden="true" ' + _SVG_ATTR + '>' + svg + '</svg>';
       }
+      // Nombre accesible propio: cuando el sidebar está colapsado, .nav-label
+      // se oculta visualmente y el botón se quedaría sin texto para lectores
+      // de pantalla si no fijamos aria-label aparte del tooltip visual.
+      var tooltip = btn.getAttribute('data-tooltip');
+      if (tooltip) btn.setAttribute('aria-label', tooltip);
     });
   }
 
@@ -276,6 +281,11 @@
       badge.className = 'rol-badge';
     }
     badge.classList.remove('oculto');
+    badge.setAttribute('role', 'button');
+    badge.setAttribute('tabindex', '0');
+    badge.onkeydown = function (ev) {
+      if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); badge.click(); }
+    };
     badge.onclick = function () {
       if (confirm('¿Cambiar de usuario?')) {
         document.getElementById('pinInput').value = '';

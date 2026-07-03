@@ -33,7 +33,7 @@
         <span class="sb-brand-name">Sistema RRHH</span>
         <span class="sb-brand-sub">Recursos Humanos</span>
       </div>
-      <button class="btn-colapsar" id="btnColapsar" onclick="toggleSidebarCollapse()" title="Ocultar menú">&#8249;</button>
+      <button class="btn-colapsar" id="btnColapsar" onclick="toggleSidebarCollapse()" aria-label="Ocultar menú" title="Ocultar menú">&#8249;</button>
     </div>
 
     <nav class="sidebar-nav">
@@ -116,7 +116,7 @@
     </nav>
 
     <div class="sidebar-footer">
-      <button class="btn-darkmode" id="btnDarkMode" onclick="toggleDarkMode()" title="Modo oscuro">🌙</button>
+      <button class="btn-darkmode" id="btnDarkMode" onclick="toggleDarkMode()" aria-label="Modo oscuro" title="Modo oscuro">🌙</button>
       <span class="app-version" title="Versión desplegada del Sistema RRHH">Sistema RRHH · v32</span>
     </div>
   </aside>
@@ -126,7 +126,7 @@
 
     <!-- Topbar -->
     <header class="topbar">
-      <button class="topbar-toggle" onclick="toggleSidebar()">☰</button>
+      <button class="topbar-toggle" onclick="toggleSidebar()" aria-label="Abrir menú" title="Abrir menú">☰</button>
       <span class="topbar-titulo" id="topbarTitulo">Dashboard</span>
       <div class="topbar-search-wrap">
         <input type="text" id="busquedaGlobal" class="topbar-search" placeholder="🔍 Buscar…" oninput="busquedaGlobalUI(this.value)" autocomplete="off">

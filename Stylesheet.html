@@ -89,6 +89,17 @@
 /* ── Reset base ──────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* Anillo de foco consistente para navegación por teclado (no aparece
+   con clic de mouse, solo con Tab/flechas) — los inputs ya tienen su
+   propio focus con box-shadow, este cubre botones y demás controles. */
+button:focus-visible,
+.nav-item:focus-visible,
+.rol-badge:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--p);
+  outline-offset: 2px;
+}
+
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
