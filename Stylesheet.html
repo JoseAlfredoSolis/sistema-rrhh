@@ -882,11 +882,22 @@ form { padding: 16px 20px; }
 body.dark .banner-auth { background: #451a03; color: #fcd34d; border-color: #b45309; }
 
 /* ── Shell de Google Apps Script (iframe / URL Implementar) ─ */
+/* El iframe externo de Google no siempre scrollea su contenido, así que
+   dentro de él body debe tener altura acotada y scrollear internamente
+   (afuera del shell, la pestaña normal del navegador ya scrollea sola). */
 html.gas-shell,
 html.gas-shell body {
   width: 100%;
   max-width: 100%;
+  height: 100%;
   overflow-x: hidden;
+}
+
+html.gas-shell body {
+  height: 100vh;
+  height: 100dvh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 html.gas-shell .app-layout {
