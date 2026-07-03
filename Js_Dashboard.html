@@ -73,7 +73,7 @@
 
     alertas.forEach(function(a) {
       var div = document.createElement('div');
-      var colorUrgencia = { crítica: '#ef4444', alta: '#f97316', media: '#f59e0b', baja: '#6366f1' };
+      var colorUrgencia = { crítica: '#dc2626', alta: '#f97316', media: '#d97706', baja: '#4f46e5' };
       div.style.cssText = 'padding:10px;margin-bottom:8px;background:'+colorUrgencia[a.urgencia]+'20;' +
         'border-left:3px solid '+colorUrgencia[a.urgencia]+';border-radius:4px;font-size:13px';
       div.innerHTML = (iconos[a.tipo] || '⚠️') + ' <strong>' + escapar(a.empleado) + ':</strong> ' +

@@ -10,7 +10,7 @@
         cont.innerHTML = '<p class="sin-datos">No hay departamentos configurados.</p>';
         return;
       }
-      var COLORES = ['#6366f1','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#84cc16'];
+      var COLORES = ['#4f46e5','#059669','#d97706','#dc2626','#8b5cf6','#06b6d4','#84cc16'];
       cont.innerHTML = deptos.map(function(d, idx) {
         var color = COLORES[idx % COLORES.length];
         var empCards = (d.empleados||[]).map(function(e) {

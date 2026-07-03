@@ -2812,7 +2812,7 @@ function listarEventosCalendario(mes, anio) {
     var ini = new Date(v.fecha_inicio);
     if (isNaN(ini.getTime())) return;
     if ((ini.getMonth() + 1) === m && ini.getFullYear() === y) {
-      eventos.push({ tipo: 'vacaciones', dia: ini.getDate(), titulo: 'Vacaciones', color: '#10b981' });
+      eventos.push({ tipo: 'vacaciones', dia: ini.getDate(), titulo: 'Vacaciones', color: '#059669' });
     }
   });
 
@@ -2820,7 +2820,7 @@ function listarEventosCalendario(mes, anio) {
     var fd = new Date(h.fecha);
     if (isNaN(fd.getTime())) return;
     if ((fd.getMonth() + 1) === m && fd.getFullYear() === y) {
-      eventos.push({ tipo: 'horasextra', dia: fd.getDate(), titulo: 'Horas extra', color: '#f59e0b' });
+      eventos.push({ tipo: 'horasextra', dia: fd.getDate(), titulo: 'Horas extra', color: '#d97706' });
     }
   });
 
@@ -2828,7 +2828,7 @@ function listarEventosCalendario(mes, anio) {
     var fd = new Date(f.fecha);
     if (isNaN(fd.getTime())) return;
     if ((fd.getMonth() + 1) === m && fd.getFullYear() === y) {
-      eventos.push({ tipo: 'feriado', dia: fd.getDate(), titulo: f.nombre || 'Feriado', color: '#6366f1' });
+      eventos.push({ tipo: 'feriado', dia: fd.getDate(), titulo: f.nombre || 'Feriado', color: '#4f46e5' });
     }
   });
 
@@ -2836,7 +2836,7 @@ function listarEventosCalendario(mes, anio) {
     var fd = new Date(inc.fecha_desde);
     if (isNaN(fd.getTime())) return;
     if ((fd.getMonth() + 1) === m && fd.getFullYear() === y) {
-      eventos.push({ tipo: 'incapacidad', dia: fd.getDate(), titulo: 'Incapacidad', color: '#ef4444' });
+      eventos.push({ tipo: 'incapacidad', dia: fd.getDate(), titulo: 'Incapacidad', color: '#dc2626' });
     }
   });
 
