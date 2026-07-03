@@ -3270,10 +3270,20 @@ function obtenerExpediente(empleadoId) {
 //             entidad ('CCSS' | 'INS') | especialidad | notas
 // ===================================================================
 
-function listarIncapacidades(empleadoId) {
+/**
+ * Lista incapacidades, con filtros opcionales.
+ * @param {string} [empleadoId]
+ * @param {string} [entidad]    'CCSS' | 'INS'
+ * @param {string} [fechaDesde] yyyy-MM-dd. Filtra por fecha_desde >= este valor.
+ * @param {string} [fechaHasta] yyyy-MM-dd. Filtra por fecha_desde <= este valor.
+ */
+function listarIncapacidades(empleadoId, entidad, fechaDesde, fechaHasta) {
   var rows  = leerTabla(HOJAS.INCAPACIDADES);
   var empls = leerTabla(HOJAS.EMPLEADOS);
   if (empleadoId) rows = rows.filter(function (r) { return String(r.empleado_id) === String(empleadoId); });
+  if (entidad) rows = rows.filter(function (r) { return String(r.entidad).toUpperCase() === String(entidad).toUpperCase(); });
+  if (fechaDesde) rows = rows.filter(function (r) { return formatearFecha(r.fecha_desde) >= fechaDesde; });
+  if (fechaHasta) rows = rows.filter(function (r) { return formatearFecha(r.fecha_desde) <= fechaHasta; });
   return rows.map(function (r) {
     var emp = empls.filter(function (e) { return String(e.id) === String(r.empleado_id); })[0] || {};
     r.fecha_desde = formatearFecha(r.fecha_desde);

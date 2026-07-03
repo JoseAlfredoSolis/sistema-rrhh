@@ -7,7 +7,10 @@
   function cargarIncapacidades() {
     llenarSelectEmpleadosFiltro('filtroEmpInc');
     var empId = (document.getElementById('filtroEmpInc')||{}).value || '';
-    llamarBackend('listarIncapacidades', [empId||null], function(lista) {
+    var entidad = (document.getElementById('filtroEntInc')||{}).value || '';
+    var desde = (document.getElementById('filtroDesdeInc')||{}).value || '';
+    var hasta = (document.getElementById('filtroHastaInc')||{}).value || '';
+    llamarBackend('listarIncapacidades', [empId||null, entidad||null, desde||null, hasta||null], function(lista) {
       INCAPACIDADES = lista || [];
       _pintarIncapacidades();
     });

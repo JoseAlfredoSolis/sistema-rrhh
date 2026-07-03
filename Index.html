@@ -910,9 +910,18 @@
     <section id="vista-incapacidades" class="vista oculto">
       <div class="barra-acciones">
         <h2 class="titulo-vista">Incapacidades CCSS / INS</h2>
-        <select id="filtroEmpInc" onchange="cargarIncapacidades()" style="min-width:180px"><option value="">Todos</option></select>
         <button class="btn btn-primario" onclick="abrirFormIncapacidad()">+ Registrar incapacidad</button>
         <button class="btn" onclick="exportarTabla('tablaIncapacidades','Incapacidades')">⬇ Excel</button>
+        <div class="filtros">
+          <select id="filtroEmpInc" onchange="cargarIncapacidades()" style="min-width:180px"><option value="">Todos los empleados</option></select>
+          <select id="filtroEntInc" onchange="cargarIncapacidades()" style="max-width:130px">
+            <option value="">Toda entidad</option>
+            <option value="CCSS">CCSS</option>
+            <option value="INS">INS</option>
+          </select>
+          <input type="date" id="filtroDesdeInc" onchange="cargarIncapacidades()" title="Desde esta fecha">
+          <input type="date" id="filtroHastaInc" onchange="cargarIncapacidades()" title="Hasta esta fecha">
+        </div>
       </div>
       <div class="tabla-envoltorio">
         <table class="tabla" id="tablaIncapacidades">
