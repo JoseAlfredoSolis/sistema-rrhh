@@ -324,6 +324,16 @@
       alListo();
       return;
     }
+    if (nombre === 'jquery' && typeof jQuery !== 'undefined') {
+      _libsCargadas.jquery = true;
+      alListo();
+      return;
+    }
+    if (nombre === 'select2' && typeof jQuery !== 'undefined' && jQuery.fn.select2) {
+      _libsCargadas.select2 = true;
+      alListo();
+      return;
+    }
     google.script.run
       .withSuccessHandler(function (html) {
         var m = html.match(/<script[^>]*>([\s\S]*)<\/script>/i);
@@ -371,6 +381,7 @@
       opt.textContent = e.nombre;
       sel.appendChild(opt);
     });
+    aplicarSelect2(idSelect, 'Buscar empleado…');
   }
 
   function llenarSelectEmpleadosFiltro(idSelect) {
@@ -385,6 +396,33 @@
       sel.appendChild(opt);
     });
     if (valActual) sel.value = valActual;
+    aplicarSelect2(idSelect, 'Todos los empleados');
+  }
+
+  // ── Select2 (búsqueda dentro de los <select> de empleados) ─
+  // jQuery/Select2 se cargan localmente bajo demanda (sin CDN, ver
+  // Lib_Jquery.html / Lib_Select2.html) para no repetir los problemas
+  // de carga que tuvo este proyecto antes con librerías por CDN.
+  function cargarSelect2(alListo) {
+    cargarLibreriaLocal('jquery', function () {
+      cargarLibreriaLocal('select2', alListo);
+    });
+  }
+
+  function aplicarSelect2(idSelect, placeholder) {
+    cargarSelect2(function () {
+      var $sel = jQuery('#' + idSelect);
+      if (!$sel.length) return;
+      if ($sel.hasClass('select2-hidden-accessible')) $sel.select2('destroy');
+      $sel.select2({
+        placeholder: placeholder || 'Selecciona…',
+        allowClear: !$sel.prop('required') && !!$sel.find('option[value=""]').length,
+        language: {
+          noResults: function () { return 'Sin resultados.'; },
+          searching: function () { return 'Buscando…'; }
+        }
+      });
+    });
   }
 
   // ── Backend helper ────────────────────────────────────────

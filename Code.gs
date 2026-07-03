@@ -90,7 +90,7 @@ function include(nombreArchivo) {
  * Se carga bajo demanda desde el cliente para no bloquear el primer render.
  */
 function obtenerScriptLibreria(nombre) {
-  var mapa = { chart: 'Lib_Chart', xlsx: 'Lib_Xlsx' };
+  var mapa = { chart: 'Lib_Chart', xlsx: 'Lib_Xlsx', jquery: 'Lib_Jquery', select2: 'Lib_Select2' };
   var archivo = mapa[nombre];
   if (!archivo) throw new Error('Librería no permitida: ' + nombre);
   return HtmlService.createHtmlOutputFromFile(archivo).getContent();
