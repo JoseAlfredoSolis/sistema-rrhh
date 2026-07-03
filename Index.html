@@ -332,6 +332,13 @@
         <h2 class="titulo-vista">Reportes y gráficos</h2>
         <button class="btn btn-secundario" onclick="cargarReportes()">🔄 Actualizar</button>
         <button class="btn btn-secundario" onclick="window.print()">🖨️ Imprimir</button>
+        <div class="filtros">
+          <select id="filtroEmpReportes" onchange="cargarReportes()" style="max-width:200px">
+            <option value="">Todos los empleados</option>
+          </select>
+          <input type="date" id="filtroDesdeReportes" onchange="cargarReportes()" title="Desde esta fecha">
+          <input type="date" id="filtroHastaReportes" onchange="cargarReportes()" title="Hasta esta fecha">
+        </div>
       </div>
 
       <div class="reportes-grid">

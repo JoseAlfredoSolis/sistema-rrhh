@@ -1151,11 +1151,21 @@ function listarEmpleadosSelect() {
  *
  * @return {Object} datasets agregados.
  */
-function obtenerReportes() {
+/**
+ * Reportes del dashboard de análisis.
+ * @param {string} [empleadoId]  Si viene, limita nómina/horas/vacaciones a ese empleado.
+ * @param {string} [fechaDesde]  yyyy-MM-dd. Límite inferior (inclusive) por fecha.
+ * @param {string} [fechaHasta] yyyy-MM-dd. Límite superior (inclusive) por fecha.
+ */
+function obtenerReportes(empleadoId, fechaDesde, fechaHasta) {
+  empleadoId = empleadoId ? String(empleadoId) : '';
+  var mesDesde = fechaDesde ? String(fechaDesde).slice(0, 7) : '';
+  var mesHasta = fechaHasta ? String(fechaHasta).slice(0, 7) : '';
+
   var empleados = leerTabla(HOJAS.EMPLEADOS);
   var nombres = mapaEmpleados();
 
-  // 1) Empleados ACTIVOS por departamento.
+  // 1) Empleados ACTIVOS por departamento (snapshot organizacional, sin filtrar).
   var porDepto = {};
   empleados.forEach(function (e) {
     if (String(e.estado).toLowerCase() !== 'activo') return;
@@ -1163,27 +1173,34 @@ function obtenerReportes() {
     porDepto[dep] = (porDepto[dep] || 0) + 1;
   });
 
-  // 2) Empleados por estado (activos / inactivos).
+  // 2) Empleados por estado (activos / inactivos), sin filtrar.
   var activos = 0, inactivos = 0;
   empleados.forEach(function (e) {
     if (String(e.estado).toLowerCase() === 'activo') activos++;
     else inactivos++;
   });
 
-  // 3) Nómina: total neto por mes (ordenado por mes).
+  // 3) Nómina: total neto por mes (ordenado por mes), filtrable por empleado y rango de fechas.
   var nominaMes = {};
   leerTabla(HOJAS.NOMINA).forEach(function (n) {
     var mes = String(n.mes);
     if (!mes) return;
+    if (empleadoId && String(n.empleado_id) !== empleadoId) return;
+    if (mesDesde && mes < mesDesde) return;
+    if (mesHasta && mes > mesHasta) return;
     nominaMes[mes] = (nominaMes[mes] || 0) + (Number(n.neto) || 0);
   });
   var nominaPorMes = Object.keys(nominaMes).sort().map(function (mes) {
     return [mes, Math.round(nominaMes[mes] * 100) / 100];
   });
 
-  // 4) Asistencia: total de horas por empleado.
+  // 4) Asistencia: total de horas por empleado, filtrable por empleado y rango de fechas.
   var horasEmp = {};
   leerTabla(HOJAS.ASISTENCIA).forEach(function (a) {
+    if (empleadoId && String(a.empleado_id) !== empleadoId) return;
+    var fecha = formatearFecha(a.fecha);
+    if (fechaDesde && fecha < fechaDesde) return;
+    if (fechaHasta && fecha > fechaHasta) return;
     var nombre = nombres[a.empleado_id] || '(desconocido)';
     horasEmp[nombre] = (horasEmp[nombre] || 0) + (Number(a.horas) || 0);
   });
@@ -1191,9 +1208,13 @@ function obtenerReportes() {
     return [nom, Math.round(horasEmp[nom] * 100) / 100];
   }).sort(function (a, b) { return b[1] - a[1]; }); // de mayor a menor
 
-  // 5) Vacaciones por estado.
+  // 5) Vacaciones por estado, filtrable por empleado y rango de fechas (fecha_inicio).
   var vacEstado = {};
   leerTabla(HOJAS.VACACIONES).forEach(function (v) {
+    if (empleadoId && String(v.empleado_id) !== empleadoId) return;
+    var inicio = formatearFecha(v.fecha_inicio);
+    if (fechaDesde && inicio < fechaDesde) return;
+    if (fechaHasta && inicio > fechaHasta) return;
     var est = String(v.estado || 'pendiente').toLowerCase();
     vacEstado[est] = (vacEstado[est] || 0) + 1;
   });

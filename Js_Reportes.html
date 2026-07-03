@@ -12,13 +12,17 @@
   });
 
   function cargarReportes() {
+    llenarSelectEmpleadosFiltro('filtroEmpReportes');
+    var empId = (document.getElementById('filtroEmpReportes') || {}).value || '';
+    var fechaDesde = (document.getElementById('filtroDesdeReportes') || {}).value || '';
+    var fechaHasta = (document.getElementById('filtroHastaReportes') || {}).value || '';
     cargarLibreriaLocal('chart', function () {
       if (typeof Chart === 'undefined') {
         mostrarCargando(true);
         setTimeout(cargarReportes, 200);
         return;
       }
-      llamarBackend('obtenerReportes', [], function (r) {
+      llamarBackend('obtenerReportes', [empId, fechaDesde, fechaHasta], function (r) {
         ULTIMOS_REPORTES = r;
         dibujarReportes(r);
       });
