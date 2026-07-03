@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, viewport-fit=cover">
-  <title>Sistema RRHH v24</title>
+  <title>Sistema RRHH v32</title>
 
   <!-- Librerías JS embebidas (mismo origen que la app — sin CDN externo) -->
   <?!= include('Stylesheet'); ?>
@@ -117,7 +117,7 @@
 
     <div class="sidebar-footer">
       <button class="btn-darkmode" id="btnDarkMode" onclick="toggleDarkMode()" title="Modo oscuro">🌙</button>
-      <span class="app-version" title="Versión desplegada del Sistema RRHH">Sistema RRHH · v13</span>
+      <span class="app-version" title="Versión desplegada del Sistema RRHH">Sistema RRHH · v32</span>
     </div>
   </aside>
 
@@ -1416,7 +1416,7 @@
     setTimeout(function() {
       var badge = document.getElementById('versionBadge');
       var fecha = new Date();
-      var version = 'v27.' + fecha.getTime().toString().slice(-4);
+      var version = 'v32.' + fecha.getTime().toString().slice(-4);
       badge.textContent = version;
       badge.title = 'Última actualización: ' + fecha.toLocaleString();
     }, 100);
