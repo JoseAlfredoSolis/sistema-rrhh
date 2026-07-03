@@ -41,6 +41,10 @@ var HOJAS = {
  * Sirven para crear la hoja automáticamente si no existe.
  */
 var ENCABEZADOS = {
+  // Campos Empleados:
+  // - cargo_critico (boolean o 'si'/'no'): marca puestos con funciones críticas (no pueden ausentarse)
+  // - actividad (string): clasificación del puesto para estadísticas laborales (administrativo, operario, etc.)
+  // - padre_madre (string): nombre de beneficiario o contacto de emergencia para pensión/seguro
   Empleados:         ['id', 'nombre', 'cedula', 'departamento', 'puesto', 'fecha_ingreso', 'salario', 'estado', 'fecha_nacimiento', 'telefono',
                       'correo', 'direccion', 'genero', 'estado_civil', 'nacionalidad', 'sede', 'tipo_nomina', 'cuenta_iban', 'carne_ccss',
                       'vencimiento_cedula', 'licencia_conducir', 'vencimiento_licencia', 'jefe_inmediato', 'cargo_critico', 'actividad', 'padre_madre'],
@@ -380,6 +384,11 @@ function crearEmpleado(emp, token) {
  * @param {Array|null} filaActual  valores actuales de la fila (o null al crear).
  * @return {Array} 16 valores.
  */
+/**
+ * Extrae campos opcionales de empleado (después de los 10 básicos: id, nombre, cédula, ..., teléfono).
+ * Si el campo viene en `emp`, usa ese valor; sino, toma de la fila actual (al actualizar).
+ * Formatea fechas (vencimiento_cedula, vencimiento_licencia).
+ */
 function _camposExtraEmpleado(emp, filaActual) {
   var campos = ['correo', 'direccion', 'genero', 'estado_civil', 'nacionalidad', 'sede',
     'tipo_nomina', 'cuenta_iban', 'carne_ccss', 'vencimiento_cedula', 'licencia_conducir',
@@ -387,7 +396,7 @@ function _camposExtraEmpleado(emp, filaActual) {
   var fechas = { vencimiento_cedula: true, vencimiento_licencia: true };
   return campos.map(function (campo, i) {
     var valor = emp[campo];
-    if (valor === undefined && filaActual) valor = filaActual[10 + i]; // columnas 11+ (0-based 10+)
+    if (valor === undefined && filaActual) valor = filaActual[10 + i];  // Columnas A-J son básicos, K+ son extras
     if (valor === undefined || valor === null) valor = '';
     valor = String(valor).trim();
     return (fechas[campo] && valor) ? formatearFecha(valor) : valor;
@@ -620,6 +629,13 @@ function esFinDeSemana(fecha) {
 }
 
 /** Lista la asistencia, agregando el nombre del empleado, feriados y tipos de marcas. */
+/**
+ * Lista registros de asistencia, filtrados por empleado y fecha.
+ * Enriquece con nombres de empleados y marca días especiales (feriados, incapacidades, vacaciones).
+ * @param {string} empleadoId - ID del empleado (null = todos)
+ * @param {string} fechaDesde - Fecha inicio filtro yyyy-MM-dd (null = todas)
+ * @return {Object[]} registros con {id, empleado_id, empleado_nombre, fecha, horas, marca_especial, ...}
+ */
 function listarAsistencia(empleadoId, fechaDesde) {
   var registros = leerTabla(HOJAS.ASISTENCIA);
   if (empleadoId) {
@@ -696,8 +712,21 @@ function crearAsistencia(a, token) {
   if (!a.fecha || isNaN(new Date(a.fecha).getTime())) {
     return { ok: false, mensaje: 'La fecha no es válida.' };
   }
+  var fechaAsist = new Date(a.fecha);
+  var hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  if (fechaAsist > hoy) {
+    return { ok: false, mensaje: 'No se puede registrar asistencia con fechas futuras.' };
+  }
   if (!/^\d{2}:\d{2}$/.test(a.hora_entrada || '') || !/^\d{2}:\d{2}$/.test(a.hora_salida || '')) {
     return { ok: false, mensaje: 'Las horas deben tener formato HH:mm.' };
+  }
+  var hEnt = parseInt(a.hora_entrada.split(':')[0], 10);
+  var mEnt = parseInt(a.hora_entrada.split(':')[1], 10);
+  var hSal = parseInt(a.hora_salida.split(':')[0], 10);
+  var mSal = parseInt(a.hora_salida.split(':')[1], 10);
+  if (hEnt < 0 || hEnt > 23 || mEnt < 0 || mEnt > 59 || hSal < 0 || hSal > 23 || mSal < 0 || mSal > 59) {
+    return { ok: false, mensaje: 'Horas deben estar entre 00:00 y 23:59.' };
   }
   var fechaNorm = formatearFecha(a.fecha);
   var horas = calcularHoras(a.hora_entrada, a.hora_salida);
@@ -774,6 +803,15 @@ function crearVacaciones(v, token) {
   }
   if (new Date(v.fecha_fin) < new Date(v.fecha_inicio)) {
     return { ok: false, mensaje: 'La fecha de fin no puede ser anterior a la de inicio.' };
+  }
+
+  // Validar que no sean demasiado futuras (máximo 1 año adelante)
+  var hoy = new Date();
+  var fechaInicio = new Date(v.fecha_inicio);
+  var unAnoDelante = new Date();
+  unAnoDelante.setFullYear(unAnoDelante.getFullYear() + 1);
+  if (fechaInicio > unAnoDelante) {
+    return { ok: false, mensaje: 'Las vacaciones deben estar dentro del próximo año.' };
   }
 
   var dias = calcularDias(v.fecha_inicio, v.fecha_fin);
@@ -886,7 +924,11 @@ function cambiarEstadoVacaciones(id, nuevoEstado, token) {
 //   mes en formato "yyyy-MM" (ej: 2026-06)
 // ===================================================================
 
-/** Lista la nómina con nombre del empleado. */
+/**
+ * Lista registros de nómina con detalles de empleados y deducciones calculadas.
+ * @param {string} mesFiltro - Mes en formato "YYYY-MM" (null = todos)
+ * @return {Object[]} registros con {id, empleado_id, empleado_nombre, salario_base, deducciones, neto, ...}
+ */
 function listarNomina(mesFiltro) {
   var lista = leerTabla(HOJAS.NOMINA);
   var nombres = mapaEmpleados();
@@ -3219,6 +3261,11 @@ function crearHoraExtra(datos, token) {
   if (isNaN(Number(datos.horas)) || Number(datos.horas) <= 0) {
     return { ok: false, mensaje: 'Las horas deben ser un número mayor a 0.' };
   }
+  var tiposValidos = ['normal', 'diurno', 'nocturno', 'domingo'];
+  var tipo = String(datos.tipo || 'normal').toLowerCase();
+  if (tiposValidos.indexOf(tipo) === -1) {
+    return { ok: false, mensaje: 'Tipo de hora extra no válido. Use: ' + tiposValidos.join(', ') };
+  }
 
   var hoja  = getHoja(HOJAS.HORAS_EXTRA);
   var horasExtra = leerTabla(HOJAS.HORAS_EXTRA);
@@ -3247,8 +3294,8 @@ function crearHoraExtra(datos, token) {
     }
   }
   var id = generarId('HEX');
-  hoja.appendRow([id, datos.empleado_id, datos.fecha||hoy(), datos.horas, datos.tipo||'normal', datos.aprobado||'pendiente', monto, datos.notas||'']);
-  registrarBitacora('crear', 'HoraExtra', id, datos.horas + ' hrs extra');
+  hoja.appendRow([id, datos.empleado_id, datos.fecha||hoy(), datos.horas, tipo, datos.aprobado||'pendiente', monto, datos.notas||'']);
+  registrarBitacora('crear', 'HoraExtra', id, datos.horas + ' hrs ' + tipo);
   return { ok: true, mensaje: 'Horas extra registradas.' };
 }
 
@@ -3433,13 +3480,17 @@ function crearIncapacidad(datos, token) {
   if (new Date(datos.fecha_hasta) < new Date(datos.fecha_desde)) {
     return { ok: false, mensaje: 'La fecha de fin no puede ser anterior a la de inicio.' };
   }
+  var entidad = String(datos.entidad || 'CCSS').toUpperCase();
+  if (entidad !== 'CCSS' && entidad !== 'INS') {
+    return { ok: false, mensaje: 'Entidad debe ser CCSS o INS.' };
+  }
   var dias = calcularDias(datos.fecha_desde, datos.fecha_hasta);
   var hoja = getHoja(HOJAS.INCAPACIDADES);
   var id   = generarId('INC');
   hoja.appendRow([id, datos.empleado_id, formatearFecha(datos.fecha_desde),
-    formatearFecha(datos.fecha_hasta), dias, datos.entidad || 'CCSS',
+    formatearFecha(datos.fecha_hasta), dias, entidad,
     datos.especialidad || '', datos.notas || '']);
-  registrarBitacora('crear', 'Incapacidad', id, dias + ' días (' + (datos.entidad || 'CCSS') + ')');
+  registrarBitacora('crear', 'Incapacidad', id, dias + ' días (' + entidad + ')');
   return { ok: true, mensaje: 'Incapacidad registrada (' + dias + ' días).' };
 }
 
