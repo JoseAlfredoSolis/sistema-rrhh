@@ -2140,6 +2140,9 @@ function crearCapacitacion(cap, token) {
   if (!cap.curso || !String(cap.curso).trim()) {
     return { ok: false, mensaje: 'El nombre del curso es obligatorio.' };
   }
+  if (cap.fecha_inicio && cap.fecha_fin && new Date(cap.fecha_fin) < new Date(cap.fecha_inicio)) {
+    return { ok: false, mensaje: 'La fecha de fin no puede ser anterior a la de inicio.' };
+  }
   var hoja = getHoja(HOJAS.CAPACITACIONES);
   var id   = generarId('CAP');
   hoja.appendRow([id, cap.empleado_id, String(cap.curso).trim(),
@@ -2157,6 +2160,9 @@ function actualizarCapacitacion(cap, token) {
   if (_authErr) return _authErr;
 
   if (!cap || !cap.id) return { ok: false, mensaje: 'Falta el identificador.' };
+  if (cap.fecha_inicio && cap.fecha_fin && new Date(cap.fecha_fin) < new Date(cap.fecha_inicio)) {
+    return { ok: false, mensaje: 'La fecha de fin no puede ser anterior a la de inicio.' };
+  }
   var hoja = getHoja(HOJAS.CAPACITACIONES);
   var fila = buscarFilaPorId(hoja, cap.id);
   if (fila === -1) return { ok: false, mensaje: 'No se encontró la capacitación.' };
@@ -2948,12 +2954,17 @@ function actualizarPrestamo(datos, token) {
   var _authErr = requiereEscritura(token);
   if (_authErr) return _authErr;
 
+  var monto = Number(datos.monto);
+  var cuotas = Number(datos.cuotas);
+  if (isNaN(monto) || monto <= 0) return { ok: false, mensaje: 'El monto debe ser mayor a 0.' };
+  if (isNaN(cuotas) || cuotas <= 0) return { ok: false, mensaje: 'Las cuotas deben ser mayor a 0.' };
+
   var hoja = getHoja(HOJAS.PRESTAMOS);
   var rows = hoja.getDataRange().getValues();
   for (var i = 1; i < rows.length; i++) {
     if (String(rows[i][0]) === String(datos.id)) {
-      var cuota = Math.round(Number(datos.monto) / Number(datos.cuotas));
-      hoja.getRange(i+1, 1, 1, 9).setValues([[datos.id, datos.empleado_id, datos.monto, datos.cuotas, cuota, datos.cuotas_pagadas||0, datos.estado||'activo', datos.fecha||hoy(), datos.notas||'']]);
+      var cuota = Math.round(monto / cuotas);
+      hoja.getRange(i+1, 1, 1, 9).setValues([[datos.id, datos.empleado_id, monto, cuotas, cuota, datos.cuotas_pagadas||0, datos.estado||'activo', datos.fecha||hoy(), datos.notas||'']]);
       return { ok: true, mensaje: 'Préstamo actualizado.' };
     }
   }
@@ -3010,6 +3021,11 @@ function crearHoraExtra(datos, token) {
   var _authErr = requiereEscritura(token);
   if (_authErr) return _authErr;
 
+  if (!datos || !datos.empleado_id) return { ok: false, mensaje: 'Selecciona un empleado.' };
+  if (isNaN(Number(datos.horas)) || Number(datos.horas) <= 0) {
+    return { ok: false, mensaje: 'Las horas deben ser un número mayor a 0.' };
+  }
+
   var hoja  = getHoja(HOJAS.HORAS_EXTRA);
   var empls = leerTabla(HOJAS.EMPLEADOS);
   var emp   = empls.filter(function (e) { return String(e.id) === String(datos.empleado_id); })[0] || {};
@@ -3060,6 +3076,11 @@ function listarActivos(empleadoId) {
 function crearActivo(datos, token) {
   var _authErr = requiereEscritura(token);
   if (_authErr) return _authErr;
+
+  if (!datos || !datos.empleado_id) return { ok: false, mensaje: 'Selecciona un empleado.' };
+  if (!datos.nombre || !String(datos.nombre).trim()) {
+    return { ok: false, mensaje: 'El nombre del activo es obligatorio.' };
+  }
 
   var hoja = getHoja(HOJAS.ACTIVOS);
   var id   = generarId('ACT');
