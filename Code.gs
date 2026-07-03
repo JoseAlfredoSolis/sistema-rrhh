@@ -248,10 +248,10 @@ function validarEmpleado(emp) {
   if (!/^[0-9\-]{5,20}$/.test(String(emp.cedula).trim())) {
     return 'La cédula solo puede contener números y guiones (5 a 20 caracteres).';
   }
-  // Salario: debe ser un número >= 0.
+  // Salario: debe ser un número > 0.
   var salario = Number(emp.salario);
-  if (emp.salario === '' || emp.salario === null || isNaN(salario) || salario < 0) {
-    return 'El salario debe ser un número mayor o igual a 0.';
+  if (emp.salario === '' || emp.salario === null || isNaN(salario) || salario <= 0) {
+    return 'El salario debe ser un número mayor a 0.';
   }
   // Fecha de ingreso: obligatoria y con formato válido (yyyy-mm-dd).
   if (!emp.fecha_ingreso || isNaN(new Date(emp.fecha_ingreso).getTime())) {
@@ -442,9 +442,11 @@ function actualizarEmpleado(emp, token) {
     var hojaHist = getHoja(HOJAS.HISTORIAL_SALARIOS);
     hojaHist.appendRow([generarId('HSA'), emp.id, salarioAnterior, salarioNuevo,
       formatearFecha(new Date()), emp.notasSalario || '']);
+    registrarBitacora('actualizar', 'Empleados', emp.id,
+      'Salario: ' + salarioAnterior + ' → ' + salarioNuevo + ' | Usuario: ' + Session.getActiveUser().getEmail());
+  } else {
+    registrarBitacora('actualizar', 'Empleados', emp.id, String(emp.nombre).trim());
   }
-
-  registrarBitacora('actualizar', 'Empleados', emp.id, String(emp.nombre).trim());
   return { ok: true, mensaje: 'Empleado actualizado correctamente.' };
 }
 
@@ -466,9 +468,10 @@ function cambiarEstadoEmpleado(id, nuevoEstado, token) {
   if (fila === -1) {
     return { ok: false, mensaje: 'No se encontró el empleado.' };
   }
-  // Columna 8 = estado.
+  var estadoAnterior = String(hoja.getRange(fila, 8).getValue() || 'activo');
   hoja.getRange(fila, 8).setValue(nuevoEstado);
-  registrarBitacora('actualizar', 'Empleados', id, 'Estado: ' + nuevoEstado);
+  registrarBitacora('actualizar', 'Empleados', id,
+    'Estado: ' + estadoAnterior + ' → ' + nuevoEstado + ' | Usuario: ' + Session.getActiveUser().getEmail());
   var accion = (nuevoEstado === 'activo') ? 'reactivado' : 'dado de baja';
   return { ok: true, mensaje: 'Empleado ' + accion + ' correctamente.' };
 }
@@ -693,15 +696,15 @@ function crearAsistencia(a, token) {
     return { ok: false, mensaje: 'Las horas deben tener formato HH:mm.' };
   }
   var fechaNorm = formatearFecha(a.fecha);
-  var duplicado = leerTabla(HOJAS.ASISTENCIA).some(function (r) {
-    return String(r.empleado_id) === String(a.empleado_id) &&
-           formatearFecha(r.fecha) === fechaNorm;
-  });
-  if (duplicado) {
-    return { ok: false, mensaje: 'Ya existe un registro de asistencia para ese empleado en esa fecha.' };
-  }
   var horas = calcularHoras(a.hora_entrada, a.hora_salida);
   return conLock(function () {
+    var duplicado = leerTabla(HOJAS.ASISTENCIA).some(function (r) {
+      return String(r.empleado_id) === String(a.empleado_id) &&
+             formatearFecha(r.fecha) === fechaNorm;
+    });
+    if (duplicado) {
+      return { ok: false, mensaje: 'Ya existe un registro de asistencia para ese empleado en esa fecha.' };
+    }
     var hoja = getHoja(HOJAS.ASISTENCIA);
     var id = generarId('ASI');
     hoja.appendRow([id, a.empleado_id, fechaNorm, a.hora_entrada, a.hora_salida, horas]);
@@ -739,8 +742,10 @@ function calcularDias(inicio, fin) {
 }
 
 /** Lista las solicitudes de vacaciones con el nombre del empleado. */
-function listarVacaciones() {
+function listarVacaciones(empleadoId, estado) {
   var lista = leerTabla(HOJAS.VACACIONES);
+  if (empleadoId) lista = lista.filter(function (v) { return String(v.empleado_id) === String(empleadoId); });
+  if (estado) lista = lista.filter(function (v) { return String(v.estado).toLowerCase() === String(estado).toLowerCase(); });
   var nombres = mapaEmpleados();
   lista.forEach(function (v) {
     v.fecha_inicio = formatearFecha(v.fecha_inicio);
@@ -1716,7 +1721,8 @@ function importarDatos(entidad, filas, token) {
   var deptosExistentes = {};
   if (entidad === 'EMPLEADOS') {
     leerTabla(HOJAS.EMPLEADOS).forEach(function (e) {
-      cedulasExistentes[String(e.cedula).trim()] = true;
+      var cedNorm = String(e.cedula).trim().toUpperCase();
+      cedulasExistentes[cedNorm] = true;
     });
   } else if (entidad === 'DEPARTAMENTOS') {
     leerTabla(HOJAS.DEPARTAMENTOS).forEach(function (d) {
@@ -1730,7 +1736,7 @@ function importarDatos(entidad, filas, token) {
       if (entidad === 'EMPLEADOS') {
         var emp = {
           nombre:        String(fila.nombre        || '').trim(),
-          cedula:        String(fila.cedula         || '').trim(),
+          cedula:        String(fila.cedula         || '').trim().toUpperCase(),
           departamento:  String(fila.departamento  || '').trim(),
           puesto:        String(fila.puesto         || '').trim(),
           fecha_ingreso: String(fila.fecha_ingreso  || '').trim(),
@@ -2051,7 +2057,7 @@ function listarBitacora(limite) {
       ? Utilities.formatDate(r.fecha, Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm')
       : String(r.fecha);
   });
-  registros.sort(function (a, b) { return b.fecha > a.fecha ? -1 : 1; }).reverse();
+  registros.sort(function (a, b) { return b.fecha > a.fecha ? 1 : -1; });
   if (limite) registros = registros.slice(0, Number(limite));
   return registros;
 }
@@ -2537,6 +2543,9 @@ function _enviarWhatsApp(mensaje, cfg, opciones) {
   if (!cfg || !cfg.telefono || !cfg.apikey) {
     return { ok: false, mensaje: 'WhatsApp no configurado (teléfono o API Key faltante).' };
   }
+  if (cfg.apikey.length < 10) {
+    return { ok: false, mensaje: 'API Key de CallMeBot inválida o incompleta.' };
+  }
   if (!opciones.forzar && !cfg.activo) {
     return { ok: false, mensaje: 'Las notificaciones WhatsApp están desactivadas.' };
   }
@@ -2552,7 +2561,7 @@ function _enviarWhatsApp(mensaje, cfg, opciones) {
       '?phone='  + encodeURIComponent(telefono) +
       '&text='   + encodeURIComponent(texto) +
       '&apikey=' + encodeURIComponent(cfg.apikey);
-    var res = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    var res = UrlFetchApp.fetch(url, { muteHttpExceptions: true, validateHttpsCertificates: true });
     var code = res.getResponseCode();
     var body = res.getContentText();
     if (code >= 400) {
@@ -2768,6 +2777,10 @@ function _cuerpoProximosCumpleanios() {
   var filas = empls.map(function (e) {
     var fn   = new Date(e.fecha_nacimiento);
     var edad = hoy.getFullYear() - fn.getFullYear();
+    if (hoy.getMonth() < fn.getMonth() ||
+        (hoy.getMonth() === fn.getMonth() && hoy.getDate() < fn.getDate())) {
+      edad--;
+    }
     return '<tr>' +
       '<td style="padding:6px 10px">' + e.nombre + '</td>' +
       '<td style="padding:6px 10px">' + fn.getDate() + '/' + mesHoy + '</td>' +
@@ -2880,66 +2893,84 @@ function buscarGlobal(query) {
   if (!query || !query.trim()) return [];
   var q = String(query).toLowerCase().trim();
   var resultados = [];
+  var LIMITE = 50;
 
   function agregar(entidad, id, titulo, subtitulo, vista) {
-    resultados.push({ entidad: entidad, id: id, titulo: titulo, subtitulo: subtitulo, vista: vista });
+    if (resultados.length < LIMITE) {
+      resultados.push({ entidad: entidad, id: id, titulo: titulo, subtitulo: subtitulo, vista: vista });
+    }
+    return resultados.length < LIMITE;
   }
 
   leerTabla(HOJAS.EMPLEADOS).forEach(function (e) {
-    if (String(e.nombre||'').toLowerCase().indexOf(q) !== -1 ||
-        String(e.cedula||'').toLowerCase().indexOf(q) !== -1) {
-      agregar('Empleado', e.id, e.nombre, e.departamento||'', 'empleados');
+    if (resultados.length < LIMITE) {
+      if (String(e.nombre||'').toLowerCase().indexOf(q) !== -1 ||
+          String(e.cedula||'').toLowerCase().indexOf(q) !== -1) {
+        agregar('Empleado', e.id, e.nombre, e.departamento||'', 'empleados');
+      }
     }
   });
   leerTabla(HOJAS.CAPACITACIONES).forEach(function (c) {
-    if (String(c.curso||'').toLowerCase().indexOf(q) !== -1) {
-      agregar('Capacitacion', c.id, c.curso, c.institucion||'', 'capacitaciones');
+    if (resultados.length < LIMITE) {
+      if (String(c.curso||'').toLowerCase().indexOf(q) !== -1) {
+        agregar('Capacitacion', c.id, c.curso, c.institucion||'', 'capacitaciones');
+      }
     }
   });
   leerTabla(HOJAS.DEPARTAMENTOS).forEach(function (d) {
-    if (String(d.nombre||'').toLowerCase().indexOf(q) !== -1) {
-      agregar('Departamento', d.id, d.nombre, d.responsable||'', 'departamentos');
+    if (resultados.length < LIMITE) {
+      if (String(d.nombre||'').toLowerCase().indexOf(q) !== -1) {
+        agregar('Departamento', d.id, d.nombre, d.responsable||'', 'departamentos');
+      }
     }
   });
   leerTabla(HOJAS.ACTIVOS).forEach(function (a) {
-    if (String(a.nombre||'').toLowerCase().indexOf(q) !== -1 ||
-        String(a.serial||'').toLowerCase().indexOf(q) !== -1) {
-      agregar('Activo', a.id, a.nombre, 'Serial: ' + (a.serial||'-'), 'activos');
+    if (resultados.length < LIMITE) {
+      if (String(a.nombre||'').toLowerCase().indexOf(q) !== -1 ||
+          String(a.serial||'').toLowerCase().indexOf(q) !== -1) {
+        agregar('Activo', a.id, a.nombre, 'Serial: ' + (a.serial||'-'), 'activos');
+      }
     }
   });
 
-  // Módulos ligados a un empleado: buscan por nombre del empleado además
-  // de su propio campo distintivo (motivo, entidad, etc.).
   var nombresBusqueda = mapaEmpleados();
   leerTabla(HOJAS.PRESTAMOS).forEach(function (p) {
-    var nombreEmp = nombresBusqueda[p.empleado_id] || '';
-    if (nombreEmp.toLowerCase().indexOf(q) !== -1) {
-      agregar('Préstamo', p.id, nombreEmp, 'Monto: ' + (p.monto || 0), 'prestamos');
+    if (resultados.length < LIMITE) {
+      var nombreEmp = nombresBusqueda[p.empleado_id] || '';
+      if (nombreEmp.toLowerCase().indexOf(q) !== -1) {
+        agregar('Préstamo', p.id, nombreEmp, 'Monto: ' + (p.monto || 0), 'prestamos');
+      }
     }
   });
   leerTabla(HOJAS.INCAPACIDADES).forEach(function (inc) {
-    var nombreEmp = nombresBusqueda[inc.empleado_id] || '';
-    if (nombreEmp.toLowerCase().indexOf(q) !== -1 ||
-        String(inc.entidad||'').toLowerCase().indexOf(q) !== -1 ||
-        String(inc.especialidad||'').toLowerCase().indexOf(q) !== -1) {
-      agregar('Incapacidad', inc.id, nombreEmp, inc.especialidad || inc.entidad || '', 'incapacidades');
+    if (resultados.length < LIMITE) {
+      var nombreEmp = nombresBusqueda[inc.empleado_id] || '';
+      if (nombreEmp.toLowerCase().indexOf(q) !== -1 ||
+          String(inc.entidad||'').toLowerCase().indexOf(q) !== -1 ||
+          String(inc.especialidad||'').toLowerCase().indexOf(q) !== -1) {
+        agregar('Incapacidad', inc.id, nombreEmp, inc.especialidad || inc.entidad || '', 'incapacidades');
+      }
     }
   });
   leerTabla(HOJAS.LIQUIDACIONES).forEach(function (liq) {
-    var nombreEmp = nombresBusqueda[liq.empleado_id] || '';
-    if (nombreEmp.toLowerCase().indexOf(q) !== -1 ||
-        String(liq.motivo||'').toLowerCase().indexOf(q) !== -1) {
-      agregar('Liquidación', liq.id, nombreEmp, liq.motivo || '', 'liquidaciones');
+    if (resultados.length < LIMITE) {
+      var nombreEmp = nombresBusqueda[liq.empleado_id] || '';
+      if (nombreEmp.toLowerCase().indexOf(q) !== -1 ||
+          String(liq.motivo||'').toLowerCase().indexOf(q) !== -1) {
+        agregar('Liquidación', liq.id, nombreEmp, liq.motivo || '', 'liquidaciones');
+      }
     }
   });
   leerTabla(HOJAS.VACACIONES).forEach(function (v) {
-    var nombreEmp = nombresBusqueda[v.empleado_id] || '';
-    if (nombreEmp.toLowerCase().indexOf(q) !== -1) {
-      agregar('Vacaciones', v.id, nombreEmp, (v.dias || 0) + ' días', 'vacaciones');
+    if (resultados.length < LIMITE) {
+      var nombreEmp = nombresBusqueda[v.empleado_id] || '';
+      if (nombreEmp.toLowerCase().indexOf(q) !== -1) {
+        agregar('Vacaciones', v.id, nombreEmp, (v.dias || 0) + ' días', 'vacaciones');
+      }
     }
   });
 
-  return resultados.slice(0, 25);
+  return resultados;
 }
 
 
@@ -3045,9 +3076,10 @@ function listarResumenAsistencia(mes) {
 // MÓDULO: PRÉSTAMOS A EMPLEADOS
 // ===================================================================
 
-function listarPrestamos(empleadoId) {
+function listarPrestamos(empleadoId, estado) {
   var rows = leerTabla(HOJAS.PRESTAMOS);
   if (empleadoId) rows = rows.filter(function (r) { return String(r.empleado_id) === String(empleadoId); });
+  if (estado) rows = rows.filter(function (r) { return String(r.estado).toLowerCase() === String(estado).toLowerCase(); });
   return enriquecerConEmpleado(rows);
 }
 
@@ -3130,8 +3162,11 @@ function listarHorasExtra(empleadoId) {
   return rows.map(function (r) {
     var emp = empls.filter(function (e) { return String(e.id) === String(r.empleado_id); })[0] || {};
     if (!r.monto && emp.salario) {
-      var valorHora = Number(emp.salario) / 240;
-      r.monto = Math.round(valorHora * 1.5 * Number(r.horas));
+      var sal = Number(emp.salario);
+      if (sal > 0) {
+        var valorHora = sal / 240;
+        r.monto = Math.round(valorHora * 1.5 * Number(r.horas));
+      }
     }
     return Object.assign({ empleado_nombre: emp.nombre || '-' }, r);
   });
@@ -3151,8 +3186,11 @@ function crearHoraExtra(datos, token) {
   var emp   = empls.filter(function (e) { return String(e.id) === String(datos.empleado_id); })[0] || {};
   var monto = datos.monto || 0;
   if (!monto && emp.salario) {
-    var vh = Number(emp.salario) / 240;
-    monto  = Math.round(vh * 1.5 * Number(datos.horas));
+    var sal = Number(emp.salario);
+    if (sal > 0) {
+      var vh = sal / 240;
+      monto  = Math.round(vh * 1.5 * Number(datos.horas));
+    }
   }
   var id = generarId('HEX');
   hoja.appendRow([id, datos.empleado_id, datos.fecha||hoy(), datos.horas, datos.tipo||'normal', datos.aprobado||'pendiente', monto, datos.notas||'']);
@@ -3187,9 +3225,10 @@ function eliminarHoraExtra(id, token) {
 // MÓDULO: ACTIVOS ASIGNADOS
 // ===================================================================
 
-function listarActivos(empleadoId) {
+function listarActivos(empleadoId, estado) {
   var rows = leerTabla(HOJAS.ACTIVOS);
   if (empleadoId) rows = rows.filter(function (r) { return String(r.empleado_id) === String(empleadoId); });
+  if (estado) rows = rows.filter(function (r) { return String(r.estado).toLowerCase() === String(estado).toLowerCase(); });
   return enriquecerConEmpleado(rows);
 }
 
