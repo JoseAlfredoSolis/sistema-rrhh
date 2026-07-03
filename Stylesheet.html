@@ -901,15 +901,19 @@ html.gas-shell body {
 }
 
 html.gas-shell .app-layout {
-  min-height: auto;
+  min-height: 100%;
   max-width: 100%;
 }
 
+/* El sidebar queda pegado (sticky) al alto del viewport del shell, para
+   que su menú (.sidebar-nav) scrollee internamente en vez de estirarse
+   sin límite junto con el contenido. */
 html.gas-shell .sidebar {
-  position: relative;
-  top: auto;
-  align-self: stretch;
-  max-height: none;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  max-height: 100vh;
+  max-height: 100dvh;
 }
 
 html.gas-shell .main-area {
