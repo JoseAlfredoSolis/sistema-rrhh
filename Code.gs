@@ -2295,6 +2295,22 @@ function _getCarpetaRaizDocs() {
   return carpeta;
 }
 
+/**
+ * Busca la carpeta de un empleado por el PREFIJO estable "EMP_<id>_",
+ * ignorando el sufijo con su nombre (que puede cambiar si se corrige
+ * o actualiza el nombre del empleado). Si se buscara por nombre
+ * completo, un cambio de nombre "perdería" la carpeta ya creada.
+ */
+function _buscarCarpetaEmpleado(raiz, empleadoId) {
+  var prefijo = 'EMP_' + empleadoId + '_';
+  var iter = raiz.getFolders();
+  while (iter.hasNext()) {
+    var f = iter.next();
+    if (f.getName().indexOf(prefijo) === 0) return f;
+  }
+  return null;
+}
+
 function crearCarpetaEmpleado(empleadoId, token) {
   var _authErr = requiereEscritura(token);
   if (_authErr) return _authErr;
@@ -2305,9 +2321,11 @@ function crearCarpetaEmpleado(empleadoId, token) {
     })[0];
     if (!emp) return { ok: false, mensaje: 'Empleado no encontrado.' };
     var raiz     = _getCarpetaRaizDocs();
-    var nombre   = 'EMP_' + empleadoId + '_' + String(emp.nombre).replace(/\s+/g, '_');
-    var iter     = raiz.getFoldersByName(nombre);
-    var carpeta  = iter.hasNext() ? iter.next() : raiz.createFolder(nombre);
+    var carpeta  = _buscarCarpetaEmpleado(raiz, empleadoId);
+    if (!carpeta) {
+      var nombre = 'EMP_' + empleadoId + '_' + String(emp.nombre).replace(/\s+/g, '_');
+      carpeta = raiz.createFolder(nombre);
+    }
     return { ok: true, carpetaUrl: carpeta.getUrl(),
       mensaje: 'Carpeta de documentos lista para ' + emp.nombre };
   } catch (e) {
@@ -2322,12 +2340,10 @@ function listarDocumentos(empleadoId) {
       return String(e.id) === String(empleadoId);
     })[0];
     if (!emp) return { ok: false, mensaje: 'Empleado no encontrado.', documentos: [] };
-    var nombreCarpeta = 'EMP_' + empleadoId + '_' + String(emp.nombre).replace(/\s+/g, '_');
-    var iter = raiz.getFoldersByName(nombreCarpeta);
-    if (!iter.hasNext()) {
+    var carpetaEmp = _buscarCarpetaEmpleado(raiz, empleadoId);
+    if (!carpetaEmp) {
       return { ok: true, documentos: [], carpetaUrl: null };
     }
-    var carpetaEmp = iter.next();
     var archivos   = carpetaEmp.getFiles();
     var docs       = [];
     while (archivos.hasNext()) {
