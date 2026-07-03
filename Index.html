@@ -410,7 +410,7 @@
           </div>
           <div class="alerta-extra">
             <label style="font-size:13px">Alertar desde el día</label>
-            <input type="number" id="alertaNomDia" min="1" max="28" style="width:60px;padding:5px 8px;border:1px solid var(--color-borde);border-radius:6px;font-size:13px">
+            <input type="number" id="alertaNomDia" min="1" max="28" style="width:60px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--r);font-size:13px">
           </div>
           <label class="toggle">
             <input type="checkbox" id="alertaNomActiva">
@@ -719,7 +719,7 @@
             </table>
           </div>
           <div id="cargaAvisos" style="font-size:13px;margin:10px 0;color:var(--txt-2)"></div>
-          <div id="cargaFormulas" style="font-size:12px;margin:10px 0;padding:8px;background:var(--bg-2);border-radius:4px;color:var(--txt-2)"></div>
+          <div id="cargaFormulas" style="font-size:12px;margin:10px 0;padding:8px;background:var(--surface-2);border-radius:var(--r);color:var(--txt-2)"></div>
           <div class="campo" style="max-width:340px;margin-bottom:10px">
             <label>
               <input type="checkbox" id="cargaAnalizarFormulas" checked>
@@ -771,13 +771,13 @@
         <!-- Campos solo para proveedores externos -->
         <div id="smtpExterno" class="oculto">
           <div class="campo">
-            <label for="correoApiKey">API Key <span id="correoApiKeyHint" style="font-weight:400;color:var(--color-suave)"></span></label>
+            <label for="correoApiKey">API Key <span id="correoApiKeyHint" style="font-weight:400;color:var(--txt-3)"></span></label>
             <div style="display:flex;gap:8px;align-items:center">
               <input type="password" id="correoApiKey" placeholder="Pega aquí tu API Key" style="flex:1">
               <button type="button" class="btn btn-secundario" style="padding:8px 12px;font-size:13px"
                 onclick="toggleApiKey()">👁</button>
             </div>
-            <small style="color:var(--color-suave);font-size:12px;margin-top:4px;display:block">
+            <small style="color:var(--txt-3);font-size:12px;margin-top:4px;display:block">
               La API Key se guarda de forma segura en el servidor y nunca se expone al navegador.
               Deja el campo vacío para mantener la key guardada actualmente.
             </small>
@@ -1103,6 +1103,7 @@
         <div class="campo"><label for="vacEmpleado">Empleado *</label><select id="vacEmpleado" required></select></div>
         <div class="campo"><label for="vacInicio">Fecha inicio *</label><input type="date" id="vacInicio" required></div>
         <div class="campo"><label for="vacFin">Fecha fin *</label><input type="date" id="vacFin" required></div>
+        <div class="campo"><label>Notas</label><input type="text" id="vacNotas" maxlength="100"></div>
         <div class="modal-pie"><button type="button" class="btn btn-secundario" onclick="cerrarModalVacaciones()">Cancelar</button><button type="submit" class="btn btn-primario" id="btnGuardarVacaciones">Solicitar</button></div>
       </form>
     </div>

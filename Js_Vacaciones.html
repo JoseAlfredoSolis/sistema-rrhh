@@ -62,7 +62,8 @@
     var datos = {
       empleado_id:  document.getElementById('vacEmpleado').value,
       fecha_inicio: document.getElementById('vacInicio').value,
-      fecha_fin:    document.getElementById('vacFin').value
+      fecha_fin:    document.getElementById('vacFin').value,
+      notas:        document.getElementById('vacNotas').value
     };
     if (!datos.empleado_id) { mostrarMensaje('Selecciona un empleado.', 'error'); return; }
     if (new Date(datos.fecha_fin) < new Date(datos.fecha_inicio)) {

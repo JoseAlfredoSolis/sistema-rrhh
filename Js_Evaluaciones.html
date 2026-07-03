@@ -23,12 +23,12 @@
       var acciones = puedeEditar()
         ? '<button class="btn-mini" onclick="editarEvaluacion(\'' + e.id + '\')">Editar</button>' +
           '<button class="btn-mini peligro" onclick="eliminarEvaluacion(\'' + e.id + '\')">Eliminar</button>'
-        : '<span style="color:var(--txt-3);font-size:12px">Solo lectura</span>';
+        : '<span style="color:var(--txt-3);font-size:var(--fs-xs)">Solo lectura</span>';
       var tr = document.createElement('tr');
       tr.innerHTML =
         '<td>' + escapar(e.empleado_nombre) + '</td>' +
         '<td><strong>' + escapar(e.periodo) + '</strong></td>' +
-        '<td style="font-size:18px;font-weight:700;color:' + calColor + '">' + Number(e.calificacion).toFixed(1) + '/10</td>' +
+        '<td style="font-size:var(--fs-md);font-weight:700;font-variant-numeric:tabular-nums;color:' + calColor + '">' + Number(e.calificacion).toFixed(1) + '/10</td>' +
         '<td>' + escapar(e.evaluador || '—') + '</td>' +
         '<td>' + escapar(e.fecha || '—') + '</td>' +
         '<td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escapar(e.comentarios) + '">' + escapar(e.comentarios || '—') + '</td>' +

@@ -628,6 +628,12 @@ function listarAsistencia(empleadoId, fechaDesde) {
   }
   var nombres = mapaEmpleados();
 
+  // Set de fechas feriadas (una sola lectura de la hoja, no una por registro).
+  var feriadosSet = {};
+  leerTabla(HOJAS.FERIADOS).forEach(function (f) {
+    feriadosSet[formatearFecha(f.fecha)] = true;
+  });
+
   registros.forEach(function (r) {
     r.fecha = formatearFecha(r.fecha);
     r.hora_entrada = formatearHora(r.hora_entrada);
@@ -636,7 +642,7 @@ function listarAsistencia(empleadoId, fechaDesde) {
     r.horas = Number(r.horas) || 0;
 
     // Enriquecer con información de feriados y tipo de marca
-    r.es_feriado = esFeriado(r.fecha);
+    r.es_feriado = !!feriadosSet[r.fecha];
     r.es_fin_de_semana = esFinDeSemana(r.fecha);
 
     // Detectar tipo de marca (VAC, CCSS, INS, presente normal)
@@ -1057,12 +1063,25 @@ function obtenerDashboard() {
 
   // Mes actual en formato yyyy-MM.
   var mesActual = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM');
-  var nominaMes = leerTabla(HOJAS.NOMINA).filter(function (n) {
+
+  // Una sola lectura de NOMINA para el total del mes actual y el histórico.
+  var nomina = leerTabla(HOJAS.NOMINA);
+  var nominaMes = nomina.filter(function (n) {
     return String(n.mes) === mesActual;
   });
   var totalNeto = nominaMes.reduce(function (suma, n) {
     return suma + (Number(n.neto) || 0);
   }, 0);
+
+  var nominaMesMap = {};
+  nomina.forEach(function (n) {
+    var mes = String(n.mes);
+    if (!mes) return;
+    nominaMesMap[mes] = (nominaMesMap[mes] || 0) + (Number(n.neto) || 0);
+  });
+  var nominaHistorica = Object.keys(nominaMesMap).sort().slice(-6).map(function (mes) {
+    return { mes: mes, neto: Math.round(nominaMesMap[mes] * 100) / 100 };
+  });
 
   // Masa salarial de los empleados activos.
   var masaSalarial = activos.reduce(function (suma, e) {
@@ -1079,16 +1098,6 @@ function obtenerDashboard() {
   });
   var empleadosPorDepto = Object.keys(porDepto).map(function (d) {
     return { nombre: d, total: porDepto[d] };
-  });
-
-  var nominaMesMap = {};
-  leerTabla(HOJAS.NOMINA).forEach(function (n) {
-    var mes = String(n.mes);
-    if (!mes) return;
-    nominaMesMap[mes] = (nominaMesMap[mes] || 0) + (Number(n.neto) || 0);
-  });
-  var nominaHistorica = Object.keys(nominaMesMap).sort().slice(-6).map(function (mes) {
-    return { mes: mes, neto: Math.round(nominaMesMap[mes] * 100) / 100 };
   });
 
   return {
@@ -1163,7 +1172,8 @@ function obtenerReportes(empleadoId, fechaDesde, fechaHasta) {
   var mesHasta = fechaHasta ? String(fechaHasta).slice(0, 7) : '';
 
   var empleados = leerTabla(HOJAS.EMPLEADOS);
-  var nombres = mapaEmpleados();
+  var nombres = {};
+  empleados.forEach(function (e) { nombres[e.id] = e.nombre; });
 
   // 1) Empleados ACTIVOS por departamento (snapshot organizacional, sin filtrar).
   var porDepto = {};
@@ -1647,6 +1657,20 @@ function importarDatos(entidad, filas, token) {
   var creados = 0, omitidos = 0, errores = [];
   var hoja = getHoja(HOJAS[entidad]);
 
+  // Índices construidos UNA sola vez (en vez de releer la hoja completa
+  // por cada fila importada, que es O(n²) con importaciones grandes).
+  var cedulasExistentes = {};
+  var deptosExistentes = {};
+  if (entidad === 'EMPLEADOS') {
+    leerTabla(HOJAS.EMPLEADOS).forEach(function (e) {
+      cedulasExistentes[String(e.cedula).trim()] = true;
+    });
+  } else if (entidad === 'DEPARTAMENTOS') {
+    leerTabla(HOJAS.DEPARTAMENTOS).forEach(function (d) {
+      deptosExistentes[String(d.nombre).trim().toLowerCase()] = true;
+    });
+  }
+
   filas.forEach(function (fila, idx) {
     var numFila = idx + 2; // fila real en el Excel (encabezados en 1)
     try {
@@ -1665,7 +1689,7 @@ function importarDatos(entidad, filas, token) {
 
         var error = validarEmpleado(emp);
         if (error) { errores.push({ fila: numFila, motivo: error }); return; }
-        if (cedulaDuplicada(emp.cedula, null)) { omitidos++; return; }
+        if (cedulasExistentes[emp.cedula]) { omitidos++; return; }
 
         hoja.appendRow([generarId('EMP'), emp.nombre, emp.cedula,
           emp.departamento, emp.puesto, formatearFecha(emp.fecha_ingreso),
@@ -1673,6 +1697,7 @@ function importarDatos(entidad, filas, token) {
           fila.fecha_nacimiento ? formatearFecha(String(fila.fecha_nacimiento)) : '',
           String(fila.telefono || '').trim()
         ].concat(_camposExtraEmpleado(fila, null)));
+        cedulasExistentes[emp.cedula] = true;
         creados++;
 
       } else if (entidad === 'DEPARTAMENTOS') {
@@ -1681,8 +1706,10 @@ function importarDatos(entidad, filas, token) {
           responsable: String(fila.responsable || '').trim()
         };
         if (!dep.nombre) { errores.push({ fila: numFila, motivo: 'Nombre vacío.' }); return; }
-        if (departamentoDuplicado(dep.nombre, null)) { omitidos++; return; }
+        var claveDepto = dep.nombre.toLowerCase();
+        if (deptosExistentes[claveDepto]) { omitidos++; return; }
         hoja.appendRow([generarId('DEP'), dep.nombre, dep.responsable]);
+        deptosExistentes[claveDepto] = true;
         creados++;
       }
     } catch (e) {
@@ -2727,6 +2754,7 @@ function migrarColumnas(hoja, columnasEsperadas) {
 // MÓDULO: CÁLCULO DE DEDUCCIONES COSTA RICA
 // ===================================================================
 
+/** Si cambian los tramos/porcentajes de CCSS o renta, actualizar también _calcDed() en Js_Nomina.html (duplicado ahí para previsualizar sin round-trip al servidor). */
 function calcularDeduccionesCR(salario) {
   var sal = Number(salario) || 0;
   var ccss = Math.round(sal * 0.1067);
@@ -2990,7 +3018,7 @@ function crearHoraExtra(datos, token) {
     var vh = Number(emp.salario) / 240;
     monto  = Math.round(vh * 1.5 * Number(datos.horas));
   }
-  var id = generarId();
+  var id = generarId('HEX');
   hoja.appendRow([id, datos.empleado_id, datos.fecha||hoy(), datos.horas, datos.tipo||'normal', datos.aprobado||'pendiente', monto, datos.notas||'']);
   registrarBitacora('crear', 'HoraExtra', id, datos.horas + ' hrs extra');
   return { ok: true, mensaje: 'Horas extra registradas.' };
@@ -3034,7 +3062,7 @@ function crearActivo(datos, token) {
   if (_authErr) return _authErr;
 
   var hoja = getHoja(HOJAS.ACTIVOS);
-  var id   = generarId();
+  var id   = generarId('ACT');
   hoja.appendRow([id, datos.empleado_id, datos.nombre, datos.categoria||'', datos.serial||'', datos.fecha_entrega||hoy(), datos.fecha_devolucion||'', datos.estado||'asignado', datos.notas||'']);
   registrarBitacora('crear', 'Activo', id, datos.nombre + ' asignado');
   return { ok: true, mensaje: 'Activo registrado.' };
@@ -3091,7 +3119,7 @@ function guardarTurno(datos, token) {
       return { ok: true, mensaje: 'Turno actualizado.' };
     }
   }
-  var id = generarId();
+  var id = generarId('TUR');
   hoja.appendRow([id, datos.empleado_id, datos.semana,
     datos.lunes||'', datos.martes||'', datos.miercoles||'', datos.jueves||'',
     datos.viernes||'', datos.sabado||'', datos.domingo||'']);
@@ -3147,7 +3175,10 @@ function listarIncapacidades(empleadoId) {
   });
 }
 
-function crearIncapacidad(datos) {
+function crearIncapacidad(datos, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   if (!datos || !datos.empleado_id) return { ok: false, mensaje: 'Selecciona un empleado.' };
   if (!datos.fecha_desde || isNaN(new Date(datos.fecha_desde).getTime())) {
     return { ok: false, mensaje: 'La fecha de inicio no es válida.' };
@@ -3168,7 +3199,10 @@ function crearIncapacidad(datos) {
   return { ok: true, mensaje: 'Incapacidad registrada (' + dias + ' días).' };
 }
 
-function actualizarIncapacidad(datos) {
+function actualizarIncapacidad(datos, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   var hoja = getHoja(HOJAS.INCAPACIDADES);
   var rows = hoja.getDataRange().getValues();
   for (var i = 1; i < rows.length; i++) {
@@ -3184,7 +3218,10 @@ function actualizarIncapacidad(datos) {
   return { ok: false, mensaje: 'No encontrada.' };
 }
 
-function eliminarIncapacidad(id) {
+function eliminarIncapacidad(id, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   return eliminarFila(HOJAS.INCAPACIDADES, id, 'Incapacidad');
 }
 
@@ -3204,7 +3241,10 @@ function listarFeriados(anio) {
   return rows;
 }
 
-function crearFeriado(datos) {
+function crearFeriado(datos, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   if (!datos || !datos.fecha || isNaN(new Date(datos.fecha).getTime())) {
     return { ok: false, mensaje: 'La fecha no es válida.' };
   }
@@ -3220,7 +3260,10 @@ function crearFeriado(datos) {
   return { ok: true, mensaje: 'Feriado registrado.' };
 }
 
-function eliminarFeriado(id) {
+function eliminarFeriado(id, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   return eliminarFila(HOJAS.FERIADOS, id, 'Feriado');
 }
 
@@ -3298,7 +3341,10 @@ function calcularLiquidacion(empleadoId, fechaSalida) {
   };
 }
 
-function crearLiquidacion(datos) {
+function crearLiquidacion(datos, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   if (!datos || !datos.empleado_id) return { ok: false, mensaje: 'Selecciona un empleado.' };
   if (!datos.fecha_salida || isNaN(new Date(datos.fecha_salida).getTime())) {
     return { ok: false, mensaje: 'La fecha de salida no es válida.' };
@@ -3327,7 +3373,7 @@ function crearLiquidacion(datos) {
   registrarBitacora('crear', 'Liquidacion', id, 'Liquidación de ' + monto + ' para ' + datos.empleado_id);
 
   // Opcional: dar de baja al empleado en el mismo paso.
-  if (datos.inactivar) cambiarEstadoEmpleado(datos.empleado_id, 'inactivo');
+  if (datos.inactivar) cambiarEstadoEmpleado(datos.empleado_id, 'inactivo', token);
 
   return {
     ok: true,
@@ -3337,7 +3383,10 @@ function crearLiquidacion(datos) {
   };
 }
 
-function actualizarLiquidacion(datos) {
+function actualizarLiquidacion(datos, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   var hoja = getHoja(HOJAS.LIQUIDACIONES);
   var rows = hoja.getDataRange().getValues();
   for (var i = 1; i < rows.length; i++) {
@@ -3353,7 +3402,10 @@ function actualizarLiquidacion(datos) {
   return { ok: false, mensaje: 'No encontrada.' };
 }
 
-function marcarLiquidacionPagada(id) {
+function marcarLiquidacionPagada(id, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   var hoja = getHoja(HOJAS.LIQUIDACIONES);
   var fila = buscarFilaPorId(hoja, id);
   if (fila === -1) return { ok: false, mensaje: 'No se encontró la liquidación.' };
@@ -3362,7 +3414,10 @@ function marcarLiquidacionPagada(id) {
   return { ok: true, mensaje: 'Liquidación marcada como pagada.' };
 }
 
-function eliminarLiquidacion(id) {
+function eliminarLiquidacion(id, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   return eliminarFila(HOJAS.LIQUIDACIONES, id, 'Liquidacion');
 }
 

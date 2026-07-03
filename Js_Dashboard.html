@@ -39,7 +39,7 @@
         var div = document.createElement('div');
         div.className = 'tarjeta';
         div.innerHTML =
-          '<div style="font-size:24px;margin-bottom:4px">' + t.icono + '</div>' +
+          '<div style="font-size:var(--fs-xl);margin-bottom:4px">' + t.icono + '</div>' +
           '<div class="num">' + escapar(t.num) + '</div>' +
           '<div class="lbl">' + escapar(t.lbl) + '</div>';
         cont.appendChild(div);
@@ -75,7 +75,7 @@
       var div = document.createElement('div');
       var colorUrgencia = { crítica: '#dc2626', alta: '#f97316', media: '#d97706', baja: '#4f46e5' };
       div.style.cssText = 'padding:10px;margin-bottom:8px;background:'+colorUrgencia[a.urgencia]+'20;' +
-        'border-left:3px solid '+colorUrgencia[a.urgencia]+';border-radius:4px;font-size:13px';
+        'border-left:3px solid '+colorUrgencia[a.urgencia]+';border-radius:var(--r);font-size:var(--fs-sm)';
       div.innerHTML = (iconos[a.tipo] || '⚠️') + ' <strong>' + escapar(a.empleado) + ':</strong> ' +
         escapar(a.mensaje) + ' <span style="color:var(--txt-3)">('+escapar(a.fecha)+')</span>';
       divAlertas.appendChild(div);

@@ -15,12 +15,12 @@
         }[r.accion] || 'var(--txt-3)';
         var tr = document.createElement('tr');
         tr.innerHTML =
-          '<td style="font-size:12px;white-space:nowrap">' + escapar(r.fecha) + '</td>' +
-          '<td style="font-size:12px">' + escapar(r.usuario || '—') + '</td>' +
-          '<td><span style="color:' + accionColor + ';font-weight:600;font-size:12px;text-transform:capitalize">' + escapar(r.accion) + '</span></td>' +
-          '<td style="font-size:12px">' + escapar(r.entidad || '—') + '</td>' +
-          '<td style="font-size:11px;color:var(--txt-3)">' + escapar(String(r.entidad_id || '').slice(0, 20)) + '</td>' +
-          '<td style="font-size:12px">' + escapar(r.resumen || '—') + '</td>';
+          '<td style="font-size:var(--fs-xs);white-space:nowrap">' + escapar(r.fecha) + '</td>' +
+          '<td style="font-size:var(--fs-xs)">' + escapar(r.usuario || '—') + '</td>' +
+          '<td><span style="color:' + accionColor + ';font-weight:600;font-size:var(--fs-xs);text-transform:capitalize">' + escapar(r.accion) + '</span></td>' +
+          '<td style="font-size:var(--fs-xs)">' + escapar(r.entidad || '—') + '</td>' +
+          '<td style="font-size:var(--fs-2xs);color:var(--txt-3)">' + escapar(String(r.entidad_id || '').slice(0, 20)) + '</td>' +
+          '<td style="font-size:var(--fs-xs)">' + escapar(r.resumen || '—') + '</td>';
         cuerpo.appendChild(tr);
       });
     });
