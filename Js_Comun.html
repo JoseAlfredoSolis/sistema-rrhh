@@ -613,9 +613,15 @@
 
     var tbody = tabla.querySelector('tbody');
     var filas = Array.prototype.slice.call(tbody.querySelectorAll('tr:not(.fila-total)'));
+    var esFechaISO = /^\d{4}-\d{2}-\d{2}/;
     filas.sort(function (a, b) {
-      var va = (a.cells[colIdx] || {}).textContent || '';
-      var vb = (b.cells[colIdx] || {}).textContent || '';
+      var va = ((a.cells[colIdx] || {}).textContent || '').trim();
+      var vb = ((b.cells[colIdx] || {}).textContent || '').trim();
+      // Fechas yyyy-MM-dd: comparar como texto ISO, no extraer solo dígitos
+      // (si no, "2026-07-03" se leería como el número 2026, perdiendo mes/día).
+      if (esFechaISO.test(va) && esFechaISO.test(vb)) {
+        return asc ? va.localeCompare(vb) : vb.localeCompare(va);
+      }
       var na = parseFloat(va.replace(/[^\d.-]/g,''));
       var nb = parseFloat(vb.replace(/[^\d.-]/g,''));
       if (!isNaN(na) && !isNaN(nb)) return asc ? na-nb : nb-na;

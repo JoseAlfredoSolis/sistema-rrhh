@@ -1347,6 +1347,17 @@ function guardarConfigAlertas(cfg, token) {
  * También se puede invocar manualmente desde appsscript.google.com.
  */
 function verificarAlertas() {
+  // Cada bloque va en su propio try/catch: si uno falla (ej. una fecha
+  // malformada en un empleado), los demás avisos igual deben salir en
+  // vez de que todo el chequeo diario se aborte en silencio.
+  function _intentar(nombre, fn) {
+    try {
+      fn();
+    } catch (e) {
+      try { registrarBitacora('error', 'Sistema', '', 'Alerta "' + nombre + '" falló: ' + e.message); } catch (e2) {}
+    }
+  }
+
   var cfg    = obtenerConfigAlertas();
   var emails = cfg.destinatarios.split(',').map(function (e) { return e.trim(); }).filter(Boolean);
   var waCfg  = obtenerConfigWhatsAppInterno();
@@ -1356,30 +1367,38 @@ function verificarAlertas() {
 
   if (emails.length) {
     if (cfg.vacacionesPendientesActiva) {
-      var msgVac = _cuerpoVacacionesPendientes();
-      if (msgVac) _enviarCorreo(emails, '🏖 Vacaciones pendientes de aprobación', msgVac);
+      _intentar('vacaciones pendientes', function () {
+        var msgVac = _cuerpoVacacionesPendientes();
+        if (msgVac) _enviarCorreo(emails, '🏖 Vacaciones pendientes de aprobación', msgVac);
+      });
     }
 
     if (cfg.nominaMensualActiva) {
-      var hoy = new Date();
-      if (hoy.getDate() >= Number(cfg.nominaMensualDia)) {
-        var msgNom = _cuerpoNominaMensual();
-        if (msgNom) _enviarCorreo(emails, '💰 Nómina mensual no generada', msgNom);
-      }
+      _intentar('nómina mensual', function () {
+        var hoy = new Date();
+        if (hoy.getDate() >= Number(cfg.nominaMensualDia)) {
+          var msgNom = _cuerpoNominaMensual();
+          if (msgNom) _enviarCorreo(emails, '💰 Nómina mensual no generada', msgNom);
+        }
+      });
     }
 
     if (cfg.resumenSemanalActivo && new Date().getDay() === 1) {
-      _enviarCorreo(emails, '📊 Resumen semanal de RRHH', _cuerpoResumenSemanal());
+      _intentar('resumen semanal', function () {
+        _enviarCorreo(emails, '📊 Resumen semanal de RRHH', _cuerpoResumenSemanal());
+      });
     }
 
     if (cfg.cumpleaniosActiva && new Date().getDate() === 1) {
-      var msgCump = _cuerpoProximosCumpleanios();
-      if (msgCump) _enviarCorreo(emails, '🎂 Cumpleaños de empleados este mes', msgCump);
+      _intentar('cumpleaños', function () {
+        var msgCump = _cuerpoProximosCumpleanios();
+        if (msgCump) _enviarCorreo(emails, '🎂 Cumpleaños de empleados este mes', msgCump);
+      });
     }
   }
 
   if (waListo) {
-    _enviarAlertasWhatsApp(cfg, waCfg);
+    _intentar('whatsapp', function () { _enviarAlertasWhatsApp(cfg, waCfg); });
   }
 }
 
@@ -2337,6 +2356,23 @@ function crearRespaldo(token) {
   var _authErr = requiereAdmin(token);
   if (_authErr) return _authErr;
 
+  return _crearRespaldoInterno();
+}
+
+/**
+ * Handler del trigger semanal. Los triggers de tiempo de Apps Script
+ * llaman a la función SIN argumentos, así que no puede exigir token
+ * (crearRespaldo(token) sí lo exige, para el botón manual). Además
+ * registra en bitácora si falla, para no fallar en silencio cada domingo.
+ */
+function crearRespaldoTrigger() {
+  var res = _crearRespaldoInterno();
+  if (!res.ok) {
+    try { registrarBitacora('error', 'Sistema', '', 'Respaldo automático falló: ' + res.mensaje); } catch (e) {}
+  }
+}
+
+function _crearRespaldoInterno() {
   try {
     var libro  = getLibro();
     var fecha  = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
@@ -2352,8 +2388,8 @@ function activarRespaldoSemanal(token) {
   var _authErr = requiereAdmin(token);
   if (_authErr) return _authErr;
 
-  desactivarRespaldoSemanal();
-  var t = ScriptApp.newTrigger('crearRespaldo')
+  desactivarRespaldoSemanal(token);
+  var t = ScriptApp.newTrigger('crearRespaldoTrigger')
     .timeBased().everyWeeks(1).onWeekDay(ScriptApp.WeekDay.SUNDAY).atHour(2).create();
   PropertiesService.getScriptProperties().setProperty(CLAVE_RESPALDO_TRIGGER, t.getUniqueId());
   return { ok: true, mensaje: 'Respaldo automático semanal activado (domingos a las 2 a.m.).' };
@@ -2364,7 +2400,8 @@ function desactivarRespaldoSemanal(token) {
   if (_authErr) return _authErr;
 
   ScriptApp.getProjectTriggers().forEach(function (t) {
-    if (t.getHandlerFunction() === 'crearRespaldo') ScriptApp.deleteTrigger(t);
+    var fn = t.getHandlerFunction();
+    if (fn === 'crearRespaldoTrigger' || fn === 'crearRespaldo') ScriptApp.deleteTrigger(t);
   });
   PropertiesService.getScriptProperties().deleteProperty(CLAVE_RESPALDO_TRIGGER);
   return { ok: true, mensaje: 'Respaldo automático desactivado.' };
@@ -2372,7 +2409,8 @@ function desactivarRespaldoSemanal(token) {
 
 function estadoRespaldo() {
   var activo = ScriptApp.getProjectTriggers().some(function (t) {
-    return t.getHandlerFunction() === 'crearRespaldo';
+    var fn = t.getHandlerFunction();
+    return fn === 'crearRespaldoTrigger' || fn === 'crearRespaldo';
   });
   return { activo: activo };
 }
@@ -2819,6 +2857,38 @@ function buscarGlobal(query) {
       agregar('Activo', a.id, a.nombre, 'Serial: ' + (a.serial||'-'), 'activos');
     }
   });
+
+  // Módulos ligados a un empleado: buscan por nombre del empleado además
+  // de su propio campo distintivo (motivo, entidad, etc.).
+  var nombresBusqueda = mapaEmpleados();
+  leerTabla(HOJAS.PRESTAMOS).forEach(function (p) {
+    var nombreEmp = nombresBusqueda[p.empleado_id] || '';
+    if (nombreEmp.toLowerCase().indexOf(q) !== -1) {
+      agregar('Préstamo', p.id, nombreEmp, 'Monto: ' + (p.monto || 0), 'prestamos');
+    }
+  });
+  leerTabla(HOJAS.INCAPACIDADES).forEach(function (inc) {
+    var nombreEmp = nombresBusqueda[inc.empleado_id] || '';
+    if (nombreEmp.toLowerCase().indexOf(q) !== -1 ||
+        String(inc.entidad||'').toLowerCase().indexOf(q) !== -1 ||
+        String(inc.especialidad||'').toLowerCase().indexOf(q) !== -1) {
+      agregar('Incapacidad', inc.id, nombreEmp, inc.especialidad || inc.entidad || '', 'incapacidades');
+    }
+  });
+  leerTabla(HOJAS.LIQUIDACIONES).forEach(function (liq) {
+    var nombreEmp = nombresBusqueda[liq.empleado_id] || '';
+    if (nombreEmp.toLowerCase().indexOf(q) !== -1 ||
+        String(liq.motivo||'').toLowerCase().indexOf(q) !== -1) {
+      agregar('Liquidación', liq.id, nombreEmp, liq.motivo || '', 'liquidaciones');
+    }
+  });
+  leerTabla(HOJAS.VACACIONES).forEach(function (v) {
+    var nombreEmp = nombresBusqueda[v.empleado_id] || '';
+    if (nombreEmp.toLowerCase().indexOf(q) !== -1) {
+      agregar('Vacaciones', v.id, nombreEmp, (v.dias || 0) + ' días', 'vacaciones');
+    }
+  });
+
   return resultados.slice(0, 25);
 }
 
