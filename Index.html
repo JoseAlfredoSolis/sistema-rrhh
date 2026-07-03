@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, viewport-fit=cover">
-  <title>Sistema RRHH v32</title>
+  <title>Sistema RRHH v33</title>
 
   <!-- Librerías JS embebidas (mismo origen que la app — sin CDN externo) -->
   <?!= include('Stylesheet'); ?>
@@ -117,7 +117,7 @@
 
     <div class="sidebar-footer">
       <button class="btn-darkmode" id="btnDarkMode" onclick="toggleDarkMode()" aria-label="Modo oscuro" title="Modo oscuro">🌙</button>
-      <span class="app-version" title="Versión desplegada del Sistema RRHH">Sistema RRHH · v32</span>
+      <span class="app-version" title="Versión desplegada del Sistema RRHH">Sistema RRHH · v33</span>
     </div>
   </aside>
 
@@ -283,8 +283,14 @@
         <button class="btn btn-primario" onclick="abrirFormVacaciones()">+ Nueva solicitud</button>
         <button class="btn btn-secundario" onclick="exportarTabla('tablaVacaciones','Vacaciones')">📊 Exportar Excel</button>
         <div class="filtros">
-          <select id="filtroEmpVac" onchange="consultarBalanceVacaciones()" style="max-width:200px">
-            <option value="">— Ver balance de empleado —</option>
+          <select id="filtroEmpVac" onchange="cargarVacaciones(); consultarBalanceVacaciones()" style="max-width:200px">
+            <option value="">Todos los empleados</option>
+          </select>
+          <select id="filtroEstadoVac" onchange="cargarVacaciones()" style="max-width:150px">
+            <option value="">Todo estado</option>
+            <option value="pendiente">Pendiente</option>
+            <option value="aprobada">Aprobada</option>
+            <option value="rechazada">Rechazada</option>
           </select>
         </div>
       </div>
@@ -853,7 +859,12 @@
     <section id="vista-prestamos" class="vista oculto">
       <div class="barra-acciones">
         <h2 class="titulo-vista">Préstamos a empleados</h2>
-        <select id="filtroEmpPre" onchange="cargarPrestamos()" style="min-width:180px"><option value="">Todos</option></select>
+        <select id="filtroEmpPre" onchange="cargarPrestamos()" style="min-width:180px"><option value="">Todos los empleados</option></select>
+        <select id="filtroEstadoPre" onchange="cargarPrestamos()" style="max-width:140px">
+          <option value="">Todo estado</option>
+          <option value="activo">Activo</option>
+          <option value="saldado">Saldado</option>
+        </select>
         <button class="btn btn-primario" onclick="abrirFormPrestamo()">+ Nuevo préstamo</button>
         <button class="btn" onclick="exportarTabla('tablaPrestamos','Prestamos')">⬇ Excel</button>
       </div>
@@ -887,7 +898,14 @@
     <section id="vista-activos" class="vista oculto">
       <div class="barra-acciones">
         <h2 class="titulo-vista">Activos asignados</h2>
-        <select id="filtroEmpAct" onchange="cargarActivos()" style="min-width:180px"><option value="">Todos</option></select>
+        <select id="filtroEmpAct" onchange="cargarActivos()" style="min-width:180px"><option value="">Todos los empleados</option></select>
+        <select id="filtroEstadoAct" onchange="cargarActivos()" style="max-width:140px">
+          <option value="">Todo estado</option>
+          <option value="asignado">Asignado</option>
+          <option value="devuelto">Devuelto</option>
+          <option value="dañado">Dañado</option>
+          <option value="perdido">Perdido</option>
+        </select>
         <button class="btn btn-primario" onclick="abrirFormActivo()">+ Registrar activo</button>
         <button class="btn" onclick="exportarTabla('tablaActivos','Activos')">⬇ Excel</button>
       </div>
@@ -947,7 +965,12 @@
     <section id="vista-liquidaciones" class="vista oculto">
       <div class="barra-acciones">
         <h2 class="titulo-vista">Liquidaciones laborales</h2>
-        <select id="filtroEmpLiq" onchange="cargarLiquidaciones()" style="min-width:180px"><option value="">Todos</option></select>
+        <select id="filtroEmpLiq" onchange="cargarLiquidaciones()" style="min-width:180px"><option value="">Todos los empleados</option></select>
+        <select id="filtroEstadoLiq" onchange="cargarLiquidaciones()" style="max-width:140px">
+          <option value="">Todo estado</option>
+          <option value="pendiente">Pendiente</option>
+          <option value="pagada">Pagada</option>
+        </select>
         <button class="btn btn-primario" onclick="abrirFormLiquidacion()">+ Nueva liquidación</button>
         <button class="btn" onclick="exportarTabla('tablaLiquidaciones','Liquidaciones')">⬇ Excel</button>
       </div>
@@ -1436,7 +1459,7 @@
     setTimeout(function() {
       var badge = document.getElementById('versionBadge');
       var fecha = new Date();
-      var version = 'v32.' + fecha.getTime().toString().slice(-4);
+      var version = 'v33.' + fecha.getTime().toString().slice(-4);
       badge.textContent = version;
       badge.title = 'Última actualización: ' + fecha.toLocaleString();
     }, 100);
