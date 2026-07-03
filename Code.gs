@@ -1243,6 +1243,40 @@ function obtenerReportes(empleadoId, fechaDesde, fechaHasta) {
 
 
 // ===================================================================
+// MÓDULO: VISIBILIDAD DE MÓDULOS EN EL MENÚ
+// ===================================================================
+// Permite ocultar del menú lateral los módulos que una empresa no usa.
+// Guarda solo la LISTA de vistas desactivadas (todo lo demás queda
+// visible por defecto). Dashboard y Configuración nunca se desactivan.
+// ===================================================================
+
+var CLAVE_MODULOS_DESACTIVADOS = 'MODULOS_DESACTIVADOS';
+var MODULOS_SIEMPRE_VISIBLES = ['dashboard', 'configuracion'];
+
+function obtenerModulosDesactivados() {
+  var raw = PropertiesService.getScriptProperties().getProperty(CLAVE_MODULOS_DESACTIVADOS);
+  if (!raw) return [];
+  try {
+    var lista = JSON.parse(raw);
+    return Array.isArray(lista) ? lista : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function guardarModulosDesactivados(lista, token) {
+  var _authErr = requiereAdmin(token);
+  if (_authErr) return _authErr;
+
+  lista = (Array.isArray(lista) ? lista : []).filter(function (v) {
+    return MODULOS_SIEMPRE_VISIBLES.indexOf(v) === -1;
+  });
+  PropertiesService.getScriptProperties().setProperty(CLAVE_MODULOS_DESACTIVADOS, JSON.stringify(lista));
+  return { ok: true, mensaje: 'Módulos actualizados.' };
+}
+
+
+// ===================================================================
 // MÓDULO: ALERTAS POR CORREO ELECTRÓNICO
 // ===================================================================
 // Permite configurar alertas automáticas enviadas con MailApp.

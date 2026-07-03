@@ -12,6 +12,42 @@
     cargarConfigCorreo();
     cargarEstadoRespaldo();
     cargarConfigRoles();
+    cargarModulosConfig();
+  }
+
+  // ── Módulos visibles en el menú ────────────────────────────
+  var MODULOS_SIEMPRE_VISIBLES = ['dashboard', 'configuracion'];
+
+  function cargarModulosConfig() {
+    llamarBackend('obtenerModulosDesactivados', [], function (desactivados) {
+      desactivados = desactivados || [];
+      var cont = document.getElementById('listaModulosConfig');
+      if (!cont) return;
+      cont.innerHTML = Object.keys(TITULOS).filter(function (v) {
+        return MODULOS_SIEMPRE_VISIBLES.indexOf(v) === -1;
+      }).map(function (v) {
+        var activo = desactivados.indexOf(v) === -1;
+        return '<div class="alerta-fila">' +
+          '<div class="alerta-info"><strong>' + escapar(TITULOS[v]) + '</strong></div>' +
+          '<label class="toggle">' +
+            '<input type="checkbox" class="chkModulo" data-vista="' + v + '"' + (activo ? ' checked' : '') + '>' +
+            '<span class="toggle-pista"></span>' +
+          '</label>' +
+        '</div>';
+      }).join('');
+    });
+  }
+
+  function guardarModulosConfig() {
+    if (!esAdmin()) { mostrarMensaje('Solo un administrador puede cambiar esto.', 'error'); return; }
+    var desactivados = [];
+    document.querySelectorAll('#listaModulosConfig .chkModulo').forEach(function (chk) {
+      if (!chk.checked) desactivados.push(chk.getAttribute('data-vista'));
+    });
+    llamarBackend('guardarModulosDesactivados', [desactivados], function (res) {
+      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+      if (res.ok) aplicarModulosDesactivados(desactivados);
+    });
   }
 
   function cargarEstadoOAuth() {

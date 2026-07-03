@@ -130,6 +130,15 @@
     });
   }
 
+  /** Oculta del menú los data-vista incluidos en `lista` (nombres de vista). */
+  function aplicarModulosDesactivados(lista) {
+    lista = lista || [];
+    document.querySelectorAll('.nav-item[data-vista]').forEach(function (btn) {
+      var vista = btn.getAttribute('data-vista');
+      btn.classList.toggle('oculto', lista.indexOf(vista) !== -1);
+    });
+  }
+
   window.addEventListener('load', function () {
     ajustarShellGas();
     window.addEventListener('resize', ajustarShellGas);
@@ -145,6 +154,7 @@
       if (btnC) btnC.title = 'Mostrar menú';
     }
     aplicarIconosNav();
+    llamarBackend('obtenerModulosDesactivados', [], function (lista) { aplicarModulosDesactivados(lista); });
     mostrarVista('dashboard');
     iniciarSesionApp();
   });
