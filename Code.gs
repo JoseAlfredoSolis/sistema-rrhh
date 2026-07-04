@@ -3896,7 +3896,7 @@ function formatearNumero(num) {
 }
 
 /** Calcula liquidación laboral completa según estructura Costa Rica (modelo Tropicales del Valle). */
-function calcularLiquidacion(empleadoId, fechaSalida, motivoSalida, totalSalarios, promedioSalarios, tipoNomina) {
+function calcularLiquidacion(empleadoId, fechaSalida, motivoSalida, totalSalarios, promedioSalarios, tipoNomina, diasVacInput) {
   var emp = obtenerEmpleadoCompleto(empleadoId);
   if (!emp) return { ok: false, mensaje: 'Empleado no encontrado.' };
 
@@ -3907,120 +3907,91 @@ function calcularLiquidacion(empleadoId, fechaSalida, motivoSalida, totalSalario
     return { ok: false, mensaje: 'Fecha de salida anterior a ingreso (' + emp.fecha_ingreso + ').' };
   }
 
-  var detalles = [];
-  var totalPrestaciones = 0;
+  var tipoNominaNorm = tipoNomina || emp.tipo_nomina || 'Semanal';
+  var motivo = motivoSalida || 'renuncia';
 
-  // Calcular meses laborados
+  // Calcular meses y días laborados
   var mesesLaborados = (fechaSal.getFullYear() - fechaIng.getFullYear()) * 12 +
                        (fechaSal.getMonth() - fechaIng.getMonth());
   var diasAdicionales = fechaSal.getDate() - fechaIng.getDate();
-  if (diasAdicionales < 0) {
-    mesesLaborados--;
-    diasAdicionales += 30;
-  }
+  if (diasAdicionales < 0) { mesesLaborados--; diasAdicionales += 30; }
+  var mesesTotales = mesesLaborados + (diasAdicionales / 30);
 
-  // Usar salarios ingresados si están disponibles, sino usar salario base del empleado
-  var salarioMensual = (promedioSalarios || emp.salario);
-  var salarioDiario = salarioMensual / 30;
+  // Salario mensual (promedio 6 meses si se ingresó, si no el base)
+  var salarioMensual = Number(promedioSalarios) || Number(emp.salario) || 0;
+
+  // Salario diario según tipo de nómina (Excel: Semanal=/26, Quincenal=/30)
+  var salarioDiario = (tipoNominaNorm === 'Quincenal') ? (salarioMensual / 30) : (salarioMensual / 26);
 
   // ====== 1. AGUINALDO ======
-  // Si se ingresaron salarios: suma / 12. Si no: un mes de salario
-  var montoAguinaldo = (totalSalarios ? (totalSalarios / 12) : (salarioMensual));
-  detalles.push({
-    titulo: '1- Cálculo del Aguinaldo:',
-    concepto: 'Total Por Aguinaldo',
-    monto: Math.round(montoAguinaldo * 100) / 100
-  });
-  totalPrestaciones += montoAguinaldo;
+  // Excel: suma últimos 12 meses / 12
+  var montoAguinaldo = totalSalarios ? (Number(totalSalarios) / 12) : salarioMensual;
 
   // ====== 2. VACACIONES ======
-  // 5 días por año (2.5 días por semestre en CR)
-  var balance = obtenerBalanceVacaciones(empleadoId);
-  var diasVacaciones = Math.min(balance.diasDisponibles || 0, 5); // Max 5 días en liquidación
-  var salarioDiarioVac = salarioDiario;
-  var montoVacaciones = diasVacaciones * salarioDiarioVac;
-
-  detalles.push({
-    titulo: '2- Cálculo de las Vacaciones:',
-    salarioPromedio: emp.salario,
-    salarioPorDia: Math.round(salarioDiarioVac * 100) / 100,
-    diasRecibir: diasVacaciones,
-    concepto: 'Total Por Vacaciones',
-    monto: Math.round(montoVacaciones * 100) / 100
-  });
-  totalPrestaciones += montoVacaciones;
+  // Excel: días ingresados × salario diario (Días a Recibir Vacaciones = 5 en el ejemplo)
+  var diasVacaciones = (diasVacInput !== undefined && diasVacInput !== null && diasVacInput !== '')
+    ? Number(diasVacInput)
+    : (function() {
+        var bal = obtenerBalanceVacaciones(empleadoId);
+        return (bal && bal.diasDisponibles > 0) ? bal.diasDisponibles : 5;
+      })();
+  var montoVacaciones = diasVacaciones * salarioDiario;
 
   // ====== 3. CESANTÍA ======
-  // Depende del motivo de salida
-  var correspondeCesantia = (motivoSalida !== 'renuncia');
+  // Solo aplica en Despido Con Responsabilidad Patronal (Excel: G33="No" si es renuncia o sin resp)
+  var correspondeCesantia = (motivo === 'despido_con_resp');
   var montoCesantia = 0;
-
   if (correspondeCesantia) {
     var diasTrabajados = Math.round((fechaSal - fechaIng) / (24 * 60 * 60 * 1000));
     montoCesantia = calcularCesantiaCompleta(salarioMensual, diasTrabajados);
   }
 
-  detalles.push({
-    titulo: '3- Calculo de la Cesantia:',
-    corresponde: correspondeCesantia ? 'SÍ' : 'NO',
-    concepto: 'Total Por Auxilio de Cesantia',
-    monto: Math.round(montoCesantia * 100) / 100
-  });
-  totalPrestaciones += montoCesantia;
-
   // ====== 4. PREAVISO ======
-  // 30 días o lo que corresponda según tipo de nómina
+  // Solo aplica en Despido Con Responsabilidad Patronal (el empleador paga al trabajador)
+  // Excel: tabla por meses laborados (Código de Trabajo CR)
+  var correspondePreaviso = (motivo === 'despido_con_resp');
+  var diasPreaviso = 0;
   var montoPreaviso = 0;
-  var correspondePreaviso = (motivoSalida === 'renuncia'); // Normalmente renuncia paga preaviso
-
   if (correspondePreaviso) {
-    montoPreaviso = salarioMensual; // 30 días como un mes
+    if (mesesTotales < 3) {
+      diasPreaviso = 7;
+    } else if (mesesTotales < 6) {
+      diasPreaviso = 15;
+    } else {
+      diasPreaviso = 30;
+    }
+    montoPreaviso = diasPreaviso * salarioDiario;
   }
 
-  detalles.push({
-    titulo: '4- Calculo del Preaviso:',
-    corresponde: correspondePreaviso ? 'SÍ' : 'NO',
-    diasPreaviso: correspondePreaviso ? 30 : 0,
-    concepto: 'Total Por Preaviso',
-    monto: Math.round(montoPreaviso * 100) / 100
-  });
-  totalPrestaciones += montoPreaviso;
-
-  // ====== DESCUENTOS (simplificados - se aplican al total) ======
-  var descuentoCCSS = totalPrestaciones * 0.0915; // CCSS 9.15%
-
-  // TOTAL FINAL
-  var totalNeto = totalPrestaciones - descuentoCCSS;
+  // ====== TOTAL PRESTACIONES ======
+  // Excel: G46+G38+G30+G23 — sin descuento CCSS
+  var totalPrestaciones = montoAguinaldo + montoVacaciones + montoCesantia + montoPreaviso;
 
   return {
     ok: true,
     empleado: emp.nombre,
     cedula: emp.cedula,
     identificacion: emp.cedula,
-    area: 'LINEA 1',
+    area: emp.area || emp.departamento || '',
     fechaIngreso: emp.fecha_ingreso,
     fechaSalida: formatearFecha(fechaSalida),
     mesesLaborados: mesesLaborados,
     diasAdicionales: diasAdicionales,
-    tipoNomina: tipoNomina || emp.tipo_nomina || 'Semanal',
-    motivoSalida: motivoSalida || 'renuncia',
+    tipoNomina: tipoNominaNorm,
+    motivoSalida: motivo,
     salarioMensual: Math.round(salarioMensual * 100) / 100,
     salarioDiario: Math.round(salarioDiario * 100) / 100,
-
-    // Detalles de cada concepto
-    detalles: detalles,
-
-    // Resumen
+    diasVacaciones: diasVacaciones,
+    diasPreaviso: diasPreaviso,
+    correspondeCesantia: correspondeCesantia,
+    correspondePreaviso: correspondePreaviso,
     aguinaldo: Math.round(montoAguinaldo * 100) / 100,
     vacaciones: Math.round(montoVacaciones * 100) / 100,
     cesantia: Math.round(montoCesantia * 100) / 100,
     preaviso: Math.round(montoPreaviso * 100) / 100,
-
-    // Totales
     totalPrestaciones: Math.round(totalPrestaciones * 100) / 100,
-    descuentoCCSS: Math.round(descuentoCCSS * 100) / 100,
-    totalNeto: Math.round(totalNeto * 100) / 100,
-    totalCalculado: Math.round(totalNeto * 100) / 100
+    totalNeto: Math.round(totalPrestaciones * 100) / 100,
+    totalCalculado: Math.round(totalPrestaciones * 100) / 100
   };
 }
 

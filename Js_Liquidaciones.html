@@ -355,7 +355,9 @@
     document.getElementById('btnCalcular').disabled = true;
     document.getElementById('btnCalcular').textContent = 'Calculando...';
 
-    llamarBackend('calcularLiquidacion', [empleadoId, fechaSalida, motivo, totalSalarios, promedioSalarios, tipoNomina], function(res) {
+    var diasVac = document.getElementById('calcDiasVac').value;
+
+    llamarBackend('calcularLiquidacion', [empleadoId, fechaSalida, motivo, totalSalarios, promedioSalarios, tipoNomina, diasVac !== '' ? Number(diasVac) : null], function(res) {
       document.getElementById('btnCalcular').disabled = false;
       document.getElementById('btnCalcular').textContent = '🧮 Calcular Liquidación';
 
@@ -373,58 +375,57 @@
   function _mostrarResultadoCalculadora(liq) {
     var html = '';
 
-    // Encabezado
-    html += '<div style="background:var(--p);color:white;padding:10px;border-radius:4px;margin-bottom:12px">';
-    html += '<strong>'+escapar(liq.empleado)+'</strong> | '+escapar(liq.fechaIngreso)+' → '+escapar(liq.fechaSalida);
+    // Encabezado empleado
+    html += '<div style="background:var(--p);color:white;padding:10px 14px;border-radius:4px;margin-bottom:12px;font-size:13px">';
+    html += '<strong>'+escapar(liq.empleado)+'</strong>';
+    if (liq.identificacion) html += ' &nbsp;|&nbsp; Cédula: '+escapar(liq.identificacion);
+    html += '<br><span style="opacity:.85">'+escapar(liq.fechaIngreso)+' → '+escapar(liq.fechaSalida)+'</span>';
+    html += ' &nbsp;|&nbsp; <span style="opacity:.85">'+liq.mesesLaborados+','+String(liq.diasAdicionales).padStart(2,'0')+' meses laborados</span>';
+    html += ' &nbsp;|&nbsp; <span style="opacity:.85">Nómina: '+escapar(liq.tipoNomina)+'</span>';
     html += '</div>';
 
-    // Tabla de cálculos
+    // Tabla de cálculos (estructura Excel)
     html += '<table style="width:100%;border-collapse:collapse;font-size:13px">';
-
     html += '<tr style="background:var(--surface);font-weight:600;border-bottom:2px solid var(--p)">';
-    html += '<td style="padding:8px">Concepto</td>';
-    html += '<td style="padding:8px;text-align:right">Monto</td>';
+    html += '<td style="padding:8px">Concepto</td><td style="padding:8px">Detalle</td><td style="padding:8px;text-align:right">Monto</td>';
     html += '</tr>';
 
-    // Aguinaldo
+    // 1. Aguinaldo
     html += '<tr style="border-bottom:1px solid var(--border)">';
-    html += '<td style="padding:8px">Aguinaldo (Decimocuarto mes)</td>';
+    html += '<td style="padding:8px"><strong>1- Aguinaldo</strong></td>';
+    html += '<td style="padding:8px;font-size:12px;color:var(--txt-2)">Salario diario: '+formatoDinero(liq.salarioDiario)+' | Sal. mensual: '+formatoDinero(liq.salarioMensual)+'</td>';
     html += '<td style="padding:8px;text-align:right;color:var(--ok);font-weight:600">'+formatoDinero(liq.aguinaldo)+'</td>';
     html += '</tr>';
 
-    // Vacaciones
+    // 2. Vacaciones
     html += '<tr style="border-bottom:1px solid var(--border)">';
-    html += '<td style="padding:8px">Vacaciones no tomadas (5 días)</td>';
+    html += '<td style="padding:8px"><strong>2- Vacaciones</strong></td>';
+    html += '<td style="padding:8px;font-size:12px;color:var(--txt-2)">'+liq.diasVacaciones+' días × '+formatoDinero(liq.salarioDiario)+'/día</td>';
     html += '<td style="padding:8px;text-align:right;color:var(--ok);font-weight:600">'+formatoDinero(liq.vacaciones)+'</td>';
     html += '</tr>';
 
-    // Cesantía
+    // 3. Cesantía
+    var colorCes = liq.cesantia > 0 ? 'var(--ok)' : 'var(--txt-3)';
     html += '<tr style="border-bottom:1px solid var(--border)">';
-    html += '<td style="padding:8px">Cesantía ('+Number(liq.cesantia > 0 ? (liq.cesantia / (liq.salarioMensual / 30)).toFixed(2) : 0)+' días)</td>';
-    html += '<td style="padding:8px;text-align:right;color:'+(liq.cesantia > 0 ? 'var(--ok)' : 'var(--txt-3)')+';font-weight:600">'+formatoDinero(liq.cesantia)+'</td>';
+    html += '<td style="padding:8px"><strong>3- Cesantía</strong></td>';
+    html += '<td style="padding:8px;font-size:12px;color:var(--txt-2)">¿Corresponde? <strong>'+(liq.correspondeCesantia ? 'SÍ' : 'NO')+'</strong></td>';
+    html += '<td style="padding:8px;text-align:right;color:'+colorCes+';font-weight:600">'+formatoDinero(liq.cesantia)+'</td>';
     html += '</tr>';
 
-    // Preaviso
+    // 4. Preaviso
+    var colorPre = liq.preaviso > 0 ? 'var(--ok)' : 'var(--txt-3)';
     html += '<tr style="border-bottom:2px solid var(--p)">';
-    html += '<td style="padding:8px">Preaviso (30 días)</td>';
-    html += '<td style="padding:8px;text-align:right;color:'+(liq.preaviso > 0 ? 'var(--ok)' : 'var(--txt-3)')+';font-weight:600">'+formatoDinero(liq.preaviso)+'</td>';
+    html += '<td style="padding:8px"><strong>4- Preaviso</strong></td>';
+    html += '<td style="padding:8px;font-size:12px;color:var(--txt-2)">¿Corresponde? <strong>'+(liq.correspondePreaviso ? 'SÍ ('+liq.diasPreaviso+' días)' : 'NO')+'</strong></td>';
+    html += '<td style="padding:8px;text-align:right;color:'+colorPre+';font-weight:600">'+formatoDinero(liq.preaviso)+'</td>';
     html += '</tr>';
 
     // Total
     html += '<tr style="background:var(--ok-bg);font-weight:700;color:var(--ok)">';
-    html += '<td style="padding:10px">TOTAL PRESTACIONES LABORALES</td>';
+    html += '<td colspan="2" style="padding:10px">TOTAL PRESTACIONES LABORALES</td>';
     html += '<td style="padding:10px;text-align:right;font-size:16px">'+formatoDinero(liq.totalNeto)+'</td>';
     html += '</tr>';
-
     html += '</table>';
-
-    // Información adicional
-    html += '<div style="margin-top:12px;padding:10px;background:var(--surface-2);border-radius:4px;font-size:12px">';
-    html += '<strong>Detalles:</strong><br>';
-    html += 'Meses laborados: '+liq.mesesLaborados + ',' + String(liq.diasAdicionales).padStart(2,'0') + '<br>';
-    html += 'Salario mensual: '+formatoDinero(liq.salarioMensual)+'<br>';
-    html += 'Motivo de salida: '+escapar(liq.motivoSalida.replace(/_/g, ' '));
-    html += '</div>';
 
     document.getElementById('calcDetalles').innerHTML = html;
     document.getElementById('calcResultado').classList.remove('oculto');
