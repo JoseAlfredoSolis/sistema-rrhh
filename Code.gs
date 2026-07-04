@@ -158,14 +158,16 @@ function getHoja(nombreHoja) {
 }
 
 /**
- * Lee TODA una pestaña y la devuelve como un arreglo de objetos,
- * usando la primera fila como nombres de propiedad.
- * Ej: [{id:'...', nombre:'...', ...}, ...]
+ * Lee tabla con paginación (Fase 5 - Item 15).
+ * Para grandes volúmenes (50k+ filas), divide en páginas.
+ * Backward compatible: llamar sin offset/limit devuelve TODO (como antes).
  *
  * @param {string} nombreHoja
+ * @param {number} [offset] - Fila a partir de la cual leer (0-based después de encabezados)
+ * @param {number} [limit] - Máximo de filas a retornar
  * @return {Object[]} filas como objetos.
  */
-function leerTabla(nombreHoja) {
+function leerTabla(nombreHoja, offset, limit) {
   var hoja = getHoja(nombreHoja);
   var datos = hoja.getDataRange().getValues();
 
@@ -177,7 +179,11 @@ function leerTabla(nombreHoja) {
   var encabezados = datos[0];
   var filas = [];
 
-  for (var i = 1; i < datos.length; i++) {
+  // Paginación: offset y limit (Fase 5)
+  var desde = (offset || 0) + 1;  // +1 porque fila 0 es encabezados
+  var hasta = limit ? desde + limit : datos.length;
+
+  for (var i = desde; i < hasta && i < datos.length; i++) {
     var obj = {};
     for (var c = 0; c < encabezados.length; c++) {
       obj[encabezados[c]] = datos[i][c];
@@ -185,6 +191,18 @@ function leerTabla(nombreHoja) {
     filas.push(obj);
   }
   return filas;
+}
+
+/**
+ * Cuenta total de filas en una tabla (sin encabezados).
+ * Útil para paginación - saber cuántas páginas hay.
+ * @param {string} nombreHoja
+ * @return {number}
+ */
+function contarFilasTabla(nombreHoja) {
+  var hoja = getHoja(nombreHoja);
+  var datos = hoja.getDataRange().getValues();
+  return Math.max(0, datos.length - 1);  // -1 para no contar encabezados
 }
 
 /**
@@ -4004,6 +4022,133 @@ function hoy() {
 
 
 // ===================================================================
+// MÓDULO: INTEGRACIÓN CONTABILIDAD (Fase 5 - Item 7)
+// ===================================================================
+// Webhook para exportar nómina a ERP/Contabilidad
+
+/**
+ * Genera payload contable para nómina del mes.
+ * Formato: cuentas por pagar, deducciones, impuestos.
+ * Fase 5 - Item 7: Integración Contabilidad.
+ * @param {string} mes - Formato yyyy-MM
+ * @return {Object} {ok, payload} o {ok: false, mensaje}
+ */
+function generarPayloadContabilidad(mes) {
+  try {
+    var nominas = leerTabla(HOJAS.NOMINA).filter(function (n) {
+      return String(n.mes) === mes;
+    });
+
+    if (!nominas.length) {
+      return { ok: false, mensaje: 'Sin nóminas para ' + mes };
+    }
+
+    var totalBruto = 0, totalCCSS = 0, totalRenta = 0, totalNeto = 0;
+    var empleados = [];
+
+    nominas.forEach(function (n) {
+      var bruto = Number(n.salario_base) || 0;
+      var ded = Number(n.deducciones) || 0;
+      var neto = Number(n.neto) || 0;
+
+      totalBruto += bruto;
+      totalNeto += neto;
+
+      // Estimado: 10.67% CCSS, resto renta (simplificado)
+      var ccss = Math.round(bruto * 0.1067);
+      totalCCSS += ccss;
+
+      var renta = ded - ccss;
+      totalRenta += renta;
+
+      empleados.push({
+        empleado_id: n.empleado_id,
+        salario_bruto: bruto,
+        deduccion_ccss: ccss,
+        deduccion_renta: renta,
+        total_deducciones: ded,
+        salario_neto: neto
+      });
+    });
+
+    // Totales para asientos contables
+    var payload = {
+      periodo: mes,
+      fecha_generacion: new Date().toISOString(),
+      resumen: {
+        total_empleados: nominas.length,
+        total_bruto: totalBruto,
+        total_ccss_empleado: totalCCSS,
+        total_renta_empleado: totalRenta,
+        total_deducciones: totalCCSS + totalRenta,
+        total_neto_pagable: totalNeto,
+        ccss_patronal_estimado: Math.round(totalBruto * 0.1067)  // Patronal aparte
+      },
+      detalle: empleados,
+      asientos_contables: [
+        {
+          descripcion: 'Nómina mes ' + mes + ' - Gasto de personal',
+          cuenta_gasto: '5100-001',  // Gastos de personal (ajustar a contabilidad real)
+          debito: totalBruto,
+          credito: 0
+        },
+        {
+          descripcion: 'Nómina mes ' + mes + ' - Cuentas por pagar',
+          cuenta_pasivo: '2100-001',  // CxP sueldos (ajustar)
+          debito: 0,
+          credito: totalNeto
+        },
+        {
+          descripcion: 'Nómina mes ' + mes + ' - CCSS descuento empleado',
+          cuenta_pasivo: '2150-001',  // CxP CCSS
+          debito: 0,
+          credito: totalCCSS
+        }
+      ]
+    };
+
+    return { ok: true, payload: payload };
+  } catch (e) {
+    return { ok: false, mensaje: 'Error: ' + e.message };
+  }
+}
+
+/**
+ * Envía payload contable a webhook externo (ERP, Contabilidad).
+ * Fase 5 - Item 7: Integración externa.
+ * @param {string} urlWebhook - URL del servidor destino
+ * @param {Object} payload - Datos a enviar
+ * @param {string} [autorizacion] - Bearer token si aplica
+ * @return {Object} {ok, respuesta} o {ok: false, error}
+ */
+function enviarPayloadContabilidad(urlWebhook, payload, autorizacion) {
+  try {
+    var opciones = {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    };
+
+    if (autorizacion) {
+      opciones.headers = { 'Authorization': 'Bearer ' + autorizacion };
+    }
+
+    var respuesta = UrlFetchApp.fetch(urlWebhook, opciones);
+    var codigo = respuesta.getResponseCode();
+
+    if (codigo >= 200 && codigo < 300) {
+      registrarBitacora('integracion', 'Contabilidad', payload.periodo, 'Payload enviado a ' + urlWebhook);
+      return { ok: true, respuesta: respuesta.getContentText() };
+    } else {
+      return { ok: false, error: 'HTTP ' + codigo + ': ' + respuesta.getContentText() };
+    }
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+// ===================================================================
 // MÓDULO: CACHÉ DE LECTURAS (Fase 4 - Item 10)
 // ===================================================================
 // Memoización por sesión para evitar releer tablas múltiples veces
@@ -4208,6 +4353,91 @@ function crearPermiso(datos, token) {
   } catch (e) {
     return { ok: false, mensaje: 'Error: ' + e.message };
   }
+}
+
+// ===================================================================
+// MÓDULO: WORKFLOW DE APROBACIONES (Fase 5 - Item 20)
+// ===================================================================
+// Flujo: pendiente → aprobado_jefe → aprobado_rrhh
+
+/**
+ * Estados válidos en el workflow de aprobaciones.
+ */
+var ESTADOS_APROBACION = {
+  PENDIENTE: 'pendiente',
+  APROBADO_JEFE: 'aprobado_jefe',
+  APROBADO_RRHH: 'aprobado_rrhh',
+  RECHAZADO_JEFE: 'rechazado_jefe',
+  RECHAZADO_RRHH: 'rechazado_rrhh'
+};
+
+/**
+ * Aprueba una solicitud (vacación, permiso, etc.) en el workflow.
+ * Fase 5 - Item 20: Workflow multi-nivel.
+ * @param {string} tipoSolicitud - 'vacacion', 'permiso', etc.
+ * @param {string} solicitudId
+ * @param {string} nuevoEstado - Estado siguiente en workflow
+ * @param {string} token
+ * @param {string} [notas] - Notas de aprobación
+ * @return {Object} {ok, mensaje}
+ */
+function aprobarSolicitud(tipoSolicitud, solicitudId, nuevoEstado, token, notas) {
+  var sesion = validarSesion(token);
+  if (!sesion.ok) return sesion;
+
+  var rol = sesion.rol || 'empleado';
+
+  // Validar que el usuario tenga permiso para aprobar en este nivel
+  if (nuevoEstado === ESTADOS_APROBACION.APROBADO_JEFE && rol !== 'jefe_depto' && rol !== 'jefe_rrhh' && rol !== 'admin') {
+    return { ok: false, mensaje: 'Solo jefe de departamento o superior puede aprobar en primer nivel' };
+  }
+  if (nuevoEstado === ESTADOS_APROBACION.APROBADO_RRHH && rol !== 'jefe_rrhh' && rol !== 'admin') {
+    return { ok: false, mensaje: 'Solo jefe de RRHH o admin puede aprobar en segundo nivel' };
+  }
+
+  try {
+    var hojaMap = {
+      'vacacion': HOJAS.VACACIONES,
+      'permiso': HOJAS.PERMISOS || 'Permisos'
+    };
+
+    var nombreHoja = hojaMap[tipoSolicitud];
+    if (!nombreHoja) return { ok: false, mensaje: 'Tipo de solicitud no válido' };
+
+    var hoja = getHoja(nombreHoja);
+    var fila = buscarFilaPorId(hoja, solicitudId);
+    if (fila === -1) return { ok: false, mensaje: 'Solicitud no encontrada' };
+
+    // Actualizar estado
+    hoja.getRange(fila, 6).setValue(nuevoEstado);  // Columna 6 = estado (ajustar si es diferente)
+
+    // Registrar auditoría
+    registrarBitacora('aprobar', tipoSolicitud.toUpperCase(), solicitudId,
+      'Estado: ' + nuevoEstado + ' | Por: ' + rol + ' | Notas: ' + (notas || '—'));
+
+    return { ok: true, mensaje: 'Solicitud aprobada: ' + nuevoEstado };
+  } catch (e) {
+    return { ok: false, mensaje: 'Error: ' + e.message };
+  }
+}
+
+/**
+ * Rechaza una solicitud en el workflow.
+ * @param {string} tipoSolicitud
+ * @param {string} solicitudId
+ * @param {string} razonRechazo
+ * @param {string} token
+ * @return {Object} {ok, mensaje}
+ */
+function rechazarSolicitud(tipoSolicitud, solicitudId, razonRechazo, token) {
+  var sesion = validarSesion(token);
+  if (!sesion.ok) return sesion;
+
+  var rol = sesion.rol || 'empleado';
+  var estadoRechazo = rol === 'jefe_rrhh' || rol === 'admin' ?
+    ESTADOS_APROBACION.RECHAZADO_RRHH : ESTADOS_APROBACION.RECHAZADO_JEFE;
+
+  return aprobarSolicitud(tipoSolicitud, solicitudId, estadoRechazo, token, 'Rechazado: ' + razonRechazo);
 }
 
 // ===================================================================
