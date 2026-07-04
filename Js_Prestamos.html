@@ -73,18 +73,20 @@
 
   function pagarCuota(id) {
     if (!puedeEditar()) { mostrarMensaje('Sin permisos.', 'error'); return; }
-    if (!confirm('¿Registrar una cuota pagada para este préstamo?')) return;
-    llamarBackend('pagarCuotaPrestamo', [id], function(res) {
-      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
-      if (res.ok) cargarPrestamos();
-    });
+    confirmarAccion('¿Registrar una cuota pagada para este préstamo?', function () {
+      llamarBackend('pagarCuotaPrestamo', [id], function(res) {
+        mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+        if (res.ok) cargarPrestamos();
+      });
+    }, 'Registrar cuota');
   }
 
   function eliminarPrestamoUI(id) {
-    if (!confirm('¿Eliminar este préstamo?')) return;
-    llamarBackend('eliminarPrestamo', [id], function(res) {
-      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
-      if (res.ok) cargarPrestamos();
-    });
+    confirmarAccion('¿Eliminar este préstamo? Esta acción no se puede deshacer.', function () {
+      llamarBackend('eliminarPrestamo', [id], function(res) {
+        mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+        if (res.ok) cargarPrestamos();
+      });
+    }, 'Eliminar');
   }
 </script>

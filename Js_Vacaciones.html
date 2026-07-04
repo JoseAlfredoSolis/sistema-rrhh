@@ -121,11 +121,12 @@
 
   function decidirVacaciones(id, nuevoEstado) {
     var verbo = (nuevoEstado === 'aprobada') ? 'aprobar' : 'rechazar';
-    if (!confirm('¿Seguro que deseas ' + verbo + ' esta solicitud?')) return;
-    llamarBackend('cambiarEstadoVacaciones', [id, nuevoEstado], function (res) {
-      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
-      if (res.ok) { cargarVacaciones(); consultarBalanceVacaciones(); }
-    });
+    confirmarAccion('¿Seguro que deseas ' + verbo + ' esta solicitud?', function () {
+      llamarBackend('cambiarEstadoVacaciones', [id, nuevoEstado], function (res) {
+        mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+        if (res.ok) { cargarVacaciones(); consultarBalanceVacaciones(); }
+      });
+    }, verbo === 'aprobar' ? 'Aprobar' : 'Rechazar');
   }
 
   // ====== MÓDULO SOLICITUD POR JEFE ======

@@ -223,19 +223,21 @@
 
   function pagarLiquidacion(id) {
     if (!puedeEditar()) { mostrarMensaje('Sin permisos.', 'error'); return; }
-    if (!confirm('¿Marcar esta liquidación como pagada?')) return;
-    llamarBackend('marcarLiquidacionPagada', [id], function(res) {
-      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
-      if (res.ok) cargarLiquidaciones();
-    });
+    confirmarAccion('¿Marcar esta liquidación como pagada? No se puede deshacer.', function () {
+      llamarBackend('marcarLiquidacionPagada', [id], function(res) {
+        mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+        if (res.ok) cargarLiquidaciones();
+      });
+    }, 'Marcar pagada');
   }
 
   function eliminarLiquidacionUI(id) {
-    if (!confirm('¿Eliminar esta liquidación?')) return;
-    llamarBackend('eliminarLiquidacion', [id], function(res) {
-      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
-      if (res.ok) cargarLiquidaciones();
-    });
+    confirmarAccion('¿Eliminar esta liquidación? Esta acción no se puede deshacer.', function () {
+      llamarBackend('eliminarLiquidacion', [id], function(res) {
+        mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+        if (res.ok) cargarLiquidaciones();
+      });
+    }, 'Eliminar');
   }
 
   // ====== CALCULADORA DE LIQUIDACIÓN ======
@@ -470,22 +472,21 @@
         console.log('[LIQ] Respuesta backend:', JSON.stringify(res));
         if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar Liquidación'; }
         if (!res) {
-          alert('Error: sin respuesta del servidor');
+          mostrarMensaje('Error: sin respuesta del servidor.', 'error');
           return;
         }
         if (res.ok) {
-          mostrarMensaje('✅ Liquidación guardada correctamente', 'exito');
+          mostrarMensaje('Liquidación guardada correctamente', 'exito');
           cerrarCalculadoraLiquidacion();
           cargarLiquidaciones();
         } else {
           mostrarMensaje('Error: ' + (res.mensaje || 'Error desconocido'), 'error');
-          alert('Error al guardar: ' + (res.mensaje || 'Error desconocido'));
         }
       })
       .withFailureHandler(function(err) {
         console.error('[LIQ] Error backend:', err);
         if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar Liquidación'; }
-        alert('Fallo al guardar: ' + (err.message || String(err)));
+        mostrarMensaje('Fallo al guardar: ' + (err.message || String(err)), 'error');
       })
       .crearLiquidacion(datos, SESSION_TOKEN || _leerStorage('session', 'rrhh-token'));
   }

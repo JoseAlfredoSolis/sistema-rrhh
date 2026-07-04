@@ -528,8 +528,8 @@ function cambiarEstadoEmpleado(id, nuevoEstado, token) {
   if (fila === -1) {
     return { ok: false, mensaje: 'No se encontró el empleado.' };
   }
-  var estadoAnterior = String(hoja.getRange(fila, 8).getValue() || 'activo');
-  hoja.getRange(fila, 8).setValue(nuevoEstado);
+  var estadoAnterior = String(hoja.getRange(fila, COLS.EMP_ESTADO).getValue() || 'activo');
+  hoja.getRange(fila, COLS.EMP_ESTADO).setValue(nuevoEstado);
   registrarBitacora('actualizar', 'Empleados', id,
     'Estado: ' + estadoAnterior + ' → ' + nuevoEstado + ' | Usuario: ' + Session.getActiveUser().getEmail());
   var accion = (nuevoEstado === 'activo') ? 'reactivado' : 'dado de baja';
@@ -1224,11 +1224,12 @@ function obtenerAlertas() {
 
 /** Devuelve cifras resumen para el panel principal. */
 function obtenerDashboard() {
-  var empleados = leerTabla(HOJAS.EMPLEADOS);
+  var empleados   = leerTablaConCache(HOJAS.EMPLEADOS);
   var activos = empleados.filter(function (e) {
     return String(e.estado).toLowerCase() === 'activo';
   });
-  var vacaciones = leerTabla(HOJAS.VACACIONES);
+  var vacaciones  = leerTablaConCache(HOJAS.VACACIONES);
+  var departamentos = leerTablaConCache(HOJAS.DEPARTAMENTOS);
   var pendientes = vacaciones.filter(function (v) {
     return String(v.estado).toLowerCase() === 'pendiente';
   });
@@ -1237,7 +1238,7 @@ function obtenerDashboard() {
   var mesActual = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM');
 
   // Una sola lectura de NOMINA para el total del mes actual y el histórico.
-  var nomina = leerTabla(HOJAS.NOMINA);
+  var nomina = leerTablaConCache(HOJAS.NOMINA);
   var nominaMes = nomina.filter(function (n) {
     return String(n.mes) === mesActual;
   });
@@ -1291,7 +1292,7 @@ function obtenerDashboard() {
   }).sort(function (a, b) { return b.costo - a.costo; });
 
   // Incapacidades este mes
-  var incapacidades = leerTabla(HOJAS.INCAPACIDADES) || [];
+  var incapacidades = leerTablaConCache(HOJAS.INCAPACIDADES) || [];
   var incapacidadesMes = incapacidades.filter(function (i) {
     var fechaDesde = new Date(i.fecha_desde);
     return fechaDesde.getFullYear() === new Date().getFullYear() &&
@@ -1302,7 +1303,7 @@ function obtenerDashboard() {
     totalEmpleados: empleados.length,
     empleadosActivos: activos.length,
     empleadosInactivos: empleados.length - activos.length,
-    totalDepartamentos: leerTabla(HOJAS.DEPARTAMENTOS).length,
+    totalDepartamentos: departamentos.length,
     vacacionesPendientes: pendientes.length,
     mesActual: mesActual,
     nominasMesActual: nominaMes.length,
@@ -4717,7 +4718,8 @@ function aprobarSolicitud(tipoSolicitud, solicitudId, nuevoEstado, token, notas)
     if (fila === -1) return { ok: false, mensaje: 'Solicitud no encontrada' };
 
     // Actualizar estado
-    hoja.getRange(fila, 6).setValue(nuevoEstado);  // Columna 6 = estado (ajustar si es diferente)
+    var colEstado = tipoSolicitud === 'permiso' ? COLS.PRM_ESTADO : COLS.VAC_ESTADO;
+    hoja.getRange(fila, colEstado).setValue(nuevoEstado);
 
     // Registrar auditoría
     registrarBitacora('aprobar', tipoSolicitud.toUpperCase(), solicitudId,

@@ -88,10 +88,11 @@
   }
 
   function eliminarActivoUI(id) {
-    if (!confirm('¿Eliminar este activo?')) return;
-    llamarBackend('eliminarActivo', [id], function(res) {
-      mostrarMensaje(res.mensaje, res.ok?'exito':'error');
-      if (res.ok) cargarActivos();
-    });
+    confirmarAccion('¿Eliminar este activo? Esta acción no se puede deshacer.', function () {
+      llamarBackend('eliminarActivo', [id], function(res) {
+        mostrarMensaje(res.mensaje, res.ok?'exito':'error');
+        if (res.ok) cargarActivos();
+      });
+    }, 'Eliminar');
   }
 </script>

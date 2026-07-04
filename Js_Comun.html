@@ -317,6 +317,25 @@
     document.getElementById('cargando').classList.toggle('oculto', _cargandoCount === 0);
   }
 
+  // ── Confirmaciones (confirm() nativo bloqueado en GAS iframes) ──────
+  var _cbConfirmar = null;
+  function confirmarAccion(texto, callbackSi, etiquetaBoton) {
+    _cbConfirmar = callbackSi;
+    document.getElementById('modalConfirmarMsg').textContent = texto;
+    var btn = document.getElementById('btnConfirmarSi');
+    if (btn) btn.textContent = etiquetaBoton || 'Confirmar';
+    document.getElementById('modalConfirmar').classList.remove('oculto');
+    if (btn) setTimeout(function () { btn.focus(); }, 50);
+  }
+  function _confirmarSi() {
+    document.getElementById('modalConfirmar').classList.add('oculto');
+    if (typeof _cbConfirmar === 'function') { var cb = _cbConfirmar; _cbConfirmar = null; cb(); }
+  }
+  function _confirmarNo() {
+    document.getElementById('modalConfirmar').classList.add('oculto');
+    _cbConfirmar = null;
+  }
+
   // ── Mensajes ──────────────────────────────────────────────
   function mostrarMensaje(texto, tipo) {
     var div = document.getElementById('mensaje');

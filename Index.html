@@ -1557,6 +1557,20 @@
     </div>
   </div>
 
+  <!-- Modal genérico de confirmación (reemplaza confirm() nativo, bloqueado en GAS iframes) -->
+  <div id="modalConfirmar" class="modal oculto" role="alertdialog" aria-modal="true" aria-labelledby="modalConfirmarTitulo">
+    <div class="modal-contenido" style="max-width:400px">
+      <div class="modal-cabecera"><h2 id="modalConfirmarTitulo">Confirmar acción</h2></div>
+      <div class="modal-cuerpo">
+        <p id="modalConfirmarMsg" style="margin:0 0 20px;font-size:15px;color:var(--txt-1)"></p>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+          <button class="btn btn-secundario" onclick="_confirmarNo()">Cancelar</button>
+          <button id="btnConfirmarSi" class="btn btn-peligro" onclick="_confirmarSi()">Confirmar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal PIN de acceso -->
   <div id="modalPin" class="modal oculto">
     <div class="modal-contenido" style="max-width:360px">
