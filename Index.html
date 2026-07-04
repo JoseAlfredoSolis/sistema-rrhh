@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, viewport-fit=cover">
-  <title>Sistema RRHH v45</title>
+  <title>Sistema RRHH v46</title>
 
   <!-- Librerías JS embebidas (mismo origen que la app — sin CDN externo) -->
   <?!= include('Stylesheet'); ?>
@@ -1430,6 +1430,16 @@
             <div class="campo"><label>Digite la fecha inicio: *</label><input type="date" id="calcFechaInicio" required onchange="calcularMesesLaborados()"></div>
             <div class="campo"><label>Digite la fecha salida: *</label><input type="date" id="calcFechaSalida" required onchange="calcularMesesLaborados()"></div>
             <div class="campo"><label>Meses Laborados</label><input type="text" id="calcMesesLaborados" readonly style="background:var(--surface);cursor:not-allowed;font-weight:600;color:var(--p)" placeholder="0,00"></div>
+            <div class="campo"><label>Tipo de nómina *</label>
+              <div style="display:flex;gap:16px;margin-top:6px">
+                <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer">
+                  <input type="radio" name="calcTipoNomina" value="Semanal" id="calcNominaSemanal" required checked> Semanal
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer">
+                  <input type="radio" name="calcTipoNomina" value="Quincenal" id="calcNominaQuincenal" required> Quincenal
+                </label>
+              </div>
+            </div>
             <div class="campo"><label>Motivo de salida *</label>
               <select id="calcMotivo" required>
                 <option value="">Seleccionar...</option>

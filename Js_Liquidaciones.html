@@ -336,10 +336,12 @@
   function calcularYMostrarLiquidacion(event) {
     event.preventDefault();
     var empleadoId = document.getElementById('calcEmpleado').value;
+    var fechaInicio = document.getElementById('calcFechaInicio').value;
     var fechaSalida = document.getElementById('calcFechaSalida').value;
+    var tipoNomina = document.querySelector('input[name="calcTipoNomina"]:checked').value;
     var motivo = document.getElementById('calcMotivo').value;
 
-    if (!empleadoId || !fechaSalida || !motivo) {
+    if (!empleadoId || !fechaInicio || !fechaSalida || !tipoNomina || !motivo) {
       mostrarMensaje('Completa todos los campos requeridos.', 'error');
       return;
     }
@@ -352,7 +354,7 @@
     document.getElementById('btnCalcular').disabled = true;
     document.getElementById('btnCalcular').textContent = 'Calculando...';
 
-    llamarBackend('calcularLiquidacion', [empleadoId, fechaSalida, motivo, totalSalarios, promedioSalarios], function(res) {
+    llamarBackend('calcularLiquidacion', [empleadoId, fechaSalida, motivo, totalSalarios, promedioSalarios, tipoNomina], function(res) {
       document.getElementById('btnCalcular').disabled = false;
       document.getElementById('btnCalcular').textContent = '🧮 Calcular Liquidación';
 

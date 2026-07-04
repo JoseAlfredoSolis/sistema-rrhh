@@ -3896,7 +3896,7 @@ function formatearNumero(num) {
 }
 
 /** Calcula liquidación laboral completa según estructura Costa Rica (modelo Tropicales del Valle). */
-function calcularLiquidacion(empleadoId, fechaSalida, motivoSalida, totalSalarios, promedioSalarios) {
+function calcularLiquidacion(empleadoId, fechaSalida, motivoSalida, totalSalarios, promedioSalarios, tipoNomina) {
   var emp = obtenerEmpleadoCompleto(empleadoId);
   if (!emp) return { ok: false, mensaje: 'Empleado no encontrado.' };
 
@@ -4002,7 +4002,7 @@ function calcularLiquidacion(empleadoId, fechaSalida, motivoSalida, totalSalario
     fechaSalida: formatearFecha(fechaSalida),
     mesesLaborados: mesesLaborados,
     diasAdicionales: diasAdicionales,
-    tipoNomina: emp.tipo_nomina || 'Semanal',
+    tipoNomina: tipoNomina || emp.tipo_nomina || 'Semanal',
     motivoSalida: motivoSalida || 'renuncia',
     salarioMensual: Math.round(salarioMensual * 100) / 100,
     salarioDiario: Math.round(salarioDiario * 100) / 100,
