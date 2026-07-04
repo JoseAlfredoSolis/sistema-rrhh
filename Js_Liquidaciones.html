@@ -438,23 +438,19 @@
       fecha_calculo: new Date().toISOString().slice(0,10),
       monto: CALCULO_ACTUAL.totalNeto,
       estado: document.getElementById('calcEstado').value,
-      tipoNomina: document.querySelector('input[name="calcTipoNomina"]:checked').value,
+      tipoNomina: (document.querySelector('input[name="calcTipoNomina"]:checked') || {}).value || 'Semanal',
       notas: 'Cálculo automático - ' + CALCULO_ACTUAL.motivoSalida
     };
 
-    if (!confirm('¿Guardar esta liquidación por ₡' + formatoDinero(datos.monto) + '?')) return;
+    _ejecutarGuardadoLiquidacion(datos);
+  }
 
-    var btn = document.querySelector('button[onclick="guardarCalculoLiquidacion()"]');
-    if (btn) {
-      btn.disabled = true;
-      btn.textContent = 'Guardando...';
-    }
+  function _ejecutarGuardadoLiquidacion(datos) {
+    var btn = document.getElementById('btnGuardarLiqCalc');
+    if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
 
     llamarBackend('crearLiquidacion', [datos], function(res) {
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = '💾 Guardar Liquidación';
-      }
+      if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar Liquidación'; }
 
       if (!res) {
         mostrarMensaje('Error: no se recibió respuesta del servidor.', 'error');
