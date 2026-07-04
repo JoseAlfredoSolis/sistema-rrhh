@@ -7,11 +7,33 @@
     llenarSelectEmpleadosFiltro('filtroEmpVac');
     var empId = (document.getElementById('filtroEmpVac')||{}).value || '';
     var estado = (document.getElementById('filtroEstadoVac')||{}).value || '';
+    var fechaDesde = (document.getElementById('filtroFechaDesde')||{}).value || '';
+    var fechaHasta = (document.getElementById('filtroFechaHasta')||{}).value || '';
+    var saldoCritico = (document.getElementById('filtroSaldoCritico')||{}).checked || false;
+
     llamarBackend('listarVacaciones', [empId||null, estado||null], function (lista) {
       var cuerpo = document.getElementById('cuerpoVacaciones');
       cuerpo.innerHTML = '';
-      document.getElementById('sinVacaciones').classList.toggle('oculto', (lista || []).length > 0);
-      (lista || []).forEach(function (v) {
+
+      // Aplicar filtros en frontend
+      var listaFiltrada = (lista || []).filter(function(v) {
+        // Filtro por fecha desde (comparar fechas normalizadas)
+        if (fechaDesde) {
+          var fechaInicioNorm = v.fecha_inicio.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$3-$2-$1');
+          if (fechaInicioNorm < fechaDesde) return false;
+        }
+        // Filtro por fecha hasta
+        if (fechaHasta) {
+          var fechaInicioNorm = v.fecha_inicio.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$3-$2-$1');
+          if (fechaInicioNorm > fechaHasta) return false;
+        }
+        // Filtro por saldo crítico
+        if (saldoCritico && v.saldo_disponible >= 5) return false;
+        return true;
+      });
+
+      document.getElementById('sinVacaciones').classList.toggle('oculto', listaFiltrada.length > 0);
+      listaFiltrada.forEach(function (v) {
         var estado = String(v.estado).toLowerCase();
         var acciones = '';
         if (estado === 'pendiente' && puedeEditar()) {
@@ -37,6 +59,16 @@
       });
       actualizarBadge();
     });
+  }
+
+  function limpiarFiltrosVacaciones() {
+    document.getElementById('filtroEmpVac').value = '';
+    document.getElementById('filtroEstadoVac').value = '';
+    document.getElementById('filtroFechaDesde').value = '';
+    document.getElementById('filtroFechaHasta').value = '';
+    document.getElementById('filtroSaldoCritico').checked = false;
+    cargarVacaciones();
+    consultarBalanceVacaciones();
   }
 
   function consultarBalanceVacaciones() {
