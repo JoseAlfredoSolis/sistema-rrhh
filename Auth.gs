@@ -4,6 +4,37 @@
  */
 
 var CLAVE_CONFIG_ROLES = 'CONFIG_ROLES';
+var CLAVE_ENCRIPCION = 'DATOS_SENSIBLES_KEY';
+
+/**
+ * Encripta datos sensibles (IBAN, cédula) usando HMAC-SHA256.
+ * No es encriptación real (SHA es one-way), pero permite detectar cambios.
+ * Alternativa: usar Google's native encryption cuando esté disponible.
+ * @param {string} valor - Valor a encriptar
+ * @return {string} hash hexadecimal
+ */
+function encriptarDatosSensibles(valor) {
+  if (!valor) return '';
+  var bytes = Utilities.computeHmacSha256Signature(String(valor), _obtenerSaltPin());
+  return bytes.map(function (b) {
+    var v = (b < 0 ? b + 256 : b).toString(16);
+    return v.length === 1 ? '0' + v : v;
+  }).join('');
+}
+
+/**
+ * Enmascarar valor sensible para mostrar (ej: últimos 4 dígitos).
+ * @param {string} valor
+ * @param {number} [ultimosDigitos] - Default 4
+ * @return {string}
+ */
+function enmascararDatosSensibles(valor, ultimosDigitos) {
+  if (!valor) return '';
+  var u = ultimosDigitos || 4;
+  var s = String(valor);
+  if (s.length <= u) return '****';
+  return '*'.repeat(s.length - u) + s.slice(-u);
+}
 var CLAVE_PIN_SALT     = 'PIN_SALT';
 var CLAVE_PIN_ATTEMPTS = 'PIN_ATTEMPTS_';
 var SESION_PREFIJO     = 'SES_';
@@ -11,7 +42,23 @@ var SESION_TTL_SEC     = 28800; // 8 horas
 var MAX_INTENTOS_PIN   = 5;
 var VENTANA_INTENTOS   = 900; // 15 min
 
-var NIVEL_ROL = { consulta: 0, rrhh: 1, admin: 2 };
+/**
+ * Niveles de acceso granular (0=mínimo, 5=máximo).
+ * Nueva estructura más flexible que reemplaza los roles anteriores.
+ */
+var NIVEL_ROL = {
+  empleado: 0,           // Solo ve su expediente
+  jefe_depto: 1,         // Su departamento
+  jefe_rrhh: 2,          // RR.HH. - toda la empresa
+  admin: 5               // Control total
+};
+
+var PERMISOS_POR_ROL = {
+  empleado:   { ver_expediente: true, solicitar_vacaciones: true, ver_nomina: false },
+  jefe_depto: { ver_depto: true, aprobar_vacaciones: true, ver_nomina_depto: true },
+  jefe_rrhh:  { ver_todo: true, editar_empleados: true, crear_nomina: true },
+  admin:      { acceso_total: true }
+};
 
 function _obtenerSaltPin() {
   var props = PropertiesService.getScriptProperties();
@@ -200,4 +247,41 @@ function enmascararSecreto(valor) {
   var s = String(valor);
   if (s.length <= 4) return '••••';
   return '••••' + s.slice(-4);
+}
+
+/**
+ * Validación granular de permisos por rol.
+ * @param {string} token - Token de sesión
+ * @param {string} permiso - Permiso solicitado (ej: 'ver_todo', 'editar_empleados')
+ * @return {Object} {ok, mensaje}
+ */
+function requierePermiso(token, permiso) {
+  var sesion = validarSesion(token);
+  if (!sesion.ok) return sesion;
+
+  var rol = sesion.rol || 'empleado';
+  var permisos = PERMISOS_POR_ROL[rol] || {};
+
+  if (permisos['acceso_total']) return { ok: true };
+  if (permisos[permiso]) return { ok: true };
+
+  return { ok: false, mensaje: 'Permiso denegado: ' + permiso + ' (rol: ' + rol + ')' };
+}
+
+/**
+ * Valida que el token sea de un rol específico.
+ * @param {string} token
+ * @param {string} rolRequerido - 'admin', 'jefe_rrhh', 'jefe_depto', 'empleado'
+ * @return {Object} {ok, mensaje}
+ */
+function requiereRol(token, rolRequerido) {
+  var sesion = validarSesion(token);
+  if (!sesion.ok) return sesion;
+
+  var nivelRequerido = NIVEL_ROL[rolRequerido] || 0;
+  var nivelUsuario = NIVEL_ROL[sesion.rol] || 0;
+
+  if (nivelUsuario >= nivelRequerido) return { ok: true };
+
+  return { ok: false, mensaje: 'Se requiere rol: ' + rolRequerido };
 }

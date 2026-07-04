@@ -3286,7 +3286,7 @@ function listarHorasExtra(empleadoId) {
     if (!r.monto && emp.salario) {
       var sal = Number(emp.salario);
       if (sal > 0) {
-        var valorHora = sal / 240;
+        var valorHora = calcularValorHora(sal);
         r.monto = Math.round(valorHora * 1.5 * Number(r.horas));
       }
     }
@@ -3776,6 +3776,91 @@ function eliminarLiquidacion(id, token) {
 
 
 // ===================================================================
+// ===================================================================
+// UTILIDADES GENÉRICAS DE CRUD (Refactorización - evita duplicación)
+// ===================================================================
+
+/**
+ * Calcula el valor unitario de una hora de trabajo (centralizado, NO duplicado).
+ * En CR: 240 horas/mes es el estándar laboral.
+ * @param {number} salarioMensual
+ * @param {number} [periodoHoras] - Horas en el período (default 240)
+ * @return {number} valor por hora (sin redondear)
+ */
+function calcularValorHora(salarioMensual, periodoHoras) {
+  var sal = Number(salarioMensual) || 0;
+  var periodo = Number(periodoHoras) || 240;
+  if (sal <= 0 || periodo <= 0) return 0;
+  return sal / periodo;
+}
+
+/**
+ * Patrón genérico para crear un registro en cualquier tabla.
+ * Valida token, genera ID, agrega bitácora.
+ * @param {string} nombreHoja - Nombre de la pestaña (usar HOJAS.*)
+ * @param {string} tipoEntidad - Nombre legible (ej: "Empleado", "Préstamo")
+ * @param {Object} datos - Datos a guardar
+ * @param {string} token - Token de autorización
+ * @param {Function} validar - Función de validación personalizada (opcional)
+ * @param {Function} mapear - Función para mapear datos a fila de Sheets (opcional)
+ * @return {Object} {ok, mensaje, id}
+ */
+function crearRegistro(nombreHoja, tipoEntidad, datos, token, validar, mapear) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
+  if (!datos) return { ok: false, mensaje: tipoEntidad + ' sin datos.' };
+
+  // Validación personalizada si existe
+  if (validar) {
+    var err = validar(datos);
+    if (err) return { ok: false, mensaje: err };
+  }
+
+  var hoja = getHoja(nombreHoja);
+  var id = generarId(tipoEntidad.toUpperCase().substring(0, 3));
+
+  // Mapeo personalizado o genérico
+  var fila = mapear ? mapear(id, datos) : [id, datos.empleado_id || '', JSON.stringify(datos)];
+
+  hoja.appendRow(fila);
+  registrarBitacora('crear', tipoEntidad, id, tipoEntidad + ' creado');
+  return { ok: true, mensaje: tipoEntidad + ' registrado.', id: id };
+}
+
+/**
+ * Patrón genérico para actualizar un registro.
+ * @param {string} nombreHoja
+ * @param {string} tipoEntidad
+ * @param {Object} datos (debe incluir .id)
+ * @param {string} token
+ * @param {Function} validar (opcional)
+ * @param {Function} actualizar (función que actualiza la fila)
+ * @return {Object} {ok, mensaje}
+ */
+function actualizarRegistro(nombreHoja, tipoEntidad, datos, token, validar, actualizar) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
+  if (!datos || !datos.id) return { ok: false, mensaje: 'ID requerido.' };
+
+  if (validar) {
+    var err = validar(datos);
+    if (err) return { ok: false, mensaje: err };
+  }
+
+  var hoja = getHoja(nombreHoja);
+  var fila = buscarFilaPorId(hoja, datos.id);
+  if (fila === -1) return { ok: false, mensaje: tipoEntidad + ' no encontrado.' };
+
+  if (actualizar) {
+    actualizar(hoja, fila, datos);
+  }
+
+  registrarBitacora('actualizar', tipoEntidad, datos.id, tipoEntidad + ' actualizado');
+  return { ok: true, mensaje: tipoEntidad + ' actualizado.' };
+}
+
 // UTILIDAD: eliminar fila genérica
 // ===================================================================
 
