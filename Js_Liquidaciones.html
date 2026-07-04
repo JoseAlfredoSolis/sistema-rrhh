@@ -20,22 +20,58 @@
     document.getElementById('sinLiquidaciones').classList.toggle('oculto', LIQUIDACIONES.length > 0);
     LIQUIDACIONES.forEach(function(liq) {
       var esPagada = String(liq.estado||'').toLowerCase() === 'pagada';
-      var acciones = puedeEditar()
-        ? (esPagada ? '' : '<button class="btn-mini" onclick="pagarLiquidacion(\''+liq.id+'\')">✓ Pagada</button>') +
-          '<button class="btn-mini" onclick="editarLiquidacion(\''+liq.id+'\')">Editar</button>' +
-          '<button class="btn-mini peligro" onclick="eliminarLiquidacionUI(\''+liq.id+'\')">Eliminar</button>'
-        : '<span style="color:var(--txt-3);font-size:12px">Solo lectura</span>';
+      var acciones =
+        '<button class="btn-mini" onclick="verDetallesLiquidacion(\''+escaparAttr(liq.empleado_id)+'\',\''+escaparAttr(liq.fecha_salida)+'\')">📋 Detalles</button>';
+      if (puedeEditar()) {
+        acciones +=
+          (esPagada ? '' : '<button class="btn-mini" onclick="pagarLiquidacion(\''+escaparAttr(liq.id)+'\')">✓ Pagada</button>') +
+          '<button class="btn-mini" onclick="editarLiquidacion(\''+escaparAttr(liq.id)+'\')">Editar</button>' +
+          '<button class="btn-mini peligro" onclick="eliminarLiquidacionUI(\''+escaparAttr(liq.id)+'\')">Eliminar</button>';
+      }
       var tr = document.createElement('tr');
       tr.innerHTML =
         '<td>'+escapar(liq.empleado_nombre)+'</td>'+
+        '<td>'+escapar(liq.fecha_ingreso)+'</td>'+
         '<td>'+escapar(liq.fecha_salida)+'</td>'+
-        '<td>'+escapar(liq.motivo||'—')+'</td>'+
-        '<td>'+escapar(liq.fecha_calculo||'—')+'</td>'+
+        '<td>'+escapar(liq.anios_trabajados)+'</td>'+
         '<td>'+formatoDinero(liq.monto)+'</td>'+
         '<td>'+badge(liq.estado||'pendiente', esPagada ? 'activo' : 'pendiente')+'</td>'+
         '<td class="no-print">'+acciones+'</td>';
       cuerpo.appendChild(tr);
     });
+  }
+
+  function verDetallesLiquidacion(empleadoId, fechaSalida) {
+    llamarBackend('calcularLiquidacion', [empleadoId, fechaSalida], function(res) {
+      if (!res.ok) { mostrarMensaje(res.mensaje, 'error'); return; }
+      _mostrarModalDetallesLiquidacion(res);
+    });
+  }
+
+  function _mostrarModalDetallesLiquidacion(liq) {
+    var html = '<div style="overflow-y:auto;max-height:70vh;padding:10px">';
+    html += '<h3 style="margin-bottom:10px">Desglose de Liquidación</h3>';
+    html += '<table style="width:100%;font-size:13px;border-collapse:collapse">';
+    html += '<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px"><strong>Empleado</strong></td><td style="padding:6px;text-align:right"><strong>'+escapar(liq.empleado)+'</strong></td></tr>';
+    html += '<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px">Fecha ingreso</td><td style="padding:6px;text-align:right">'+escapar(liq.fechaIngreso)+'</td></tr>';
+    html += '<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px">Fecha salida</td><td style="padding:6px;text-align:right">'+escapar(liq.fechaSalida)+'</td></tr>';
+    html += '<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px">Años trabajados</td><td style="padding:6px;text-align:right">'+Number(liq.aniosTrabajados).toFixed(2)+'</td></tr>';
+    html += '<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px">Salario mensual</td><td style="padding:6px;text-align:right">'+formatoDinero(liq.salarioMensual)+'</td></tr>';
+    html += '<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px">Salario diario</td><td style="padding:6px;text-align:right">'+formatoDinero(liq.salarioDiario)+'</td></tr>';
+    html += '<tr style="background:var(--surface-2);border-top:2px solid var(--border);border-bottom:2px solid var(--border)"><td style="padding:8px;font-weight:600">CONCEPTOS</td><td style="padding:8px;font-weight:600;text-align:right">MONTO</td></tr>';
+
+    (liq.detalles || []).forEach(function(det) {
+      html += '<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px">'+escapar(det.concepto)+'</td><td style="padding:6px;text-align:right">'+formatoDinero(det.monto)+'</td></tr>';
+    });
+
+    html += '<tr style="background:var(--ok-bg);font-weight:600;border-top:2px solid var(--ok)"><td style="padding:8px">TOTAL</td><td style="padding:8px;text-align:right">'+formatoDinero(liq.totalCalculado)+'</td></tr>';
+    html += '</table>';
+    html += '</div>';
+
+    var modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.innerHTML = '<div class="modal-contenido" style="max-width:500px"><div class="modal-cabecera"><h2>Detalles Liquidación</h2><button class="cerrar" onclick="this.closest(\'.modal\').remove()">&times;</button></div>'+html+'</div>';
+    document.body.appendChild(modal);
   }
 
   function abrirFormLiquidacion() {

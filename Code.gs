@@ -3762,6 +3762,17 @@ function listarLiquidaciones(empleadoId) {
     var emp = empls.filter(function (e) { return String(e.id) === String(r.empleado_id); })[0] || {};
     r.fecha_salida  = formatearFecha(r.fecha_salida);
     r.fecha_calculo = formatearFecha(r.fecha_calculo);
+    r.fecha_ingreso = formatearFecha(emp.fecha_ingreso || '');
+
+    // Calcular años trabajados
+    if (emp.fecha_ingreso && r.fecha_salida) {
+      var fechaIng = new Date(emp.fecha_ingreso + 'T00:00:00');
+      var fechaSal = new Date(r.fecha_salida.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$3-$2-$1') + 'T00:00:00');
+      r.anios_trabajados = ((fechaSal - fechaIng) / (365.25 * 24 * 60 * 60 * 1000)).toFixed(2);
+    } else {
+      r.anios_trabajados = 0;
+    }
+
     return Object.assign({ empleado_nombre: emp.nombre || '-' }, r);
   });
 }
