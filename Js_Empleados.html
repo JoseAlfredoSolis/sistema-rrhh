@@ -210,10 +210,11 @@
   function cambiarEstado(id, nuevoEstado) {
     if (!puedeEditar()) { mostrarMensaje('Sin permisos para esta acción.', 'error'); return; }
     var accion = (nuevoEstado === 'inactivo') ? 'dar de baja' : 'reactivar';
-    if (!confirm('¿Seguro que deseas ' + accion + ' a este empleado?')) return;
-    llamarBackend('cambiarEstadoEmpleado', [id, nuevoEstado], function (res) {
-      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
-      if (res.ok) { cargarEmpleados(); refrescarEmpleadosSelect(); }
-    });
+    confirmarAccion('¿Seguro que deseas ' + accion + ' a este empleado?', function () {
+      llamarBackend('cambiarEstadoEmpleado', [id, nuevoEstado], function (res) {
+        mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+        if (res.ok) { cargarEmpleados(); refrescarEmpleadosSelect(); }
+      });
+    }, nuevoEstado === 'inactivo' ? 'Dar de baja' : 'Reactivar');
   }
 </script>

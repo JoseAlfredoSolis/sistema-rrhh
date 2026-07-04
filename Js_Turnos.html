@@ -86,10 +86,11 @@
   }
 
   function eliminarTurnoUI(id) {
-    if (!confirm('¿Eliminar este turno?')) return;
-    llamarBackend('eliminarTurno', [id], function(res) {
-      mostrarMensaje(res.mensaje, res.ok?'exito':'error');
-      if (res.ok) cargarTurnos();
-    });
+    confirmarAccion('¿Eliminar este turno?', function () {
+      llamarBackend('eliminarTurno', [id], function(res) {
+        mostrarMensaje(res.mensaje, res.ok?'exito':'error');
+        if (res.ok) cargarTurnos();
+      });
+    }, 'Eliminar');
   }
 </script>

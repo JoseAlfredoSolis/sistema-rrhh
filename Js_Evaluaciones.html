@@ -94,10 +94,11 @@
   }
 
   function eliminarEvaluacion(id) {
-    if (!confirm('¿Eliminar esta evaluación?')) return;
-    llamarBackend('eliminarEvaluacion', [id], function (res) {
-      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
-      if (res.ok) cargarEvaluaciones();
-    });
+    confirmarAccion('¿Eliminar esta evaluación?', function () {
+      llamarBackend('eliminarEvaluacion', [id], function (res) {
+        mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+        if (res.ok) cargarEvaluaciones();
+      });
+    }, 'Eliminar');
   }
 </script>

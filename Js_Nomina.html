@@ -79,12 +79,13 @@
   function verDesgloseCR(empId, nombre) {
     llamarBackend('obtenerDeduccionesCR', [empId], function(res) {
       if (!res.ok) { mostrarMensaje(res.mensaje,'error'); return; }
-      alert('Desglose salarial: '+nombre+
-        '\nSalario bruto: '+formatoDinero(res.salario)+
-        '\nCCSS (10.67%): -'+formatoDinero(res.ccss)+
-        '\nImp. Renta: -'+formatoDinero(res.renta)+
-        '\nTotal deducido: -'+formatoDinero(res.total)+
-        '\nSalario neto: '+formatoDinero(res.neto));
+      mostrarMensaje(
+        nombre + ' — Bruto: ' + formatoDinero(res.salario) +
+        ' | CCSS: -' + formatoDinero(res.ccss) +
+        ' | Renta: -' + formatoDinero(res.renta) +
+        ' | Neto: ' + formatoDinero(res.neto),
+        'exito'
+      );
     });
   }
 
@@ -116,10 +117,11 @@
 
   function eliminarNom(id) {
     if (!puedeEditar()) { mostrarMensaje('Sin permisos.', 'error'); return; }
-    if (!confirm('¿Eliminar este registro de nómina?')) return;
-    llamarBackend('eliminarNomina', [id], function(res) {
-      mostrarMensaje(res.mensaje, res.ok?'exito':'error');
-      if (res.ok) cargarNomina();
-    });
+    confirmarAccion('¿Eliminar este registro de nómina?', function () {
+      llamarBackend('eliminarNomina', [id], function(res) {
+        mostrarMensaje(res.mensaje, res.ok?'exito':'error');
+        if (res.ok) cargarNomina();
+      });
+    }, 'Eliminar');
   }
 </script>

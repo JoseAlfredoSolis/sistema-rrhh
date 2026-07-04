@@ -72,10 +72,9 @@ var VENTANA_INTENTOS   = 900; // 15 min
  * Nueva estructura más flexible que reemplaza los roles anteriores.
  */
 var NIVEL_ROL = {
-  empleado: 0,           // Solo ve su expediente
-  jefe_depto: 1,         // Su departamento
-  jefe_rrhh: 2,          // RR.HH. - toda la empresa
-  admin: 5               // Control total
+  consulta: 0,  // Solo lectura
+  rrhh: 2,      // Edición (RRHH)
+  admin: 5      // Control total
 };
 
 var PERMISOS_POR_ROL = {

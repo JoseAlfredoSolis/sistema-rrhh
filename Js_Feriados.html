@@ -56,10 +56,11 @@
   }
 
   function eliminarFeriadoUI(id) {
-    if (!confirm('¿Eliminar este feriado?')) return;
-    llamarBackend('eliminarFeriado', [id], function(res) {
-      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
-      if (res.ok) cargarFeriados();
-    });
+    confirmarAccion('¿Eliminar este feriado?', function () {
+      llamarBackend('eliminarFeriado', [id], function(res) {
+        mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+        if (res.ok) cargarFeriados();
+      });
+    }, 'Eliminar');
   }
 </script>

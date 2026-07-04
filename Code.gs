@@ -84,6 +84,8 @@ var COLS = (function () {
 })();
 
 
+// ---- UTILIDADES DE MANTENIMIENTO ---------------------------------
+
 // ---- PUNTO DE ENTRADA DE LA WEB APP -------------------------------
 
 /**

@@ -113,19 +113,21 @@
 
   function crearHoja() {
     var nombre = document.getElementById('cfgNombreHoja').value;
-    if (!confirm('Se creará una hoja nueva en tu Drive. ¿Continuar?')) return;
-    llamarBackend('crearHojaNueva', [nombre], function (res) {
-      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
-      if (res.ok) { document.getElementById('cfgNombreHoja').value = ''; cargarConfiguracion(); refrescarEmpleadosSelect(); }
-    });
+    confirmarAccion('Se creará una hoja nueva en tu Drive. ¿Continuar?', function () {
+      llamarBackend('crearHojaNueva', [nombre], function (res) {
+        mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+        if (res.ok) { document.getElementById('cfgNombreHoja').value = ''; cargarConfiguracion(); refrescarEmpleadosSelect(); }
+      });
+    }, 'Crear hoja');
   }
 
   function volverHojaLigada() {
-    if (!confirm('¿Volver a usar la hoja ligada al proyecto?')) return;
-    llamarBackend('usarHojaLigada', [], function (res) {
-      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
-      if (res.ok) { document.getElementById('cfgIdHoja').value = ''; cargarConfiguracion(); refrescarEmpleadosSelect(); }
-    });
+    confirmarAccion('¿Volver a usar la hoja ligada al proyecto?', function () {
+      llamarBackend('usarHojaLigada', [], function (res) {
+        mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+        if (res.ok) { document.getElementById('cfgIdHoja').value = ''; cargarConfiguracion(); refrescarEmpleadosSelect(); }
+      });
+    }, 'Confirmar');
   }
 
   function inicializarPestanas() {
@@ -169,11 +171,12 @@
   }
 
   function desactivarRespaldoSemanal() {
-    if (!confirm('¿Desactivar el respaldo automático semanal?')) return;
-    llamarBackend('desactivarRespaldoSemanal', [], function (res) {
-      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
-      cargarEstadoRespaldo();
-    });
+    confirmarAccion('¿Desactivar el respaldo automático semanal?', function () {
+      llamarBackend('desactivarRespaldoSemanal', [], function (res) {
+        mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+        cargarEstadoRespaldo();
+      });
+    }, 'Desactivar');
   }
 
   // ── Roles y PINs ─────────────────────────────────────────

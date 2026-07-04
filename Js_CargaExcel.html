@@ -601,25 +601,25 @@
     var msg = (modo === 'reemplazar')
       ? '⚠️ Se BORRARÁN los datos actuales de las pestañas incluidas en el archivo y se escribirán los nuevos.\n\n¿Continuar?'
       : 'Se agregarán los registros del archivo (los duplicados se omiten).\n\n¿Continuar?';
-    if (!confirm(msg)) return;
-
-    var btn = document.getElementById('btnEjecutarCarga');
-    btn.disabled = true; btn.textContent = 'Cargando...';
-    llamarBackend('cargarBaseCompleta', [CARGA.datos, modo], function (res) {
-      btn.disabled = false; btn.textContent = '🚀 Cargar a Google Sheets';
-      var div = document.getElementById('cargaResultado');
-      if (!res.ok) { div.innerHTML = '<span style="color:var(--err)">' + escapar(res.mensaje) + '</span>'; return; }
-      div.innerHTML = '<strong style="color:var(--ok)">✅ ' + escapar(res.mensaje) + '</strong>' +
-        (res.resumen || []).map(function (r) {
-          return '<div>• ' + escapar(r.pestana) + ': ' + r.creados + ' cargados' +
-            (r.omitidos ? ', ' + r.omitidos + ' omitidos por duplicado' : '') + '</div>';
-        }).join('');
-      mostrarMensaje(res.mensaje, 'exito');
-      document.getElementById('cargaPanel').classList.add('oculto');
-      CARGA.datos = null;
-      document.getElementById('cargaNombreArchivo').textContent = '';
-      refrescarEmpleadosSelect();
-      cargarConfiguracion(); // refrescar contadores de pestañas
-    });
+    confirmarAccion(msg, function () {
+      var btn = document.getElementById('btnEjecutarCarga');
+      btn.disabled = true; btn.textContent = 'Cargando...';
+      llamarBackend('cargarBaseCompleta', [CARGA.datos, modo], function (res) {
+        btn.disabled = false; btn.textContent = '🚀 Cargar a Google Sheets';
+        var div = document.getElementById('cargaResultado');
+        if (!res.ok) { div.innerHTML = '<span style="color:var(--err)">' + escapar(res.mensaje) + '</span>'; return; }
+        div.innerHTML = '<strong style="color:var(--ok)">✅ ' + escapar(res.mensaje) + '</strong>' +
+          (res.resumen || []).map(function (r) {
+            return '<div>• ' + escapar(r.pestana) + ': ' + r.creados + ' cargados' +
+              (r.omitidos ? ', ' + r.omitidos + ' omitidos por duplicado' : '') + '</div>';
+          }).join('');
+        mostrarMensaje(res.mensaje, 'exito');
+        document.getElementById('cargaPanel').classList.add('oculto');
+        CARGA.datos = null;
+        document.getElementById('cargaNombreArchivo').textContent = '';
+        refrescarEmpleadosSelect();
+        cargarConfiguracion();
+      });
+    }, modo === 'reemplazar' ? 'Sí, borrar y cargar' : 'Cargar');
   }
 </script>

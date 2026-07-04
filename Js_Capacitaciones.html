@@ -102,10 +102,11 @@
   }
 
   function eliminarCapacitacion(id) {
-    if (!confirm('¿Eliminar esta capacitación?')) return;
-    llamarBackend('eliminarCapacitacion', [id], function (res) {
-      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
-      if (res.ok) cargarCapacitaciones();
-    });
+    confirmarAccion('¿Eliminar esta capacitación?', function () {
+      llamarBackend('eliminarCapacitacion', [id], function (res) {
+        mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+        if (res.ok) cargarCapacitaciones();
+      });
+    }, 'Eliminar');
   }
 </script>

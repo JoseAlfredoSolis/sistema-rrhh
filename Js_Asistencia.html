@@ -87,10 +87,11 @@
 
   function eliminarAsist(id) {
     if (!puedeEditar()) { mostrarMensaje('Sin permisos.', 'error'); return; }
-    if (!confirm('¿Eliminar este registro de asistencia?')) return;
-    llamarBackend('eliminarAsistencia', [id], function (res) {
-      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
-      if (res.ok) cargarAsistencia();
-    });
+    confirmarAccion('¿Eliminar este registro de asistencia?', function () {
+      llamarBackend('eliminarAsistencia', [id], function (res) {
+        mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+        if (res.ok) cargarAsistencia();
+      });
+    }, 'Eliminar');
   }
 </script>

@@ -84,10 +84,11 @@
   }
 
   function eliminarHexUI(id) {
-    if (!confirm('¿Eliminar este registro?')) return;
-    llamarBackend('eliminarHoraExtra', [id], function(res) {
-      mostrarMensaje(res.mensaje, res.ok?'exito':'error');
-      if (res.ok) cargarHorasExtra();
-    });
+    confirmarAccion('¿Eliminar este registro de horas extra?', function () {
+      llamarBackend('eliminarHoraExtra', [id], function(res) {
+        mostrarMensaje(res.mensaje, res.ok?'exito':'error');
+        if (res.ok) cargarHorasExtra();
+      });
+    }, 'Eliminar');
   }
 </script>

@@ -298,12 +298,12 @@
       if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); badge.click(); }
     };
     badge.onclick = function () {
-      if (confirm('¿Cambiar de usuario?')) {
+      confirmarAccion('¿Cambiar de usuario? Se cerrará la sesión actual.', function () {
         document.getElementById('pinInput').value = '';
         document.getElementById('pinError').textContent = '';
         guardarTokenSesion('');
         mostrarModalPin();
-      }
+      }, 'Cambiar usuario');
     };
   }
 

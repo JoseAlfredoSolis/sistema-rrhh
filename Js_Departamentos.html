@@ -77,10 +77,11 @@
 
   function eliminarDepto(id) {
     if (!puedeEditar()) { mostrarMensaje('Sin permisos.', 'error'); return; }
-    if (!confirm('¿Eliminar este departamento?')) return;
-    llamarBackend('eliminarDepartamento', [id], function (res) {
-      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
-      if (res.ok) cargarDepartamentos();
-    });
+    confirmarAccion('¿Eliminar este departamento?', function () {
+      llamarBackend('eliminarDepartamento', [id], function (res) {
+        mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+        if (res.ok) cargarDepartamentos();
+      });
+    }, 'Eliminar');
   }
 </script>

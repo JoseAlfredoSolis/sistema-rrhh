@@ -85,10 +85,11 @@
   }
 
   function eliminarIncapacidadUI(id) {
-    if (!confirm('¿Eliminar esta incapacidad?')) return;
-    llamarBackend('eliminarIncapacidad', [id], function(res) {
-      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
-      if (res.ok) cargarIncapacidades();
-    });
+    confirmarAccion('¿Eliminar esta incapacidad?', function () {
+      llamarBackend('eliminarIncapacidad', [id], function(res) {
+        mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+        if (res.ok) cargarIncapacidades();
+      });
+    }, 'Eliminar');
   }
 </script>
