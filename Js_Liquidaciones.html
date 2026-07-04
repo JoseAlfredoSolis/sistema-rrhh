@@ -248,6 +248,7 @@
     if (!puedeEditar()) { mostrarMensaje('Sin permisos.', 'error'); return; }
     llenarSelectEmpleados('calcEmpleado');
     document.getElementById('calcEmpleado').value = '';
+    document.getElementById('calcFechaInicio').value = '';
     document.getElementById('calcFechaSalida').value = '';
     document.getElementById('calcMotivo').value = '';
     document.getElementById('calcEstado').value = 'pendiente';
@@ -381,7 +382,7 @@
 
       CALCULO_ACTUAL = res;
       _mostrarResultadoCalculadora(res);
-      document.getElementById('btnGuardarLiqCalc').classList.remove('oculto');
+      guardarCalculoLiquidacion();
     });
   }
 
@@ -465,29 +466,15 @@
     var btn = document.getElementById('btnGuardarLiqCalc');
     if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
 
-    console.log('[LIQ] Guardando datos:', JSON.stringify(datos));
-
-    google.script.run
-      .withSuccessHandler(function(res) {
-        console.log('[LIQ] Respuesta backend:', JSON.stringify(res));
-        if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar Liquidación'; }
-        if (!res) {
-          mostrarMensaje('Error: sin respuesta del servidor.', 'error');
-          return;
-        }
-        if (res.ok) {
-          mostrarMensaje('Liquidación guardada correctamente', 'exito');
-          cerrarCalculadoraLiquidacion();
-          cargarLiquidaciones();
-        } else {
-          mostrarMensaje('Error: ' + (res.mensaje || 'Error desconocido'), 'error');
-        }
-      })
-      .withFailureHandler(function(err) {
-        console.error('[LIQ] Error backend:', err);
-        if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar Liquidación'; }
-        mostrarMensaje('Fallo al guardar: ' + (err.message || String(err)), 'error');
-      })
-      .crearLiquidacion(datos, SESSION_TOKEN || _leerStorage('session', 'rrhh-token'));
+    llamarBackend('crearLiquidacion', [datos], function(res) {
+      if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar Liquidación'; }
+      if (!res || !res.ok) {
+        mostrarMensaje('Error al guardar: ' + ((res && res.mensaje) || 'Error desconocido'), 'error');
+        return;
+      }
+      mostrarMensaje('Liquidación calculada y guardada correctamente', 'exito');
+      cerrarCalculadoraLiquidacion();
+      cargarLiquidaciones();
+    });
   }
 </script>
