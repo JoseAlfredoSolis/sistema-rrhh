@@ -93,6 +93,12 @@ var COLS = (function () {
 function doGet(e) {
   if (e && e.parameter && e.parameter.setup === 'rrhh2024') {
     try {
+      var url = ScriptApp.getService().getUrl();
+      // Si viene con resetHoja, limpiar el ID guardado y usar la hoja ligada
+      if (e.parameter.resetHoja === '1') {
+        PropertiesService.getScriptProperties().deleteProperty('SPREADSHEET_ID');
+        return HtmlService.createHtmlOutput('<body style="font-family:sans-serif;padding:40px"><h2 style="color:green">✅ Conexión reseteada a hoja ligada</h2><p><a href="' + url + '?setup=rrhh2024">Verificar estado →</a></p></body>');
+      }
       var props = PropertiesService.getScriptProperties();
       props.deleteProperty('PIN_SALT');
       props.deleteProperty('CONFIG_ROLES');
@@ -102,11 +108,14 @@ function doGet(e) {
       props.setProperty('BOOTSTRAP_PIN', '1234');
       var prueba = verificarPIN('1234');
       var ok = prueba && prueba.rol === 'admin';
-      var url = ScriptApp.getService().getUrl();
+      // Probar conexión a la hoja
+      var hojaOk = false; var hojaMsg = '';
+      try { getLibro(); hojaOk = true; } catch(he) { hojaMsg = he.message; }
       return HtmlService.createHtmlOutput(
         '<body style="font-family:sans-serif;padding:40px">' +
-        (ok ? '<h2 style="color:green">✅ PIN Admin = 1234 configurado</h2><p><a href="' + url + '">Ir a la app →</a></p>'
-            : '<h2 style="color:red">❌ Error</h2><pre>' + JSON.stringify(prueba) + '</pre>') +
+        (ok ? '<h2 style="color:green">✅ PIN Admin = 1234 configurado</h2>' : '<h2 style="color:red">❌ Error PIN</h2><pre>' + JSON.stringify(prueba) + '</pre>') +
+        (hojaOk ? '<p style="color:green">✅ Conexión a la hoja OK</p>' : '<p style="color:orange">⚠️ Hoja inaccesible: ' + hojaMsg + '</p><p><a href="' + url + '?setup=rrhh2024&resetHoja=1" style="color:blue">👉 Resetear conexión a hoja ligada al proyecto</a></p>') +
+        '<p><a href="' + url + '">Ir a la app →</a></p>' +
         '</body>'
       );
     } catch(err) {
