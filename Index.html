@@ -1480,15 +1480,15 @@
           </div>
         </div>
 
-        <div class="modal-pie"><button type="submit" class="btn btn-primario" id="btnCalcular">🧮 Calcular Liquidación</button></div>
+        <div class="modal-pie" style="gap:8px">
+          <button type="submit" class="btn btn-primario" id="btnCalcular">🧮 Calcular Liquidación</button>
+          <button type="button" id="btnGuardarLiqCalc" class="btn btn-primario oculto" onclick="guardarCalculoLiquidacion()" style="background:var(--ok)">💾 Guardar Liquidación</button>
+        </div>
       </form>
 
       <div id="calcResultado" class="oculto" style="margin-top:16px;padding:16px;background:var(--surface-2);border-radius:6px;max-height:400px;overflow-y:auto">
         <h3 style="margin-top:0">Resultado del Cálculo</h3>
         <div id="calcDetalles"></div>
-        <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
-          <button type="button" id="btnGuardarLiqCalc" class="btn btn-primario" onclick="guardarCalculoLiquidacion()" style="width:100%">💾 Guardar Liquidación</button>
-        </div>
       </div>
     </div>
   </div>
