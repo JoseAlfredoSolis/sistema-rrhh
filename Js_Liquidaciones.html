@@ -42,28 +42,42 @@
     });
   }
 
-  function verDetallesLiquidacion(empleadoId, fechaSalida) {
-    var motivo = prompt('Motivo de salida:\n1 = Renuncia\n2 = Despido con responsabilidad\n3 = Despido sin responsabilidad', '1');
-    var motivoMap = { '1': 'renuncia', '2': 'despido_con_resp', '3': 'despido_sin_resp' };
-    var motivoSalida = motivoMap[motivo] || 'renuncia';
+  var _pendienteMotivo = null; // {empleadoId, fechaSalida, accion}
 
-    llamarBackend('calcularLiquidacion', [empleadoId, fechaSalida, motivoSalida], function(res) {
-      if (!res.ok) { mostrarMensaje(res.mensaje, 'error'); return; }
-      _mostrarModalDetallesLiquidacion(res);
-    });
+  function _pedirMotivo(empleadoId, fechaSalida, accion) {
+    _pendienteMotivo = { empleadoId: empleadoId, fechaSalida: fechaSalida, accion: accion };
+    document.getElementById('selectMotivoLiq').value = 'renuncia';
+    document.getElementById('modalMotivoLiq').classList.remove('oculto');
+  }
+
+  function _confirmarMotivo() {
+    var motivoSalida = document.getElementById('selectMotivoLiq').value;
+    if (!motivoSalida || !_pendienteMotivo) return;
+    document.getElementById('modalMotivoLiq').classList.add('oculto');
+    var p = _pendienteMotivo;
+    _pendienteMotivo = null;
+
+    if (p.accion === 'detalles') {
+      llamarBackend('calcularLiquidacion', [p.empleadoId, p.fechaSalida, motivoSalida], function(res) {
+        if (!res.ok) { mostrarMensaje(res.mensaje, 'error'); return; }
+        _mostrarModalDetallesLiquidacion(res);
+      });
+    } else {
+      llamarBackend('generarReporteLiquidacion', [p.empleadoId, p.fechaSalida, motivoSalida], function(res) {
+        if (!res.ok) { mostrarMensaje(res.mensaje, 'error'); return; }
+        var ventana = window.open('', 'Liquidación');
+        ventana.document.write(res.html);
+        ventana.document.close();
+      });
+    }
+  }
+
+  function verDetallesLiquidacion(empleadoId, fechaSalida) {
+    _pedirMotivo(empleadoId, fechaSalida, 'detalles');
   }
 
   function generarReporteLiquidacion(empleadoId, fechaSalida) {
-    var motivo = prompt('Motivo de salida:\n1 = Renuncia\n2 = Despido con responsabilidad\n3 = Despido sin responsabilidad', '1');
-    var motivoMap = { '1': 'renuncia', '2': 'despido_con_resp', '3': 'despido_sin_resp' };
-    var motivoSalida = motivoMap[motivo] || 'renuncia';
-
-    llamarBackend('generarReporteLiquidacion', [empleadoId, fechaSalida, motivoSalida], function(res) {
-      if (!res.ok) { mostrarMensaje(res.mensaje, 'error'); return; }
-      var ventana = window.open('', 'Liquidación');
-      ventana.document.write(res.html);
-      ventana.document.close();
-    });
+    _pedirMotivo(empleadoId, fechaSalida, 'reporte');
   }
 
   function _mostrarModalDetallesLiquidacion(liq) {

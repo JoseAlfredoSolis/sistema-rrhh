@@ -1161,6 +1161,27 @@
     </div>
   </div>
 
+  <!-- Modal Motivo Liquidación -->
+  <div id="modalMotivoLiq" class="modal oculto">
+    <div class="modal-contenido" style="max-width:380px">
+      <div class="modal-cabecera"><h2>Motivo de salida</h2><button class="cerrar" onclick="document.getElementById('modalMotivoLiq').classList.add('oculto')">&times;</button></div>
+      <div style="padding:16px 20px">
+        <div class="campo">
+          <label for="selectMotivoLiq">Selecciona el motivo *</label>
+          <select id="selectMotivoLiq" style="width:100%">
+            <option value="renuncia">Renuncia del trabajador</option>
+            <option value="despido_con_resp">Despido con responsabilidad patronal</option>
+            <option value="despido_sin_resp">Despido sin responsabilidad patronal</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-pie">
+        <button class="btn btn-secundario" onclick="document.getElementById('modalMotivoLiq').classList.add('oculto')">Cancelar</button>
+        <button class="btn btn-primario" onclick="_confirmarMotivo()">Continuar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal Vacaciones Jefe -->
   <div id="modalVacJefe" class="modal oculto">
     <div class="modal-contenido modal-grande">

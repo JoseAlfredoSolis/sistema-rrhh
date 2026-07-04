@@ -201,8 +201,7 @@ function leerTabla(nombreHoja, offset, limit) {
  */
 function contarFilasTabla(nombreHoja) {
   var hoja = getHoja(nombreHoja);
-  var datos = hoja.getDataRange().getValues();
-  return Math.max(0, datos.length - 1);  // -1 para no contar encabezados
+  return Math.max(0, hoja.getLastRow() - 1);
 }
 
 /**
@@ -228,26 +227,22 @@ function generarId(prefijo) {
  */
 function buscarFilaPorId(hoja, id) {
   try {
-    // Usar MATCH() de Sheets es 10x más rápido que loop en JS
-    var rango = hoja.getDataRange();
-    var primeraColumna = rango.getColumn();
-    var ultimaFila = rango.getLastRow();
+    var ultimaFila = hoja.getLastRow();
+    if (ultimaFila <= 1) return -1;
 
-    if (ultimaFila <= 1) return -1;  // Solo encabezados
-
-    var formula = '=IFERROR(MATCH("' + id + '",A2:A' + ultimaFila + ',0),-1)';
-    var resultado = SpreadsheetApp.getActiveSheet().getRange(ultimaFila + 2, 1)
-      .setFormula(formula).getValue();
+    // Sanitizar id para evitar inyección de fórmula
+    var idSeguro = String(id).replace(/"/g, '""');
+    var formula = '=IFERROR(MATCH("' + idSeguro + '",A2:A' + ultimaFila + ',0),-1)';
+    var celdaTmp = hoja.getRange(ultimaFila + 2, 1);
+    var resultado = celdaTmp.setFormula(formula).getValue();
+    celdaTmp.clearContent();
 
     if (resultado === -1) return -1;
-    return resultado + 1;  // +1 para compensar MATCH que devuelve 1-based desde A2
+    return resultado + 1;
   } catch (e) {
-    // Fallback a búsqueda por loop si hay error en fórmula
     var datos = hoja.getDataRange().getValues();
     for (var i = 1; i < datos.length; i++) {
-      if (String(datos[i][0]) === String(id)) {
-        return i + 1;
-      }
+      if (String(datos[i][0]) === String(id)) return i + 1;
     }
     return -1;
   }
@@ -810,20 +805,41 @@ function calcularDias(inicio, fin) {
 
 /** Lista las solicitudes de vacaciones con el nombre del empleado y saldo disponible. */
 function listarVacaciones(empleadoId, estado) {
-  var lista = leerTabla(HOJAS.VACACIONES);
+  var todasVac = leerTabla(HOJAS.VACACIONES);
+  var lista = todasVac.slice();
   if (empleadoId) lista = lista.filter(function (v) { return String(v.empleado_id) === String(empleadoId); });
   if (estado) lista = lista.filter(function (v) { return String(v.estado).toLowerCase() === String(estado).toLowerCase(); });
   var nombres = mapaEmpleados();
+
+  // Pre-calcular saldos usando la tabla ya leída (evita N+1 reads)
+  var saldosPorEmp = _calcularSaldosVacaciones(todasVac);
+
   lista.forEach(function (v) {
     v.fecha_inicio = formatearFecha(v.fecha_inicio);
     v.fecha_fin = formatearFecha(v.fecha_fin);
     v.dias = Number(v.dias) || 0;
     v.empleado_nombre = nombres[v.empleado_id] || '(desconocido)';
-    // Agregar saldo disponible
-    var balance = obtenerBalanceVacaciones(v.empleado_id);
-    v.saldo_disponible = (balance.ok ? balance.diasDisponibles : 0);
+    v.saldo_disponible = saldosPorEmp[v.empleado_id] !== undefined ? saldosPorEmp[v.empleado_id] : 0;
   });
   return lista;
+}
+
+/** Calcula saldo de días de vacaciones para cada empleado a partir de una tabla ya leída. */
+function _calcularSaldosVacaciones(todasVac) {
+  var empleados = leerTabla(HOJAS.EMPLEADOS);
+  var saldos = {};
+  empleados.forEach(function(emp) {
+    if (String(emp.estado || '').toLowerCase() !== 'activo') return;
+    var fechaIngreso = new Date(emp.fecha_ingreso);
+    if (isNaN(fechaIngreso.getTime())) return;
+    var mesesTrabajados = (new Date() - fechaIngreso) / (30.4375 * 24 * 60 * 60 * 1000);
+    var acumulados = Math.floor(Math.max(0, mesesTrabajados) * 1.25); // 1.25 días/mes = 15/año
+    var usados = todasVac
+      .filter(function(v) { return String(v.empleado_id) === String(emp.id) && String(v.estado).toLowerCase() === 'aprobada'; })
+      .reduce(function(s, v) { return s + (Number(v.dias) || 0); }, 0);
+    saldos[emp.id] = Math.max(0, acumulados - usados);
+  });
+  return saldos;
 }
 
 /**
@@ -841,17 +857,30 @@ function listarSubalternos(jefeId) {
              String(e.jefe_inmediato || '').trim().toLowerCase() === nombreJefe;
     })
     .map(function(e) {
-      var bal = obtenerBalanceVacaciones(e.id);
-      return {
-        id: e.id,
-        nombre: e.nombre,
-        puesto: e.puesto || '',
-        departamento: e.departamento || '',
-        diasDisponibles: bal.ok ? bal.diasDisponibles : 0,
-        diasAcumulados: bal.ok ? bal.diasAcumulados : 0,
-        diasUsados: bal.ok ? bal.diasUsados : 0
-      };
+      return { id: e.id, nombre: e.nombre, puesto: e.puesto || '', departamento: e.departamento || '', _fechaIngreso: e.fecha_ingreso };
     });
+
+  // Calcular saldos en bloque (una sola lectura de vacaciones)
+  var todasVac = leerTabla(HOJAS.VACACIONES);
+  var saldos = _calcularSaldosVacaciones(todasVac);
+
+  return subalternos.map(function(s) {
+    var fechaIngreso = new Date(s._fechaIngreso);
+    var meses = (new Date() - fechaIngreso) / (30.4375 * 24 * 60 * 60 * 1000);
+    var acum = Math.floor(Math.max(0, meses) * 1.25);
+    var usados = todasVac
+      .filter(function(v) { return String(v.empleado_id) === String(s.id) && String(v.estado).toLowerCase() === 'aprobada'; })
+      .reduce(function(sum, v) { return sum + (Number(v.dias) || 0); }, 0);
+    return {
+      id: s.id,
+      nombre: s.nombre,
+      puesto: s.puesto,
+      departamento: s.departamento,
+      diasDisponibles: Math.max(0, acum - usados),
+      diasAcumulados: acum,
+      diasUsados: usados
+    };
+  });
 }
 
 /** Crea una solicitud de vacaciones (nace 'pendiente'). Valida días disponibles. */
@@ -881,36 +910,34 @@ function crearVacaciones(v, token) {
 
   var dias = calcularDias(v.fecha_inicio, v.fecha_fin);
 
-  // Validar que hay suficientes días disponibles
-  var balance = obtenerBalanceVacaciones(v.empleado_id);
-  if (!balance.ok) return balance;
-
-  if (dias > balance.diasDisponibles) {
-    return {
-      ok: false,
-      mensaje: 'No hay suficientes días disponibles. ' +
-               'Tienes ' + balance.diasDisponibles + ' días disponibles, ' +
-               'pero solicitaste ' + dias + ' días. ' +
-               '(Acumulados: ' + balance.diasAcumulados + ', Usados: ' + balance.diasUsados + ')'
-    };
-  }
-
-  // Validar que no se solapen con vacaciones aprobadas
-  var vacacionesExistentes = leerTabla(HOJAS.VACACIONES).filter(function (vac) {
-    return String(vac.empleado_id) === String(v.empleado_id) && String(vac.estado).toLowerCase() === 'aprobada';
-  });
-  var fechaInicio = new Date(v.fecha_inicio);
-  var fechaFin = new Date(v.fecha_fin);
-  var solapada = vacacionesExistentes.some(function (vac) {
-    var vacInicio = new Date(vac.fecha_inicio);
-    var vacFin = new Date(vac.fecha_fin);
-    return !(fechaFin < vacInicio || fechaInicio > vacFin);
-  });
-  if (solapada) {
-    return { ok: false, mensaje: 'Conflicto: Ya hay vacaciones aprobadas en esas fechas.' };
-  }
-
   return conLock(function () {
+    // Validaciones de saldo y solapamiento dentro del lock para evitar race conditions
+    var balance = obtenerBalanceVacaciones(v.empleado_id);
+    if (!balance.ok) return balance;
+
+    if (dias > balance.diasDisponibles) {
+      return {
+        ok: false,
+        mensaje: 'No hay suficientes días disponibles. ' +
+                 'Tienes ' + balance.diasDisponibles + ' días disponibles, ' +
+                 'pero solicitaste ' + dias + ' días. ' +
+                 '(Acumulados: ' + balance.diasAcumulados + ', Usados: ' + balance.diasUsados + ')'
+      };
+    }
+
+    var fechaInicio = new Date(v.fecha_inicio);
+    var fechaFin = new Date(v.fecha_fin);
+    var solapada = leerTabla(HOJAS.VACACIONES).some(function (vac) {
+      if (String(vac.empleado_id) !== String(v.empleado_id)) return false;
+      if (String(vac.estado).toLowerCase() !== 'aprobada') return false;
+      var vacInicio = new Date(vac.fecha_inicio);
+      var vacFin = new Date(vac.fecha_fin);
+      return !(fechaFin < vacInicio || fechaInicio > vacFin);
+    });
+    if (solapada) {
+      return { ok: false, mensaje: 'Conflicto: Ya hay vacaciones aprobadas en esas fechas.' };
+    }
+
     var hoja = getHoja(HOJAS.VACACIONES);
     var id = generarId('VAC');
     var notaFinal = v.notas || '';
@@ -1238,8 +1265,9 @@ function obtenerDashboard() {
   var costoPorEmpleado = activos.length > 0 ? Math.round((masaSalarial / activos.length) * 100) / 100 : 0;
   var rotacionMensual = empleados.length > 0 ? Math.round(((empleados.length - activos.length) / empleados.length) * 100 * 100) / 100 : 0;
 
-  // Costo total de nómina mensual (incluyendo CCSS patronal ~10.67%)
-  var costTotalMes = totalNeto * 1.1067;  // Agregamos CCSS patronal
+  // Costo total de nómina mensual con carga patronal CCSS ~26.67% (patronal real CR)
+  var CCSS_PATRONAL = 0.2667;
+  var costTotalMes = totalNeto * (1 + CCSS_PATRONAL);
 
   // Análisis por departamento - costo
   var costoPorDepto = {};
@@ -2375,11 +2403,11 @@ function obtenerBalanceVacaciones(empleadoId) {
   var emp = obtenerEmpleadoCompleto(empleadoId);
   if (!emp) return { ok: false, mensaje: 'Empleado no encontrado.' };
 
-  var diasPorAnio   = 15;
   var fechaIngreso  = new Date(emp.fecha_ingreso);
   var ahora         = new Date();
-  var aniosTrabajados = (ahora - fechaIngreso) / (365.25 * 24 * 60 * 60 * 1000);
-  var diasAcumulados  = Math.floor(Math.max(0, aniosTrabajados) * diasPorAnio);
+  // Acumulación proporcional: 1.25 días/mes (15 días/año, art. 153 CT)
+  var mesesTrabajados = (ahora - fechaIngreso) / (30.4375 * 24 * 60 * 60 * 1000);
+  var diasAcumulados  = Math.floor(Math.max(0, mesesTrabajados) * 1.25);
 
   var diasUsados = leerTabla(HOJAS.VACACIONES)
     .filter(function (v) {

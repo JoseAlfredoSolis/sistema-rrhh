@@ -108,10 +108,8 @@ function hashPin(pin) {
 
 function _pinCoincide(pin, almacenado) {
   if (!almacenado) return false;
-  var p = String(pin).trim();
-  var a = String(almacenado).trim();
-  if (p === a) return true;
-  return hashPin(p) === a;
+  // Comparar solo hashes — nunca texto plano
+  return hashPin(String(pin).trim()) === String(almacenado).trim();
 }
 
 function _tienePinsConfigurados(cfg) {
@@ -199,7 +197,12 @@ function verificarPIN(pin) {
   var cfg = obtenerConfigRolesInterno();
 
   if (!_tienePinsConfigurados(cfg)) {
-    return { rol: 'admin', token: crearSesion('admin'), mensaje: 'Acceso sin restricción (PINs no configurados).' };
+    return {
+      rol: 'admin',
+      token: crearSesion('admin'),
+      mensaje: '⚠️ Sistema sin PIN configurado — cualquier persona tiene acceso total. Configura los PINs en Configuración > Seguridad.',
+      sinPin: true
+    };
   }
 
   if (!pin || !String(pin).trim()) {

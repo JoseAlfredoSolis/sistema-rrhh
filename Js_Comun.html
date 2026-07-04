@@ -254,6 +254,7 @@
     llamarBackend('verificarPIN', [''], function (res) {
       if (res && res.token) guardarTokenSesion(res.token);
       establecerRol((res && res.rol) ? res.rol : 'consulta');
+      if (res && res.sinPin) mostrarMensaje(res.mensaje, 'error');
     });
   }
 
