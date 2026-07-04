@@ -249,32 +249,29 @@
   }
 
   function recalcularAguinaldo() {
-    // Obtener valores de todos los meses
     var meses = ['Diciembre', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo',
                  'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre'];
 
     var valores = meses.map(function(mes) {
-      var val = Number(document.getElementById('sal' + mes).value) || 0;
-      return val;
+      return Number(document.getElementById('sal' + mes).value) || 0;
     });
 
-    // Calcular total (todos los 12 meses)
     var total = valores.reduce(function(a, b) { return a + b; }, 0);
 
-    // Calcular promedio últimos 6 meses (Mayo a Octubre, indices 4-9)
-    var ultimos6 = valores.slice(4, 10);
-    var promedio = ultimos6.length > 0 ? ultimos6.reduce(function(a, b) { return a + b; }, 0) / ultimos6.length : 0;
+    // Promedio 6 meses — fórmula Excel J32:
+    // si meses > 5.99 → suma6/6; si no → suma6/meses_trabajados
+    var suma6 = valores.slice(0, 6).reduce(function(a, b) { return a + b; }, 0);
+    var mesesTotales = (window.MESES_CALCULADOS && window.MESES_CALCULADOS.mesesTotales) || 6;
+    var divisor = (mesesTotales > 5.99) ? 6 : Math.max(mesesTotales, 1);
+    var promedio = suma6 / divisor;
 
-    // Mostrar valores
     document.getElementById('totalSalarios').textContent = formatearNumero(total);
     document.getElementById('promedioSalarios').textContent = formatearNumero(promedio);
 
-    // Guardar en variables globales para usar en el cálculo
     window.SALARIOS_INGRESADOS = {
       total: total,
       promedio: promedio,
-      aguinaldo: total / 12,
-      salarioDiario: promedio / 30
+      aguinaldo: total / 12
     };
   }
 

@@ -3910,12 +3910,15 @@ function calcularLiquidacion(empleadoId, fechaSalida, motivoSalida, totalSalario
   var tipoNominaNorm = tipoNomina || emp.tipo_nomina || 'Semanal';
   var motivo = motivoSalida || 'renuncia';
 
-  // Calcular meses y días laborados
-  var mesesLaborados = (fechaSal.getFullYear() - fechaIng.getFullYear()) * 12 +
-                       (fechaSal.getMonth() - fechaIng.getMonth());
-  var diasAdicionales = fechaSal.getDate() - fechaIng.getDate();
-  if (diasAdicionales < 0) { mesesLaborados--; diasAdicionales += 30; }
-  var mesesTotales = mesesLaborados + (diasAdicionales / 30);
+  // Meses laborados — fórmula exacta del Excel:
+  // Quincenal: (diasDiff / 30)   Semanal: (diasDiff / 365) * 12
+  var diasDiff = Math.round((fechaSal - fechaIng) / (24 * 60 * 60 * 1000));
+  var mesesTotales = (tipoNominaNorm === 'Quincenal') ? (diasDiff / 30) : ((diasDiff / 365) * 12);
+  var mesesLaborados = Math.floor(mesesTotales);
+  var diasAdicionales = Math.round((mesesTotales - mesesLaborados) * 30);
+
+  // Días en año 360 (usado para tablas de cesantía y preaviso, igual que Excel)
+  var diasTrabajados360 = mesesTotales * 30;
 
   // Salario mensual (promedio 6 meses si se ingresó, si no el base)
   var salarioMensual = Number(promedioSalarios) || Number(emp.salario) || 0;
@@ -3938,28 +3941,22 @@ function calcularLiquidacion(empleadoId, fechaSalida, motivoSalida, totalSalario
   var montoVacaciones = diasVacaciones * salarioDiario;
 
   // ====== 3. CESANTÍA ======
-  // Solo aplica en Despido Con Responsabilidad Patronal (Excel: G33="No" si es renuncia o sin resp)
+  // Solo aplica en Despido Con Responsabilidad Patronal
+  // Monto = diasCesantia * salarioDiario (fórmula Excel D38)
   var correspondeCesantia = (motivo === 'despido_con_resp');
   var montoCesantia = 0;
   if (correspondeCesantia) {
-    var diasTrabajados = Math.round((fechaSal - fechaIng) / (24 * 60 * 60 * 1000));
-    montoCesantia = calcularCesantiaCompleta(salarioMensual, diasTrabajados);
+    montoCesantia = calcularCesantiaCompleta(salarioDiario, diasTrabajados360);
   }
 
   // ====== 4. PREAVISO ======
-  // Solo aplica en Despido Con Responsabilidad Patronal (el empleador paga al trabajador)
-  // Excel: tabla por meses laborados (Código de Trabajo CR)
+  // Solo aplica en Despido Con Responsabilidad Patronal
+  // Usa tabla nueva ley basada en días 360 (Excel JU38-JU46)
   var correspondePreaviso = (motivo === 'despido_con_resp');
   var diasPreaviso = 0;
   var montoPreaviso = 0;
   if (correspondePreaviso) {
-    if (mesesTotales < 3) {
-      diasPreaviso = 7;
-    } else if (mesesTotales < 6) {
-      diasPreaviso = 15;
-    } else {
-      diasPreaviso = 30;
-    }
+    diasPreaviso = calcularDiasPreaviso(diasTrabajados360);
     montoPreaviso = diasPreaviso * salarioDiario;
   }
 
@@ -3995,42 +3992,72 @@ function calcularLiquidacion(empleadoId, fechaSalida, motivoSalida, totalSalario
   };
 }
 
-/** Calcula cesantía según tabla completa de días trabajados (Costa Rica). */
-function calcularCesantiaCompleta(salarioMensual, diasTrabajados) {
-  // Tabla de cesantía por días trabajados (Costa Rica)
+/**
+ * Calcula cesantía según tabla Excel (28 rangos, días en año 360).
+ * diasTrabajados360 = mesesTotales * 30
+ * Retorna monto = diasCesantia * salarioDiario
+ */
+function calcularCesantiaCompleta(salarioDiario, diasTrabajados360) {
   var tablaCesantia = [
-    { desde: 90,     hasta: 180,     dias: 7,     rango: '3-6 Meses' },
-    { desde: 181,    hasta: 360,     dias: 14,    rango: '6-12 Meses' },
-    { desde: 361,    hasta: 540,     dias: 19.5,  rango: '1-1.5 años' },
-    { desde: 541,    hasta: 720,     dias: 19.5,  rango: '1.5-2 años' },
-    { desde: 721,    hasta: 900,     dias: 20,    rango: '2-2.5 años' },
-    { desde: 901,    hasta: 1080,    dias: 20,    rango: '2.5-3 años' },
-    { desde: 1081,   hasta: 1260,    dias: 20.5,  rango: '3-3.5 años' },
-    { desde: 1261,   hasta: 1440,    dias: 20.5,  rango: '3.5-4 años' },
-    { desde: 1441,   hasta: 1620,    dias: 21,    rango: '4-4.5 años' },
-    { desde: 1621,   hasta: 1800,    dias: 21,    rango: '4.5-5 años' },
-    { desde: 1801,   hasta: 1980,    dias: 21.24, rango: '5-5.5 años' },
-    { desde: 1981,   hasta: 2160,    dias: 21.24, rango: '5.5-6 años' },
-    { desde: 2161,   hasta: 2340,    dias: 21.5,  rango: '6-6.5 años' },
-    { desde: 2341,   hasta: 2520,    dias: 21.5,  rango: '6.5-7 años' },
-    { desde: 2521,   hasta: 2700,    dias: 22,    rango: '7-7.5 años' },
-    { desde: 2701,   hasta: 2880,    dias: 22,    rango: '7.5-8 años' },
-    { desde: 2881,   hasta: 3060,    dias: 22,    rango: '8-8.5 años' }
+    { desde: 90,    hasta: 180.99,   dias: 7     },
+    { desde: 181,   hasta: 360.99,   dias: 14    },
+    { desde: 361,   hasta: 540.99,   dias: 19.5  },
+    { desde: 541,   hasta: 720.99,   dias: 19.5  },
+    { desde: 721,   hasta: 900.99,   dias: 20    },
+    { desde: 901,   hasta: 1080.99,  dias: 20    },
+    { desde: 1081,  hasta: 1260.99,  dias: 20.5  },
+    { desde: 1261,  hasta: 1440.99,  dias: 20.5  },
+    { desde: 1441,  hasta: 1620.99,  dias: 21    },
+    { desde: 1621,  hasta: 1800.99,  dias: 21    },
+    { desde: 1801,  hasta: 1980.99,  dias: 21.24 },
+    { desde: 1981,  hasta: 2160.99,  dias: 21.24 },
+    { desde: 2161,  hasta: 2340.99,  dias: 21.5  },
+    { desde: 2341,  hasta: 2520.99,  dias: 21.5  },
+    { desde: 2521,  hasta: 2700.99,  dias: 22    },
+    { desde: 2701,  hasta: 2880.99,  dias: 22    },
+    { desde: 2881,  hasta: 3060.99,  dias: 22    },
+    { desde: 3061,  hasta: 3240.99,  dias: 22    },
+    { desde: 3241,  hasta: 3420.99,  dias: 22    },
+    { desde: 3421,  hasta: 3600.99,  dias: 22    },
+    { desde: 3601,  hasta: 3780.99,  dias: 21.5  },
+    { desde: 3781,  hasta: 3960.99,  dias: 21.5  },
+    { desde: 3961,  hasta: 4140.99,  dias: 21    },
+    { desde: 4141,  hasta: 4320.99,  dias: 21    },
+    { desde: 4321,  hasta: 4500.99,  dias: 20.5  },
+    { desde: 4501,  hasta: 4680.99,  dias: 20.5  },
+    { desde: 4681,  hasta: 4860.99,  dias: 20    },
+    { desde: 4861,  hasta: 10800.99, dias: 20    }
   ];
-
   var diasCesantia = 0;
-
-  // Buscar en tabla
   for (var i = 0; i < tablaCesantia.length; i++) {
-    var rango = tablaCesantia[i];
-    if (diasTrabajados >= rango.desde && diasTrabajados <= rango.hasta) {
-      diasCesantia = rango.dias;
+    if (diasTrabajados360 >= tablaCesantia[i].desde && diasTrabajados360 <= tablaCesantia[i].hasta) {
+      diasCesantia = tablaCesantia[i].dias;
       break;
     }
   }
+  return diasCesantia * salarioDiario;
+}
 
-  // Calcular monto: (diasCesantia / 30) * salarioMensual
-  return (diasCesantia / 30) * salarioMensual;
+/**
+ * Calcula días de preaviso según nueva ley (Código de Trabajo CR).
+ * diasTrabajados360 = mesesTotales * 30 (año 360 días)
+ * Capeado a 2880 días (8 años) según ley.
+ */
+function calcularDiasPreaviso(diasTrabajados360) {
+  var dias360 = Math.min(diasTrabajados360, 2880);
+  var tabla = [
+    { desde: 89,   hasta: 181,   dias: 7    },
+    { desde: 181,  hasta: 361,   dias: 14   },
+    { desde: 361,  hasta: 541,   dias: 19.5 },
+    { desde: 541,  hasta: 721,   dias: 40   },
+    { desde: 721,  hasta: 901,   dias: 40   },
+    { desde: 901,  hasta: 1081,  dias: 61.5 },
+    { desde: 1081, hasta: 99999, dias: 84   }
+  ];
+  for (var i = 0; i < tabla.length; i++) {
+    if (dias360 >= tabla[i].desde && dias360 < tabla[i].hasta) return tabla[i].dias;
+  }
+  return 0;
 }
 
 function crearLiquidacion(datos, token) {
