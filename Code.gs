@@ -2161,11 +2161,12 @@ function usarHojaLigada(token) {
 
 /**
  * Registra un evento en bitácora de auditoría.
- * @param {string} accion - crear, actualizar, eliminar, etc.
+ * Fase 4 - Item 18: Auditoría completa con JSON antes/después.
+ * @param {string} accion - crear, actualizar, eliminar, respaldo, error, etc.
  * @param {string} entidad - tipo de entidad (Empleados, Nómina, etc.)
  * @param {string} entidadId - ID de la entidad afectada
  * @param {string} resumen - descripción del cambio (puede incluir valores antes/después)
- * @param {Object} [cambios] - opcional: {antes: {...}, después: {...}} para auditoría detallada
+ * @param {Object} [cambios] - opcional: {antes: {...}, despues: {...}} para auditoría detallada
  */
 function registrarBitacora(accion, entidad, entidadId, resumen, cambios) {
   try {
@@ -2174,15 +2175,61 @@ function registrarBitacora(accion, entidad, entidadId, resumen, cambios) {
     try { usuario = Session.getActiveUser().getEmail(); } catch (e) {}
 
     var detalles = resumen || '';
+    var jsonCambios = '';
+
     if (cambios) {
       try {
-        detalles += ' | CAMBIOS: ' + JSON.stringify(cambios).substring(0, 500);
-      } catch (e) {}
+        // Guardar JSON completo de cambios (limitado a 5000 chars para Sheets)
+        jsonCambios = JSON.stringify(cambios).substring(0, 5000);
+        detalles += ' | JSON: ' + jsonCambios;
+      } catch (e) { /* no romper por fallo de serialización */ }
     }
 
-    hoja.appendRow([generarId('BIT'), new Date(), usuario,
-      accion, entidad, entidadId || '', detalles]);
+    // Agregar: id, timestamp, usuario, acción, entidad, entidadId, resumen, jsonCambios
+    hoja.appendRow([
+      generarId('BIT'),
+      new Date(),
+      usuario,
+      accion,
+      entidad,
+      entidadId || '',
+      detalles,
+      jsonCambios  // Nueva columna para auditoría estructurada
+    ]);
   } catch (e) { /* no interrumpir operaciones por fallo de bitácora */ }
+}
+
+/**
+ * Consulta auditoría con filtros.
+ * @param {string} [entidad] - Filtrar por tipo de entidad (opcional)
+ * @param {string} [entidadId] - Filtrar por ID (opcional)
+ * @param {number} [limite] - Máximo de registros a devolver (default 100)
+ * @return {Object[]} Registros de auditoría
+ */
+function consultarAuditoria(entidad, entidadId, limite) {
+  var registros = leerTabla(HOJAS.BITACORA) || [];
+
+  if (entidad) {
+    registros = registros.filter(function (r) { return String(r.entidad) === String(entidad); });
+  }
+  if (entidadId) {
+    registros = registros.filter(function (r) { return String(r.entidad_id) === String(entidadId); });
+  }
+
+  // Ordenar por fecha descendente y limitar
+  registros = registros.reverse().slice(0, limite || 100);
+
+  // Parsear JSON si existe
+  registros.forEach(function (r) {
+    if (r.resumen && r.resumen.includes('JSON:')) {
+      try {
+        var jsonStr = r.resumen.substring(r.resumen.indexOf('JSON:') + 6);
+        r.cambios = JSON.parse(jsonStr);
+      } catch (e) { /* ignorar si no parsea */ }
+    }
+  });
+
+  return registros;
 }
 
 function listarBitacora(limite) {
@@ -2551,27 +2598,65 @@ function crearRespaldo(token) {
 }
 
 /**
- * Handler del trigger semanal. Los triggers de tiempo de Apps Script
- * llaman a la función SIN argumentos, así que no puede exigir token
- * (crearRespaldo(token) sí lo exige, para el botón manual). Además
- * registra en bitácora si falla, para no fallar en silencio cada domingo.
+ * Handler del trigger automático diario.
+ * Fase 4 - Item 13: Backups mejorados (diarios + mantenimiento de historial).
  */
 function crearRespaldoTrigger() {
   var res = _crearRespaldoInterno();
   if (!res.ok) {
     try { registrarBitacora('error', 'Sistema', '', 'Respaldo automático falló: ' + res.mensaje); } catch (e) {}
+  } else {
+    // Limpiar backups antiguos (>30 días)
+    _limpiarBackupAntiguos(30);
   }
 }
 
 function _crearRespaldoInterno() {
   try {
     var libro  = getLibro();
-    var fecha  = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    var fecha  = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm');
     var copia  = libro.copy('[BACKUP ' + fecha + '] ' + libro.getName());
-    registrarBitacora('respaldo', 'Sistema', '', 'Backup: ' + copia.getName());
-    return { ok: true, mensaje: 'Respaldo creado correctamente.', url: copia.getUrl() };
+
+    // Guardar metadata en bitácora
+    registrarBitacora('respaldo', 'Sistema', '', 'Backup: ' + copia.getName(), {
+      antes: { sheets: libro.getSheets().length },
+      despues: { fileId: copia.getId(), url: copia.getUrl() }
+    });
+
+    return { ok: true, mensaje: 'Respaldo creado correctamente.', url: copia.getUrl(), id: copia.getId() };
   } catch (e) {
     return { ok: false, mensaje: 'Error al crear respaldo: ' + e.message };
+  }
+}
+
+/**
+ * Elimina backups más antiguos que X días (Fase 4 - Item 13).
+ * Mantiene el historial limpio sin acumular archivos.
+ * @param {number} diasRetener - Default 30
+ */
+function _limpiarBackupAntiguos(diasRetener) {
+  try {
+    diasRetener = diasRetener || 30;
+    var fechaLimite = new Date();
+    fechaLimite.setDate(fechaLimite.getDate() - diasRetener);
+
+    var carpetaRaiz = DriveApp.getRootFolder();
+    var archivos = carpetaRaiz.getFilesByName(/^\[BACKUP/);
+    var eliminados = 0;
+
+    while (archivos.hasNext()) {
+      var file = archivos.next();
+      if (file.getLastUpdated() < fechaLimite) {
+        file.setTrashed(true);
+        eliminados++;
+      }
+    }
+
+    if (eliminados > 0) {
+      registrarBitacora('mantenimiento', 'Backups', '', 'Limpieza automática: ' + eliminados + ' archivos eliminados');
+    }
+  } catch (e) {
+    // Log silencioso de limpieza para no romper el proceso
   }
 }
 
@@ -3917,6 +4002,159 @@ function hoy() {
   return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
 }
 
+
+// ===================================================================
+// MÓDULO: CACHÉ DE LECTURAS (Fase 4 - Item 10)
+// ===================================================================
+// Memoización por sesión para evitar releer tablas múltiples veces
+
+var CACHE_TABLAS = {};
+var CACHE_TIMESTAMP = {};
+var CACHE_TTL_MS = 300000; // 5 minutos
+
+/**
+ * Lee tabla con caché automático (5 min TTL).
+ * Evita releer la misma tabla N veces en un request.
+ * @param {string} nombreHoja
+ * @return {Object[]}
+ */
+function leerTablaConCache(nombreHoja) {
+  var ahora = new Date().getTime();
+  var cached = CACHE_TABLAS[nombreHoja];
+  var timestamp = CACHE_TIMESTAMP[nombreHoja] || 0;
+
+  // Si está en caché y no expiró, devolver
+  if (cached && (ahora - timestamp < CACHE_TTL_MS)) {
+    return cached;
+  }
+
+  // Leer y cachear
+  var datos = leerTabla(nombreHoja);
+  CACHE_TABLAS[nombreHoja] = datos;
+  CACHE_TIMESTAMP[nombreHoja] = ahora;
+  return datos;
+}
+
+/**
+ * Invalida caché de una tabla específica.
+ * Llamar después de crear/actualizar/eliminar.
+ * @param {string} nombreHoja
+ */
+function invalidarCache(nombreHoja) {
+  delete CACHE_TABLAS[nombreHoja];
+  delete CACHE_TIMESTAMP[nombreHoja];
+}
+
+/**
+ * Invalida todo el caché.
+ */
+function invalidarTodoCache() {
+  CACHE_TABLAS = {};
+  CACHE_TIMESTAMP = {};
+}
+
+// ===================================================================
+// MÓDULO: VALIDADORES CENTRALIZADOS (Fase 4 - Item 4)
+// ===================================================================
+// Una fuente única de verdad para reglas de validación en toda la app
+
+var VALIDADORES = {
+  /**
+   * Valida rango de horas en formato HH:mm
+   * @param {string} hora - Formato HH:mm
+   * @return {string|null} Error message o null si válido
+   */
+  validarHora: function(hora) {
+    if (!hora || !/^\d{2}:\d{2}$/.test(hora)) return 'Formato debe ser HH:mm';
+    var h = parseInt(hora.split(':')[0], 10);
+    var m = parseInt(hora.split(':')[1], 10);
+    if (h < 0 || h > 23 || m < 0 || m > 59) return 'Hora debe estar entre 00:00 y 23:59';
+    return null;
+  },
+
+  /**
+   * Valida salario mínimo CR (~500k 2025)
+   * @param {number} salario
+   * @return {string|null}
+   */
+  validarSalario: function(salario) {
+    var sal = Number(salario);
+    if (sal <= 0) return 'Salario debe ser mayor a 0';
+    if (sal < 500000) return 'Salario ₡' + sal + ' es inferior al mínimo legal (~₡500,000)';
+    return null;
+  },
+
+  /**
+   * Valida fecha: debe ser válida y no futura
+   * @param {string} fecha - Formato yyyy-MM-dd
+   * @param {boolean} permiteFutura - Default false
+   * @return {string|null}
+   */
+  validarFecha: function(fecha, permiteFutura) {
+    if (!fecha || isNaN(new Date(fecha).getTime())) return 'Fecha inválida';
+    var fd = new Date(fecha);
+    var hoy = new Date();
+    if (!permiteFutura && fd > hoy) return 'No se permite fecha futura';
+    return null;
+  },
+
+  /**
+   * Valida rango de fechas
+   * @param {string} inicio
+   * @param {string} fin
+   * @return {string|null}
+   */
+  validarRangoFechas: function(inicio, fin) {
+    if (new Date(fin) < new Date(inicio)) return 'Fecha fin no puede ser anterior a inicio';
+    return null;
+  },
+
+  /**
+   * Valida enum (lista de valores válidos)
+   * @param {string} valor
+   * @param {string[]} valoresValidos
+   * @param {string} nombreCampo
+   * @return {string|null}
+   */
+  validarEnum: function(valor, valoresValidos, nombreCampo) {
+    var v = String(valor || '').toLowerCase();
+    if (valoresValidos.map(function(x) { return String(x).toLowerCase(); }).indexOf(v) === -1) {
+      return nombreCampo + ' inválido. Use: ' + valoresValidos.join(', ');
+    }
+    return null;
+  },
+
+  /**
+   * Valida horas extra cumplan límite 240/mes
+   * @param {number} horasNuevas
+   * @param {string} empleadoId
+   * @param {string} mes - yyyy-MM
+   * @return {string|null}
+   */
+  validarHorasExtraLimite: function(horasNuevas, empleadoId, mes) {
+    var horasExtra = leerTabla(HOJAS.HORAS_EXTRA) || [];
+    var horasDelMes = horasExtra.filter(function (h) {
+      var hFecha = new Date(h.fecha);
+      var hMesAno = hFecha.getFullYear() + '-' + String(hFecha.getMonth() + 1).padStart(2, '0');
+      return String(h.empleado_id) === String(empleadoId) && hMesAno === mes;
+    }).reduce(function (sum, h) { return sum + Number(h.horas||0); }, 0);
+
+    if (horasDelMes + Number(horasNuevas) > 240) {
+      return 'Límite mensual (240h) alcanzado. Ya tiene ' + horasDelMes + 'h este mes';
+    }
+    return null;
+  },
+
+  /**
+   * Valida email básico
+   * @param {string} email
+   * @return {string|null}
+   */
+  validarEmail: function(email) {
+    if (!email || !String(email).includes('@')) return 'Email inválido';
+    return null;
+  }
+};
 
 // ===================================================================
 // MÓDULO: PERMISOS (Fase 3 - Item 9)
