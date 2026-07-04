@@ -808,7 +808,7 @@ function calcularDias(inicio, fin) {
   return diff;
 }
 
-/** Lista las solicitudes de vacaciones con el nombre del empleado. */
+/** Lista las solicitudes de vacaciones con el nombre del empleado y saldo disponible. */
 function listarVacaciones(empleadoId, estado) {
   var lista = leerTabla(HOJAS.VACACIONES);
   if (empleadoId) lista = lista.filter(function (v) { return String(v.empleado_id) === String(empleadoId); });
@@ -819,6 +819,9 @@ function listarVacaciones(empleadoId, estado) {
     v.fecha_fin = formatearFecha(v.fecha_fin);
     v.dias = Number(v.dias) || 0;
     v.empleado_nombre = nombres[v.empleado_id] || '(desconocido)';
+    // Agregar saldo disponible
+    var balance = obtenerBalanceVacaciones(v.empleado_id);
+    v.saldo_disponible = (balance.ok ? balance.diasDisponibles : 0);
   });
   return lista;
 }

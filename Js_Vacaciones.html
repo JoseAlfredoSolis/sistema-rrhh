@@ -21,12 +21,15 @@
         } else {
           acciones = '<span style="color:var(--txt-3);font-size:13px">—</span>';
         }
+        var saldoTexto = (v.saldo_disponible !== undefined) ? escapar(v.saldo_disponible) : '—';
+        var saldoClass = (v.saldo_disponible !== undefined && v.saldo_disponible < 5) ? ' style="color:var(--warn)"' : '';
         var tr = document.createElement('tr');
         tr.innerHTML =
           '<td>' + escapar(v.empleado_nombre) + '</td>' +
           '<td>' + escapar(v.fecha_inicio) + '</td>' +
           '<td>' + escapar(v.fecha_fin) + '</td>' +
           '<td>' + escapar(v.dias) + '</td>' +
+          '<td' + saldoClass + '>' + saldoTexto + '</td>' +
           '<td>' + badge(estado) + '</td>' +
           '<td style="font-size:12.5px;color:var(--txt-2)">' + escapar(v.notas || '—') + '</td>' +
           '<td class="no-print">' + acciones + '</td>';
