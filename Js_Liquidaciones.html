@@ -382,6 +382,7 @@
 
       CALCULO_ACTUAL = res;
       _mostrarResultadoCalculadora(res);
+      document.getElementById('btnGuardarLiqCalc').classList.remove('oculto');
       guardarCalculoLiquidacion();
     });
   }
@@ -464,15 +465,26 @@
 
   function _ejecutarGuardadoLiquidacion(datos) {
     var btn = document.getElementById('btnGuardarLiqCalc');
+    var errDiv = document.getElementById('calcErrorGuardado');
+    if (errDiv) { errDiv.textContent = ''; errDiv.style.display = 'none'; }
     if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
+
+    if (!SESSION_TOKEN) {
+      if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar Liquidación'; }
+      if (errDiv) { errDiv.textContent = '⚠️ Sin sesión activa. Ingresa tu PIN primero y vuelve a hacer clic en Guardar.'; errDiv.style.display = 'block'; }
+      mostrarMensaje('Sin sesión activa. Ingresa tu PIN.', 'error');
+      return;
+    }
 
     llamarBackend('crearLiquidacion', [datos], function(res) {
       if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar Liquidación'; }
       if (!res || !res.ok) {
-        mostrarMensaje('Error al guardar: ' + ((res && res.mensaje) || 'Error desconocido'), 'error');
+        var msg = (res && res.mensaje) || 'Error desconocido';
+        if (errDiv) { errDiv.textContent = '❌ ' + msg; errDiv.style.display = 'block'; }
+        mostrarMensaje('Error al guardar: ' + msg, 'error');
         return;
       }
-      mostrarMensaje('Liquidación calculada y guardada correctamente', 'exito');
+      mostrarMensaje('Liquidación guardada correctamente', 'exito');
       cerrarCalculadoraLiquidacion();
       cargarLiquidaciones();
     });
