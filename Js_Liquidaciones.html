@@ -42,56 +42,97 @@
   }
 
   function verDetallesLiquidacion(empleadoId, fechaSalida) {
-    llamarBackend('calcularLiquidacion', [empleadoId, fechaSalida], function(res) {
+    var motivo = prompt('Motivo de salida:\n1 = Renuncia\n2 = Despido con responsabilidad\n3 = Despido sin responsabilidad', '1');
+    var motivoMap = { '1': 'renuncia', '2': 'despido_con_resp', '3': 'despido_sin_resp' };
+    var motivoSalida = motivoMap[motivo] || 'renuncia';
+
+    llamarBackend('calcularLiquidacion', [empleadoId, fechaSalida, motivoSalida], function(res) {
       if (!res.ok) { mostrarMensaje(res.mensaje, 'error'); return; }
       _mostrarModalDetallesLiquidacion(res);
     });
   }
 
   function _mostrarModalDetallesLiquidacion(liq) {
-    var html = '<div style="overflow-y:auto;max-height:75vh;padding:10px">';
+    var html = '<div style="overflow-y:auto;max-height:80vh;padding:12px;font-family:Arial,sans-serif;font-size:13px">';
 
-    // Encabezado con datos del empleado
-    html += '<div style="background:var(--surface-2);padding:10px;border-radius:6px;margin-bottom:12px">';
-    html += '<strong>'+escapar(liq.empleado)+'</strong><br>';
-    html += '<small style="color:var(--txt-2)">Ingreso: '+escapar(liq.fechaIngreso)+' • Salida: '+escapar(liq.fechaSalida)+' • '+Number(liq.aniosTrabajados).toFixed(2)+' años</small>';
+    // Encabezado empresa
+    html += '<div style="text-align:center;margin-bottom:16px;border-bottom:2px solid #333;padding-bottom:8px">';
+    html += '<strong style="font-size:16px">TROPICALES DEL VALLE S.A.</strong><br>';
+    html += '<strong>Liquidación Laboral</strong>';
     html += '</div>';
 
-    // Tabla de detalles
-    html += '<table style="width:100%;font-size:12px;border-collapse:collapse;margin-bottom:12px">';
-    html += '<tr style="background:var(--p);color:#fff;font-weight:600"><td style="padding:6px">Concepto</td><td style="padding:6px;text-align:right">Monto</td></tr>';
-
-    (liq.detalles || []).forEach(function(det) {
-      html += '<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px">'+escapar(det.concepto)+'</td><td style="padding:6px;text-align:right;font-weight:600;color:var(--ok)">'+formatoDinero(det.monto)+'</td></tr>';
-    });
-
-    html += '<tr style="background:var(--ok-bg);font-weight:600"><td style="padding:8px">TOTAL INGRESOS</td><td style="padding:8px;text-align:right;color:var(--ok)">'+formatoDinero(liq.totalIngresos)+'</td></tr>';
+    // Datos del trabajador
+    html += '<div style="margin-bottom:12px">';
+    html += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
+    html += '<tr><td><strong>Nombre del Trabajador:</strong></td><td>'+escapar(liq.empleado)+'</td><td style="text-align:right"><strong>Identificación nº</strong></td><td style="text-align:right">'+escapar(liq.identificacion)+'</td></tr>';
+    html += '<tr><td><strong>Fecha Inicio:</strong></td><td>'+escapar(liq.fechaIngreso)+'</td><td style="text-align:right"><strong>Fecha Salida:</strong></td><td style="text-align:right">'+escapar(liq.fechaSalida)+'</td></tr>';
+    html += '<tr><td><strong>Meses Laborados:</strong></td><td>'+liq.mesesLaborados+','+String(liq.diasAdicionales).padStart(2,'0')+'</td><td style="text-align:right"><strong>Tipo de nómina:</strong></td><td style="text-align:right">'+escapar(liq.tipoNomina)+'</td></tr>';
     html += '</table>';
+    html += '</div>';
+
+    // Concepto 1: Aguinaldo
+    html += '<div style="margin:12px 0;border-left:3px solid var(--p);padding-left:8px">';
+    html += '<strong>1- Cálculo del Aguinaldo:</strong><br>';
+    html += '<table style="width:100%;margin-top:4px">';
+    html += '<tr><td>Total Por Aguinaldo:</td><td style="text-align:right"><strong>'+formatoDinero(liq.aguinaldo)+'</strong></td></tr>';
+    html += '</table>';
+    html += '</div>';
+
+    // Concepto 2: Vacaciones
+    html += '<div style="margin:12px 0;border-left:3px solid var(--ok);padding-left:8px">';
+    html += '<strong>2- Cálculo de las Vacaciones:</strong><br>';
+    html += '<table style="width:100%;margin-top:4px;font-size:12px">';
+    html += '<tr><td>Salario Promedio Mensual:</td><td style="text-align:right">'+formatoDinero(liq.salarioMensual)+'</td></tr>';
+    html += '<tr><td>Salario por Día:</td><td style="text-align:right">'+formatoDinero(liq.salarioDiario)+'</td></tr>';
+    html += '<tr><td>Días a Recibir Vacaciones:</td><td style="text-align:right">5,00</td></tr>';
+    html += '<tr style="border-top:1px solid var(--border)"><td><strong>Total Por Vacaciones:</strong></td><td style="text-align:right"><strong>'+formatoDinero(liq.vacaciones)+'</strong></td></tr>';
+    html += '</table>';
+    html += '</div>';
+
+    // Concepto 3: Cesantía
+    html += '<div style="margin:12px 0;border-left:3px solid '+(liq.cesantia > 0 ? 'var(--ok)' : 'var(--txt-3)')+';padding-left:8px">';
+    html += '<strong>3- Calculo de la Cesantia:</strong><br>';
+    html += '<table style="width:100%;margin-top:4px;font-size:12px">';
+    html += '<tr><td>¿Corresponde el pago?:</td><td style="text-align:right">'+(liq.cesantia > 0 ? '<span style="color:var(--ok)">SÍ</span>' : '<span style="color:var(--warn)">NO</span>')+'</td></tr>';
+    html += '<tr style="border-top:1px solid var(--border)"><td><strong>Total Por Auxilio de Cesantia:</strong></td><td style="text-align:right"><strong>'+formatoDinero(liq.cesantia)+'</strong></td></tr>';
+    html += '</table>';
+    html += '</div>';
+
+    // Concepto 4: Preaviso
+    html += '<div style="margin:12px 0;border-left:3px solid '+(liq.preaviso > 0 ? 'var(--ok)' : 'var(--txt-3)')+';padding-left:8px">';
+    html += '<strong>4- Calculo del Preaviso:</strong><br>';
+    html += '<table style="width:100%;margin-top:4px;font-size:12px">';
+    html += '<tr><td>¿Corresponde el pago?:</td><td style="text-align:right">'+(liq.preaviso > 0 ? '<span style="color:var(--ok)">SÍ</span>' : '<span style="color:var(--warn)">NO</span>')+'</td></tr>';
+    html += '<tr style="border-top:1px solid var(--border)"><td><strong>Total Por Preaviso:</strong></td><td style="text-align:right"><strong>'+formatoDinero(liq.preaviso)+'</strong></td></tr>';
+    html += '</table>';
+    html += '</div>';
+
+    // TOTAL PRESTACIONES
+    html += '<div style="margin:16px 0;background:var(--ok-bg);padding:12px;border-radius:6px;border-left:4px solid var(--ok)">';
+    html += '<table style="width:100%">';
+    html += '<tr><td><strong>Total Prestaciones Laborales:</strong></td><td style="text-align:right;font-size:16px;font-weight:700;color:var(--ok)">'+formatoDinero(liq.totalPrestaciones)+'</td></tr>';
+    html += '</table>';
+    html += '</div>';
 
     // Descuentos
-    if (liq.descuentos && liq.descuentos.length > 0) {
-      html += '<table style="width:100%;font-size:12px;border-collapse:collapse;margin-bottom:12px">';
-      html += '<tr style="background:var(--warn);color:#fff;font-weight:600"><td style="padding:6px">Descuentos</td><td style="padding:6px;text-align:right">Monto</td></tr>';
-
-      (liq.descuentos || []).forEach(function(desc) {
-        html += '<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px"><small>'+escapar(desc.concepto)+'</small></td><td style="padding:6px;text-align:right;font-weight:600;color:var(--warn)">-'+formatoDinero(desc.monto)+'</td></tr>';
-      });
-
-      html += '<tr style="background:var(--err-bg);font-weight:600"><td style="padding:8px">TOTAL DESCUENTOS</td><td style="padding:8px;text-align:right;color:var(--err)">-'+formatoDinero(liq.totalDescuentos)+'</td></tr>';
-      html += '</table>';
+    if (liq.descuentoCCSS > 0) {
+      html += '<div style="margin:12px 0;background:var(--err-bg);padding:8px;border-radius:4px;font-size:12px">';
+      html += '<strong>Descuentos:</strong><br>';
+      html += 'CCSS (9.15%): -'+formatoDinero(liq.descuentoCCSS);
+      html += '</div>';
     }
 
-    // Total neto
-    html += '<div style="background:var(--ok-bg);padding:12px;border-radius:6px;border:2px solid var(--ok);text-align:center">';
-    html += '<div style="color:var(--txt-3);font-size:12px;margin-bottom:4px">MONTO FINAL LIQUIDACIÓN</div>';
-    html += '<div style="font-size:20px;font-weight:700;color:var(--ok)">'+formatoDinero(liq.totalNeto)+'</div>';
+    // TOTAL NETO FINAL
+    html += '<div style="margin:16px 0;background:linear-gradient(135deg, var(--ok-bg), var(--surface-2));padding:16px;border-radius:8px;border:2px solid var(--ok);text-align:center">';
+    html += '<div style="color:var(--txt-2);font-size:11px;margin-bottom:6px;text-transform:uppercase">Monto Final Liquidación</div>';
+    html += '<div style="font-size:24px;font-weight:700;color:var(--ok)">'+formatoDinero(liq.totalNeto)+'</div>';
     html += '</div>';
 
     html += '</div>';
 
     var modal = document.createElement('div');
     modal.className = 'modal';
-    modal.innerHTML = '<div class="modal-contenido" style="max-width:550px"><div class="modal-cabecera"><h2>📋 Detalles de Liquidación Laboral</h2><button class="cerrar" onclick="this.closest(\'.modal\').remove()">&times;</button></div>'+html+'</div>';
+    modal.innerHTML = '<div class="modal-contenido" style="max-width:600px;max-height:90vh;overflow-y:auto"><div class="modal-cabecera"><h2>📋 Liquidación Laboral Detallada</h2><button class="cerrar" onclick="this.closest(\'.modal\').remove()">&times;</button></div>'+html+'</div>';
     document.body.appendChild(modal);
   }
 

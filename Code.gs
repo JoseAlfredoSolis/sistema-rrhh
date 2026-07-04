@@ -3777,185 +3777,167 @@ function listarLiquidaciones(empleadoId) {
   });
 }
 
-/** Calcula automáticamente el monto de liquidación según la ley y tipo de nómina (Costa Rica). */
-function calcularLiquidacion(empleadoId, fechaSalida) {
+/** Calcula liquidación laboral completa según estructura Costa Rica (modelo Tropicales del Valle). */
+function calcularLiquidacion(empleadoId, fechaSalida, motivoSalida) {
   var emp = obtenerEmpleadoCompleto(empleadoId);
   if (!emp) return { ok: false, mensaje: 'Empleado no encontrado.' };
 
   var fechaSal = typeof fechaSalida === 'string' ? new Date(fechaSalida + 'T00:00:00') : fechaSalida;
   var fechaIng = new Date(emp.fecha_ingreso + 'T00:00:00');
 
-  // Validar que fecha de salida >= fecha de ingreso
   if (fechaSal < fechaIng) {
-    return { ok: false, mensaje: 'La fecha de salida no puede ser anterior a la de ingreso (' + emp.fecha_ingreso + ').' };
+    return { ok: false, mensaje: 'Fecha de salida anterior a ingreso (' + emp.fecha_ingreso + ').' };
   }
 
   var detalles = [];
-  var descuentos = [];
-  var totalIngreso = 0;
-  var totalDescuento = 0;
+  var totalPrestaciones = 0;
 
-  // ====== INGRESOS ======
-
-  // 1. Vacaciones no tomadas (Art. 76-78 CT CR)
-  var balance = obtenerBalanceVacaciones(empleadoId);
-  var diasVacacionesNoTomadas = balance.diasDisponibles || 0;
-  var montoVacaciones = diasVacacionesNoTomadas * emp.salario_diario;
-  if (montoVacaciones > 0) {
-    detalles.push({
-      concepto: 'Vacaciones no tomadas (' + diasVacacionesNoTomadas + ' días)',
-      dias: diasVacacionesNoTomadas,
-      valor_unitario: Math.round(emp.salario_diario * 100) / 100,
-      monto: Math.round(montoVacaciones * 100) / 100,
-      tipo: 'ingreso'
-    });
-    totalIngreso += montoVacaciones;
+  // Calcular meses laborados
+  var mesesLaborados = (fechaSal.getFullYear() - fechaIng.getFullYear()) * 12 +
+                       (fechaSal.getMonth() - fechaIng.getMonth());
+  var diasAdicionales = fechaSal.getDate() - fechaIng.getDate();
+  if (diasAdicionales < 0) {
+    mesesLaborados--;
+    diasAdicionales += 30;
   }
 
-  // 2. Cesantía (Art. 29-30 CT CR: varía según motivo y años)
-  var aniosTrabajados = (fechaSal - fechaIng) / (365.25 * 24 * 60 * 60 * 1000);
-  var cesantiaCompleta = calcularCesantia(emp.salario, aniosTrabajados);
-  if (cesantiaCompleta > 0) {
-    var aniosCompletos = Math.floor(aniosTrabajados);
-    var diasFraccionario = Math.round((aniosTrabajados - aniosCompletos) * 365.25);
-    detalles.push({
-      concepto: 'Cesantía (' + aniosCompletos + ' año(s) + ' + diasFraccionario + ' días)',
-      dias: null,
-      valor_unitario: emp.salario,
-      monto: Math.round(cesantiaCompleta * 100) / 100,
-      tipo: 'ingreso'
-    });
-    totalIngreso += cesantiaCompleta;
-  }
-
-  // 3. Aguinaldo / Decimocuarto mes (13er mes)
-  var aguinaldo = emp.salario;
+  // ====== 1. AGUINALDO ======
+  // Suma de salarios últimos 12 meses / 12
+  var montoAguinaldo = (emp.salario / 12); // Simplificado: un mes
   detalles.push({
-    concepto: 'Aguinaldo (Decimocuarto mes / Prima Navideña)',
-    dias: null,
-    valor_unitario: emp.salario,
-    monto: Math.round(aguinaldo * 100) / 100,
-    tipo: 'ingreso'
+    titulo: '1- Cálculo del Aguinaldo:',
+    concepto: 'Total Por Aguinaldo',
+    monto: Math.round(montoAguinaldo * 100) / 100
   });
-  totalIngreso += aguinaldo;
+  totalPrestaciones += montoAguinaldo;
 
-  // ====== DESCUENTOS ======
+  // ====== 2. VACACIONES ======
+  // 5 días por año (2.5 días por semestre en CR)
+  var balance = obtenerBalanceVacaciones(empleadoId);
+  var diasVacaciones = Math.min(balance.diasDisponibles || 0, 5); // Max 5 días en liquidación
+  var salarioDiarioVac = emp.salario / 30;
+  var montoVacaciones = diasVacaciones * salarioDiarioVac;
 
-  // 4. Descuento CCSS (Caja de Seguro Social - Costa Rica)
-  // Porcentaje típico: 9.15% (puede variar por régimen)
-  var porcentajeCCSS = 0.0915; // 9.15%
-  var descuentoCCSS = totalIngreso * porcentajeCCSS;
-  if (descuentoCCSS > 0) {
-    descuentos.push({
-      concepto: 'Descuento CCSS (Seguro Social) - ' + (porcentajeCCSS * 100) + '%',
-      tasa: porcentajeCCSS,
-      base: Math.round(totalIngreso * 100) / 100,
-      monto: Math.round(descuentoCCSS * 100) / 100
-    });
-    totalDescuento += descuentoCCSS;
+  detalles.push({
+    titulo: '2- Cálculo de las Vacaciones:',
+    salarioPromedio: emp.salario,
+    salarioPorDia: Math.round(salarioDiarioVac * 100) / 100,
+    diasRecibir: diasVacaciones,
+    concepto: 'Total Por Vacaciones',
+    monto: Math.round(montoVacaciones * 100) / 100
+  });
+  totalPrestaciones += montoVacaciones;
+
+  // ====== 3. CESANTÍA ======
+  // Depende del motivo de salida
+  var correspondeCesantia = (motivoSalida !== 'renuncia');
+  var montoCesantia = 0;
+
+  if (correspondeCesantia) {
+    var diasTrabajados = Math.round((fechaSal - fechaIng) / (24 * 60 * 60 * 1000));
+    montoCesantia = calcularCesantiaCompleta(emp.salario, diasTrabajados);
   }
 
-  // 5. Descuento INS (Instituto Nacional de Seguros - Riesgo Laboral)
-  // Varía según tipo de actividad económica: 1% a 4.75%
-  // Usar promedio: 2.5%
-  var porcentajeINS = 0.025; // 2.5%
-  var descuentoINS = totalIngreso * porcentajeINS;
-  if (descuentoINS > 0) {
-    descuentos.push({
-      concepto: 'Descuento INS (Riesgo Laboral) - ' + (porcentajeINS * 100) + '%',
-      tasa: porcentajeINS,
-      base: Math.round(totalIngreso * 100) / 100,
-      monto: Math.round(descuentoINS * 100) / 100
-    });
-    totalDescuento += descuentoINS;
+  detalles.push({
+    titulo: '3- Calculo de la Cesantia:',
+    corresponde: correspondeCesantia ? 'SÍ' : 'NO',
+    concepto: 'Total Por Auxilio de Cesantia',
+    monto: Math.round(montoCesantia * 100) / 100
+  });
+  totalPrestaciones += montoCesantia;
+
+  // ====== 4. PREAVISO ======
+  // 30 días o lo que corresponda según tipo de nómina
+  var montoPreaviso = 0;
+  var correspondePreaviso = (motivoSalida === 'renuncia'); // Normalmente renuncia paga preaviso
+
+  if (correspondePreaviso) {
+    montoPreaviso = emp.salario; // 30 días como un mes
   }
 
-  // 6. Impuesto a la Renta (FISCO - CR)
-  // Se aplica si la liquidación es mayor a ~800,000 colones
-  // Tarifa progresiva (simplificado para este cálculo)
-  var netoPreliminar = totalIngreso - totalDescuento;
-  var impuestoRenta = calcularImpuestoRenta(netoPreliminar);
-  if (impuestoRenta > 0) {
-    descuentos.push({
-      concepto: 'Impuesto a la Renta (FISCO)',
-      tasa: null,
-      base: Math.round(netoPreliminar * 100) / 100,
-      monto: Math.round(impuestoRenta * 100) / 100
-    });
-    totalDescuento += impuestoRenta;
-  }
+  detalles.push({
+    titulo: '4- Calculo del Preaviso:',
+    corresponde: correspondePreaviso ? 'SÍ' : 'NO',
+    diasPreaviso: correspondePreaviso ? 30 : 0,
+    concepto: 'Total Por Preaviso',
+    monto: Math.round(montoPreaviso * 100) / 100
+  });
+  totalPrestaciones += montoPreaviso;
 
-  // ====== TOTAL FINAL ======
-  var totalNeto = totalIngreso - totalDescuento;
+  // ====== DESCUENTOS (simplificados - se aplican al total) ======
+  var descuentoCCSS = totalPrestaciones * 0.0915; // CCSS 9.15%
+
+  // TOTAL FINAL
+  var totalNeto = totalPrestaciones - descuentoCCSS;
 
   return {
     ok: true,
     empleado: emp.nombre,
-    tipo_nomina: emp.tipo_nomina,
-    dias_periodo: emp.dias_periodo,
+    cedula: emp.cedula,
+    identificacion: emp.cedula,
+    area: 'LINEA 1',
     fechaIngreso: emp.fecha_ingreso,
     fechaSalida: formatearFecha(fechaSalida),
-    aniosTrabajados: Math.round(aniosTrabajados * 100) / 100,
+    mesesLaborados: mesesLaborados,
+    diasAdicionales: diasAdicionales,
+    tipoNomina: emp.tipo_nomina || 'Semanal',
+    motivoSalida: motivoSalida || 'renuncia',
     salarioMensual: emp.salario,
-    salarioDiario: Math.round(emp.salario_diario * 100) / 100,
+    salarioDiario: Math.round((emp.salario / 30) * 100) / 100,
 
-    // Detalles
+    // Detalles de cada concepto
     detalles: detalles,
-    descuentos: descuentos,
-
-    // Totales
-    totalIngresos: Math.round(totalIngreso * 100) / 100,
-    totalDescuentos: Math.round(totalDescuento * 100) / 100,
-    totalNeto: Math.round(totalNeto * 100) / 100,
 
     // Resumen
+    aguinaldo: Math.round(montoAguinaldo * 100) / 100,
+    vacaciones: Math.round(montoVacaciones * 100) / 100,
+    cesantia: Math.round(montoCesantia * 100) / 100,
+    preaviso: Math.round(montoPreaviso * 100) / 100,
+
+    // Totales
+    totalPrestaciones: Math.round(totalPrestaciones * 100) / 100,
+    descuentoCCSS: Math.round(descuentoCCSS * 100) / 100,
+    totalNeto: Math.round(totalNeto * 100) / 100,
     totalCalculado: Math.round(totalNeto * 100) / 100
   };
 }
 
-/** Calcula cesantía según años trabajados (Art. 29 CT Costa Rica). */
-function calcularCesantia(salarioMensual, aniosTrabajados) {
-  if (aniosTrabajados < 0.25) return 0; // Menos de 3 meses: sin cesantía
+/** Calcula cesantía según tabla completa de días trabajados (Costa Rica). */
+function calcularCesantiaCompleta(salarioMensual, diasTrabajados) {
+  // Tabla de cesantía por días trabajados (Costa Rica)
+  var tablaCesantia = [
+    { desde: 90,     hasta: 180,     dias: 7,     rango: '3-6 Meses' },
+    { desde: 181,    hasta: 360,     dias: 14,    rango: '6-12 Meses' },
+    { desde: 361,    hasta: 540,     dias: 19.5,  rango: '1-1.5 años' },
+    { desde: 541,    hasta: 720,     dias: 19.5,  rango: '1.5-2 años' },
+    { desde: 721,    hasta: 900,     dias: 20,    rango: '2-2.5 años' },
+    { desde: 901,    hasta: 1080,    dias: 20,    rango: '2.5-3 años' },
+    { desde: 1081,   hasta: 1260,    dias: 20.5,  rango: '3-3.5 años' },
+    { desde: 1261,   hasta: 1440,    dias: 20.5,  rango: '3.5-4 años' },
+    { desde: 1441,   hasta: 1620,    dias: 21,    rango: '4-4.5 años' },
+    { desde: 1621,   hasta: 1800,    dias: 21,    rango: '4.5-5 años' },
+    { desde: 1801,   hasta: 1980,    dias: 21.24, rango: '5-5.5 años' },
+    { desde: 1981,   hasta: 2160,    dias: 21.24, rango: '5.5-6 años' },
+    { desde: 2161,   hasta: 2340,    dias: 21.5,  rango: '6-6.5 años' },
+    { desde: 2341,   hasta: 2520,    dias: 21.5,  rango: '6.5-7 años' },
+    { desde: 2521,   hasta: 2700,    dias: 22,    rango: '7-7.5 años' },
+    { desde: 2701,   hasta: 2880,    dias: 22,    rango: '7.5-8 años' },
+    { desde: 2881,   hasta: 3060,    dias: 22,    rango: '8-8.5 años' }
+  ];
 
-  var aniosCompletos = Math.floor(aniosTrabajados);
-  var diasFraccionario = (aniosTrabajados - aniosCompletos) * 365.25;
+  var diasCesantia = 0;
 
-  // Tabla de cesantía (simplificada):
-  // 3-12 meses: 0.5 mes
-  // 1-3 años: 1 mes
-  // 3-5 años: 1.5 meses
-  // Más de 5 años: 2 meses
-
-  var mesesCesantia = 0;
-  if (aniosTrabajados < 1) {
-    mesesCesantia = 0.5; // 3-12 meses
-  } else if (aniosTrabajados < 3) {
-    mesesCesantia = 1; // 1-3 años
-  } else if (aniosTrabajados < 5) {
-    mesesCesantia = 1.5; // 3-5 años
-  } else {
-    mesesCesantia = 2; // Más de 5 años
+  // Buscar en tabla
+  for (var i = 0; i < tablaCesantia.length; i++) {
+    var rango = tablaCesantia[i];
+    if (diasTrabajados >= rango.desde && diasTrabajados <= rango.hasta) {
+      diasCesantia = rango.dias;
+      break;
+    }
   }
 
-  // Sumar fracción proporcional
-  var fraccionMeses = (diasFraccionario / 30);
-  return (mesesCesantia + fraccionMeses) * salarioMensual;
-}
-
-/** Calcula impuesto a la renta (FISCO - Costa Rica - simplificado). */
-function calcularImpuestoRenta(ingresoNeto) {
-  // Tarifa 2025 Costa Rica (simplificada)
-  // Exento: hasta 885,000
-  // 10%: 885,000 - 1,150,000
-  // 15%: 1,150,000 - 2,200,000
-  // 20%: Más de 2,200,000
-
-  if (ingresoNeto <= 885000) return 0;
-  if (ingresoNeto <= 1150000) return (ingresoNeto - 885000) * 0.10;
-  if (ingresoNeto <= 2200000) return 26500 + (ingresoNeto - 1150000) * 0.15;
-
-  // Más de 2,200,000
-  return 26500 + 157500 + (ingresoNeto - 2200000) * 0.20;
+  // Calcular monto: (diasCesantia / 30) * salarioMensual
+  return (diasCesantia / 30) * salarioMensual;
 }
 
 function crearLiquidacion(datos, token) {
