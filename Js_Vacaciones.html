@@ -127,4 +127,121 @@
       if (res.ok) { cargarVacaciones(); consultarBalanceVacaciones(); }
     });
   }
+
+  // ====== MÓDULO SOLICITUD POR JEFE ======
+
+  var _vacJefeSubalternoId = null;
+  var _vacJefeNombre = '';
+
+  function abrirModalVacJefe() {
+    if (!puedeEditar()) { mostrarMensaje('Sin permisos.', 'error'); return; }
+    llenarSelectEmpleados('vacJefeSelect');
+    document.getElementById('vacJefeSelect').value = '';
+    document.getElementById('vacJefePanel').classList.add('oculto');
+    document.getElementById('vacJefeFormWrap').classList.add('oculto');
+    document.getElementById('vacJefeSubalternos').innerHTML = '';
+    document.getElementById('vacJefeSinSub').classList.add('oculto');
+    _vacJefeSubalternoId = null;
+    document.getElementById('modalVacJefe').classList.remove('oculto');
+  }
+
+  function cerrarModalVacJefe() {
+    document.getElementById('modalVacJefe').classList.add('oculto');
+  }
+
+  function cargarSubalternos() {
+    var jefeId = document.getElementById('vacJefeSelect').value;
+    var panel = document.getElementById('vacJefePanel');
+    if (!jefeId) { panel.classList.add('oculto'); return; }
+
+    _vacJefeNombre = document.getElementById('vacJefeSelect').options[document.getElementById('vacJefeSelect').selectedIndex].text;
+    panel.classList.remove('oculto');
+    document.getElementById('vacJefeSubalternos').innerHTML = '<p style="color:var(--txt-3);font-size:13px">Cargando...</p>';
+    document.getElementById('vacJefeFormWrap').classList.add('oculto');
+    _vacJefeSubalternoId = null;
+
+    llamarBackend('listarSubalternos', [jefeId], function(lista) {
+      var cont = document.getElementById('vacJefeSubalternos');
+      cont.innerHTML = '';
+      if (!lista || lista.length === 0) {
+        document.getElementById('vacJefeSinSub').classList.remove('oculto');
+        return;
+      }
+      document.getElementById('vacJefeSinSub').classList.add('oculto');
+      lista.forEach(function(sub) {
+        var saldoColor = sub.diasDisponibles < 3 ? 'var(--warn)' : 'var(--exito)';
+        var card = document.createElement('div');
+        card.className = 'card-subalterno';
+        card.style.cssText = 'border:1px solid var(--borde);border-radius:8px;padding:12px 14px;cursor:pointer;transition:box-shadow .15s,border-color .15s';
+        card.innerHTML =
+          '<div style="font-weight:600;font-size:14px;color:var(--txt-1)">' + escapar(sub.nombre) + '</div>' +
+          '<div style="font-size:12px;color:var(--txt-2);margin:2px 0">' + escapar(sub.puesto || sub.departamento || '') + '</div>' +
+          '<div style="margin-top:6px;font-size:13px">' +
+            'Saldo: <strong style="color:' + saldoColor + '">' + sub.diasDisponibles + ' días</strong>' +
+            ' <span style="color:var(--txt-3);font-size:11px">(Acum. ' + sub.diasAcumulados + ' / Usados ' + sub.diasUsados + ')</span>' +
+          '</div>';
+        card.onclick = function() { seleccionarSubalterno(sub); };
+        card.onmouseover = function() { this.style.boxShadow = '0 2px 8px rgba(0,0,0,.12)'; this.style.borderColor = 'var(--primario)'; };
+        card.onmouseout  = function() { this.style.boxShadow = ''; this.style.borderColor = 'var(--borde)'; };
+        cont.appendChild(card);
+      });
+    });
+  }
+
+  function seleccionarSubalterno(sub) {
+    _vacJefeSubalternoId = sub.id;
+    document.getElementById('vacJefeFormTitulo').textContent = 'Solicitud para: ' + sub.nombre;
+    document.getElementById('vacJefeSaldo').textContent = sub.diasDisponibles;
+    document.getElementById('vacJefeInicio').value = '';
+    document.getElementById('vacJefeFin').value = '';
+    document.getElementById('vacJefeNotas').value = '';
+    // Highlight card selected
+    document.querySelectorAll('.card-subalterno').forEach(function(c) {
+      c.style.background = '';
+      c.style.borderColor = 'var(--borde)';
+    });
+    event.currentTarget.style.background = 'var(--fondo-alt, #f0f7ff)';
+    event.currentTarget.style.borderColor = 'var(--primario)';
+    document.getElementById('vacJefeFormWrap').classList.remove('oculto');
+    document.getElementById('vacJefeInicio').focus();
+  }
+
+  function limpiarSeleccionSubalterno() {
+    _vacJefeSubalternoId = null;
+    document.getElementById('vacJefeFormWrap').classList.add('oculto');
+    document.querySelectorAll('.card-subalterno').forEach(function(c) {
+      c.style.background = '';
+      c.style.borderColor = 'var(--borde)';
+    });
+  }
+
+  function guardarVacacionesJefe() {
+    if (!_vacJefeSubalternoId) { mostrarMensaje('Selecciona un subalterno.', 'error'); return; }
+    var inicio = document.getElementById('vacJefeInicio').value;
+    var fin    = document.getElementById('vacJefeFin').value;
+    if (!inicio || !fin) { mostrarMensaje('Completa las fechas.', 'error'); return; }
+    if (new Date(fin) < new Date(inicio)) { mostrarMensaje('La fecha fin no puede ser anterior al inicio.', 'error'); return; }
+
+    var btn = document.getElementById('btnGuardarVacJefe');
+    btn.disabled = true; btn.textContent = 'Guardando...';
+
+    var datos = {
+      empleado_id:   _vacJefeSubalternoId,
+      fecha_inicio:  inicio,
+      fecha_fin:     fin,
+      notas:         document.getElementById('vacJefeNotas').value,
+      solicitado_por: _vacJefeNombre
+    };
+
+    llamarBackend('crearVacaciones', [datos], function(res) {
+      btn.disabled = false; btn.textContent = 'Solicitar vacaciones';
+      if (res.ok) {
+        cerrarModalVacJefe();
+        mostrarMensaje('Solicitud creada para el subalterno (' + (res.mensaje || '') + ')', 'exito');
+        cargarVacaciones();
+      } else {
+        mostrarMensaje(res.mensaje, 'error');
+      }
+    });
+  }
 </script>

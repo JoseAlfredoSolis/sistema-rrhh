@@ -826,6 +826,34 @@ function listarVacaciones(empleadoId, estado) {
   return lista;
 }
 
+/**
+ * Lista los subalternos de un jefe por nombre o ID.
+ * Busca empleados cuyo campo jefe_inmediato coincida con el nombre del jefe.
+ */
+function listarSubalternos(jefeId) {
+  var empleados = leerTabla(HOJAS.EMPLEADOS);
+  var jefe = empleados.find(function(e) { return String(e.id) === String(jefeId); });
+  if (!jefe) return [];
+  var nombreJefe = String(jefe.nombre || '').trim().toLowerCase();
+  return empleados
+    .filter(function(e) {
+      return String(e.estado || '').toLowerCase() === 'activo' &&
+             String(e.jefe_inmediato || '').trim().toLowerCase() === nombreJefe;
+    })
+    .map(function(e) {
+      var bal = obtenerBalanceVacaciones(e.id);
+      return {
+        id: e.id,
+        nombre: e.nombre,
+        puesto: e.puesto || '',
+        departamento: e.departamento || '',
+        diasDisponibles: bal.ok ? bal.diasDisponibles : 0,
+        diasAcumulados: bal.ok ? bal.diasAcumulados : 0,
+        diasUsados: bal.ok ? bal.diasUsados : 0
+      };
+    });
+}
+
 /** Crea una solicitud de vacaciones (nace 'pendiente'). Valida días disponibles. */
 function crearVacaciones(v, token) {
   var _authErr = requiereEscritura(token);
@@ -885,11 +913,14 @@ function crearVacaciones(v, token) {
   return conLock(function () {
     var hoja = getHoja(HOJAS.VACACIONES);
     var id = generarId('VAC');
+    var notaFinal = v.notas || '';
+    if (v.solicitado_por) notaFinal = '[Solicitado por jefe: ' + v.solicitado_por + '] ' + notaFinal;
     hoja.appendRow([id, v.empleado_id, formatearFecha(v.fecha_inicio),
-                    formatearFecha(v.fecha_fin), dias, 'pendiente', v.notas || '']);
+                    formatearFecha(v.fecha_fin), dias, 'pendiente', notaFinal]);
 
+    var quien = v.solicitado_por ? v.solicitado_por + ' (jefe) para ' + v.empleado_id : v.empleado_id;
     registrarBitacora('crear', 'Vacaciones', id,
-      v.empleado_id + ' solicitó ' + dias + ' días de vacaciones');
+      quien + ' solicitó ' + dias + ' días de vacaciones');
 
     try { _notificarWhatsAppNuevaVacacion(v, dias); } catch (e) {}
 

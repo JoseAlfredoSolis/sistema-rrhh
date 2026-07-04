@@ -281,6 +281,7 @@
     <section id="vista-vacaciones" class="vista oculto">
       <div class="barra-acciones">
         <button class="btn btn-primario" onclick="abrirFormVacaciones()">+ Nueva solicitud</button>
+        <button class="btn btn-secundario" onclick="abrirModalVacJefe()">👤 Solicitar para subalterno</button>
         <button class="btn btn-secundario" onclick="exportarTabla('tablaVacaciones','Vacaciones')">📊 Exportar Excel</button>
         <div class="filtros">
           <select id="filtroEmpVac" onchange="cargarVacaciones(); consultarBalanceVacaciones()" style="max-width:200px">
@@ -1157,6 +1158,47 @@
         <div class="campo"><label>Notas</label><input type="text" id="vacNotas" maxlength="100"></div>
         <div class="modal-pie"><button type="button" class="btn btn-secundario" onclick="cerrarModalVacaciones()">Cancelar</button><button type="submit" class="btn btn-primario" id="btnGuardarVacaciones">Solicitar</button></div>
       </form>
+    </div>
+  </div>
+
+  <!-- Modal Vacaciones Jefe -->
+  <div id="modalVacJefe" class="modal oculto">
+    <div class="modal-contenido modal-grande">
+      <div class="modal-cabecera">
+        <h2>Solicitar vacaciones para subalterno</h2>
+        <button class="cerrar" onclick="cerrarModalVacJefe()">&times;</button>
+      </div>
+      <div style="padding:0 20px 12px">
+        <div class="campo">
+          <label for="vacJefeSelect">Selecciona tu nombre (jefe) *</label>
+          <select id="vacJefeSelect" onchange="cargarSubalternos()" style="max-width:320px">
+            <option value="">— Seleccionar jefe —</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Panel subalternos -->
+      <div id="vacJefePanel" class="oculto" style="padding:0 20px 16px">
+        <div id="vacJefeSubalternos" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;margin-bottom:16px"></div>
+        <p id="vacJefeSinSub" class="sin-datos oculto">Este empleado no tiene subalternos registrados.</p>
+
+        <!-- Formulario para el subalterno seleccionado -->
+        <div id="vacJefeFormWrap" class="oculto" style="border-top:1px solid var(--borde);padding-top:16px;margin-top:4px">
+          <h3 id="vacJefeFormTitulo" style="margin:0 0 12px;font-size:15px;color:var(--txt-1)"></h3>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="campo"><label>Fecha inicio *</label><input type="date" id="vacJefeInicio" required></div>
+            <div class="campo"><label>Fecha fin *</label><input type="date" id="vacJefeFin" required></div>
+          </div>
+          <div class="campo"><label>Notas</label><input type="text" id="vacJefeNotas" maxlength="100" placeholder="Motivo u observaciones"></div>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
+            <span style="font-size:13px;color:var(--txt-2)">Saldo disponible: <strong id="vacJefeSaldo">—</strong> días</span>
+          </div>
+          <div class="modal-pie" style="margin-top:16px">
+            <button class="btn btn-secundario" onclick="limpiarSeleccionSubalterno()">← Volver</button>
+            <button class="btn btn-primario" id="btnGuardarVacJefe" onclick="guardarVacacionesJefe()">Solicitar vacaciones</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
