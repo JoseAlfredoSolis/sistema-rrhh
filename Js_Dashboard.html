@@ -20,6 +20,12 @@
       llamarBackend('obtenerDashboard', [], function (d) {
       ULTIMO_DASHBOARD = d;
 
+      // Onboarding: solo se muestra mientras el sistema no tenga empleados.
+      var onboarding = document.getElementById('onboardingPrimerosPasos');
+      if (onboarding) {
+        onboarding.classList.toggle('oculto', !(d.empleadosActivos === 0));
+      }
+
       // Mostrar alertas si hay
       if (d.alertas && d.alertas.length > 0) {
         _mostrarAlertas(d.alertas);

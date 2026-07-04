@@ -149,6 +149,26 @@
     <!-- ============== VISTA: DASHBOARD ============== -->
     <section id="vista-dashboard" class="vista">
       <h2 class="titulo-vista">Resumen general</h2>
+
+      <!-- ONBOARDING: primeros pasos (solo se muestra si no hay empleados) -->
+      <div id="onboardingPrimerosPasos" class="config-bloque oculto" style="border:2px solid var(--color-primario, #6d28d9);margin-bottom:20px">
+        <h3>🚀 ¡Empecemos! ¿Cómo quieres arrancar?</h3>
+        <p class="config-ayuda">
+          Tu sistema todavía no tiene datos. Elige una opción para empezar —
+          puedes cambiar de idea después, esto no borra nada.
+        </p>
+        <div class="onboarding-opciones" style="display:flex;gap:16px;flex-wrap:wrap;margin-top:12px">
+          <button class="btn btn-primario" style="flex:1;min-width:240px;padding:16px" onclick="onboardingCrearDesdeCero()">
+            🆕 Crear mi empresa desde cero<br>
+            <span style="font-weight:normal;font-size:12px;opacity:.85">Empiezas con una base vacía y vas cargando todo a mano.</span>
+          </button>
+          <button class="btn btn-secundario" style="flex:1;min-width:240px;padding:16px" onclick="onboardingCargarExcel()">
+            📥 Ya tengo un Excel con mis datos<br>
+            <span style="font-weight:normal;font-size:12px;opacity:.85">Sube tu archivo y el sistema convierte todo automáticamente.</span>
+          </button>
+        </div>
+      </div>
+
       <div class="tarjetas" id="tarjetasDashboard">
         <!-- Tarjetas generadas por JS -->
       </div>
@@ -677,7 +697,7 @@
       </div>
 
       <!-- Crear una hoja nueva -->
-      <div class="config-bloque">
+      <div class="config-bloque" id="bloqueCrearHoja">
         <h3>¿No tienes una hoja todavía?</h3>
         <p class="config-ayuda">
           Crea una hoja de Google nueva en tu Drive, ya con todas las pestañas y
@@ -719,7 +739,7 @@
       </div>
 
       <!-- ──────────── Carga completa desde Excel ──────────── -->
-      <div class="config-bloque">
+      <div class="config-bloque" id="bloqueCargarExcel">
         <h3>📥 Cargar datos de la empresa desde Excel</h3>
         <p class="config-ayuda">
           Sube el archivo Excel con la información de la empresa y se cargará

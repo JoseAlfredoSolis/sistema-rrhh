@@ -3,6 +3,30 @@
      MÓDULO CONFIGURACIÓN — v9 (+ respaldo + roles)
      ============================================================ */
 
+  // ── Onboarding: atajos desde el Dashboard ──────────────────
+  function onboardingCrearDesdeCero() {
+    mostrarVista('configuracion');
+    setTimeout(function () {
+      var bloque = document.getElementById('bloqueCrearHoja');
+      var input = document.getElementById('cfgNombreHoja');
+      if (bloque) bloque.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (input) {
+        if (!input.value) input.value = 'Base RRHH';
+        input.focus();
+      }
+    }, 50);
+  }
+
+  function onboardingCargarExcel() {
+    mostrarVista('configuracion');
+    setTimeout(function () {
+      var bloque = document.getElementById('bloqueCargarExcel');
+      if (bloque) bloque.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      var fileInput = document.getElementById('cargaFile');
+      if (fileInput) fileInput.click();
+    }, 50);
+  }
+
   function cargarConfiguracion() {
     llamarBackend('obtenerConfiguracion', [], function (info) {
       pintarEstadoConexion(info);
