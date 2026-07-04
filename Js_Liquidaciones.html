@@ -449,20 +449,30 @@
     var btn = document.getElementById('btnGuardarLiqCalc');
     if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
 
-    llamarBackend('crearLiquidacion', [datos], function(res) {
-      if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar Liquidación'; }
+    console.log('[LIQ] Guardando datos:', JSON.stringify(datos));
 
-      if (!res) {
-        mostrarMensaje('Error: no se recibió respuesta del servidor.', 'error');
-        return;
-      }
-      if (res.ok) {
-        mostrarMensaje('✅ Liquidación guardada correctamente', 'exito');
-        cerrarCalculadoraLiquidacion();
-        cargarLiquidaciones();
-      } else {
-        mostrarMensaje('Error al guardar: ' + (res.mensaje || 'Error desconocido'), 'error');
-      }
-    });
+    google.script.run
+      .withSuccessHandler(function(res) {
+        console.log('[LIQ] Respuesta backend:', JSON.stringify(res));
+        if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar Liquidación'; }
+        if (!res) {
+          alert('Error: sin respuesta del servidor');
+          return;
+        }
+        if (res.ok) {
+          mostrarMensaje('✅ Liquidación guardada correctamente', 'exito');
+          cerrarCalculadoraLiquidacion();
+          cargarLiquidaciones();
+        } else {
+          mostrarMensaje('Error: ' + (res.mensaje || 'Error desconocido'), 'error');
+          alert('Error al guardar: ' + (res.mensaje || 'Error desconocido'));
+        }
+      })
+      .withFailureHandler(function(err) {
+        console.error('[LIQ] Error backend:', err);
+        if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar Liquidación'; }
+        alert('Fallo al guardar: ' + (err.message || String(err)));
+      })
+      .crearLiquidacion(datos, SESSION_TOKEN || _leerStorage('session', 'rrhh-token'));
   }
 </script>

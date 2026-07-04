@@ -4099,8 +4099,7 @@ function crearLiquidacion(datos, token) {
   return {
     ok: true,
     mensaje: 'Liquidación registrada por ' + monto + '.',
-    id: id,
-    calculo: calculoAuto
+    id: id
   };
 }
 
