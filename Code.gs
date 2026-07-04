@@ -1212,7 +1212,7 @@ function obtenerAlertas() {
 
     // Alerta: Evaluación anual próxima (cada 12 meses desde contratación)
     if (emp.fecha_ingreso) {
-      var fechaIng = new Date(emp.fecha_ingreso + 'T00:00:00');
+      var fechaIng = new Date(formatearFecha(emp.fecha_ingreso) + 'T00:00:00');
       var proxEval = new Date(fechaIng.getTime() + 365 * 24 * 60 * 60 * 1000);
       while (proxEval < hoy) {
         proxEval = new Date(proxEval.getTime() + 365 * 24 * 60 * 60 * 1000);
@@ -1231,7 +1231,7 @@ function obtenerAlertas() {
 
     // Alerta: Período de prueba próximo a vencer (90 días)
     if (emp.fecha_ingreso) {
-      var fechaIng2 = new Date(emp.fecha_ingreso + 'T00:00:00');
+      var fechaIng2 = new Date(formatearFecha(emp.fecha_ingreso) + 'T00:00:00');
       var finPrueba = new Date(fechaIng2.getTime() + 90 * 24 * 60 * 60 * 1000);
       if (finPrueba >= hace30dias && finPrueba <= new Date(hoy.getTime() + 31 * 24 * 60 * 60 * 1000) && finPrueba > hoy) {
         alertas.push({
@@ -3942,7 +3942,7 @@ function listarLiquidaciones(empleadoId) {
 
     // Calcular años trabajados
     if (emp.fecha_ingreso && r.fecha_salida) {
-      var fechaIng = new Date(emp.fecha_ingreso + 'T00:00:00');
+      var fechaIng = new Date(formatearFecha(emp.fecha_ingreso) + 'T00:00:00');
       var fechaSal = new Date(r.fecha_salida.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$3-$2-$1') + 'T00:00:00');
       r.anios_trabajados = ((fechaSal - fechaIng) / (365.25 * 24 * 60 * 60 * 1000)).toFixed(2);
     } else {
@@ -4077,10 +4077,10 @@ function calcularLiquidacion(empleadoId, fechaSalida, motivoSalida, totalSalario
   if (!emp) return { ok: false, mensaje: 'Empleado no encontrado.' };
 
   var fechaSal = typeof fechaSalida === 'string' ? new Date(fechaSalida + 'T00:00:00') : fechaSalida;
-  var fechaIng = new Date(emp.fecha_ingreso + 'T00:00:00');
+  var fechaIng = new Date(formatearFecha(emp.fecha_ingreso) + 'T00:00:00');
 
   if (fechaSal < fechaIng) {
-    return { ok: false, mensaje: 'Fecha de salida anterior a ingreso (' + emp.fecha_ingreso + ').' };
+    return { ok: false, mensaje: 'Fecha de salida anterior a ingreso (' + formatearFecha(emp.fecha_ingreso) + ').' };
   }
 
   var tipoNominaNorm = tipoNomina || emp.tipo_nomina || 'Semanal';
@@ -4160,7 +4160,7 @@ function calcularLiquidacion(empleadoId, fechaSalida, motivoSalida, totalSalario
     cedula: emp.cedula,
     identificacion: emp.cedula,
     area: emp.area || emp.departamento || '',
-    fechaIngreso: emp.fecha_ingreso,
+    fechaIngreso: formatearFecha(emp.fecha_ingreso),
     fechaSalida: formatearFecha(fechaSalida),
     mesesLaborados: mesesLaborados,
     diasAdicionales: diasAdicionales,
