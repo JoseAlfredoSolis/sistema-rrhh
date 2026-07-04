@@ -21,6 +21,7 @@
     LIQUIDACIONES.forEach(function(liq) {
       var esPagada = String(liq.estado||'').toLowerCase() === 'pagada';
       var acciones =
+        '<button class="btn-mini" onclick="generarReporteLiquidacion(\''+escaparAttr(liq.empleado_id)+'\',\''+escaparAttr(liq.fecha_salida)+'\')">📄 Reporte</button>' +
         '<button class="btn-mini" onclick="verDetallesLiquidacion(\''+escaparAttr(liq.empleado_id)+'\',\''+escaparAttr(liq.fecha_salida)+'\')">📋 Detalles</button>';
       if (puedeEditar()) {
         acciones +=
@@ -49,6 +50,19 @@
     llamarBackend('calcularLiquidacion', [empleadoId, fechaSalida, motivoSalida], function(res) {
       if (!res.ok) { mostrarMensaje(res.mensaje, 'error'); return; }
       _mostrarModalDetallesLiquidacion(res);
+    });
+  }
+
+  function generarReporteLiquidacion(empleadoId, fechaSalida) {
+    var motivo = prompt('Motivo de salida:\n1 = Renuncia\n2 = Despido con responsabilidad\n3 = Despido sin responsabilidad', '1');
+    var motivoMap = { '1': 'renuncia', '2': 'despido_con_resp', '3': 'despido_sin_resp' };
+    var motivoSalida = motivoMap[motivo] || 'renuncia';
+
+    llamarBackend('generarReporteLiquidacion', [empleadoId, fechaSalida, motivoSalida], function(res) {
+      if (!res.ok) { mostrarMensaje(res.mensaje, 'error'); return; }
+      var ventana = window.open('', 'Liquidación');
+      ventana.document.write(res.html);
+      ventana.document.close();
     });
   }
 

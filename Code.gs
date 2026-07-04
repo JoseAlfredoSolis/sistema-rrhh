@@ -3777,6 +3777,124 @@ function listarLiquidaciones(empleadoId) {
   });
 }
 
+/** Genera reporte HTML de liquidación laboral profesional (imprimible). */
+function generarReporteLiquidacion(empleadoId, fechaSalida, motivoSalida) {
+  var liq = calcularLiquidacion(empleadoId, fechaSalida, motivoSalida);
+  if (!liq.ok) return liq;
+
+  var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Liquidación Laboral</title>';
+  html += '<style>';
+  html += 'body { font-family: Arial, sans-serif; margin: 20px; background: #fff; color: #333; }';
+  html += '.encabezado { text-align: center; margin-bottom: 20px; border-bottom: 3px solid #333; padding-bottom: 10px; }';
+  html += '.encabezado h1 { margin: 0; font-size: 18px; }';
+  html += '.encabezado p { margin: 5px 0; font-size: 14px; }';
+  html += '.datos-trabajador { margin: 15px 0; }';
+  html += '.datos-trabajador table { width: 100%; border-collapse: collapse; font-size: 12px; }';
+  html += '.datos-trabajador td { padding: 5px; border-bottom: 1px solid #ddd; }';
+  html += '.datos-trabajador strong { display: inline-block; min-width: 150px; }';
+  html += '.seccion { margin: 20px 0; padding: 12px; border-left: 4px solid #2563eb; background: #f9f9f9; }';
+  html += '.seccion h3 { margin-top: 0; font-size: 14px; color: #2563eb; }';
+  html += '.seccion table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 8px 0; }';
+  html += '.seccion td { padding: 6px; border-bottom: 1px solid #ddd; }';
+  html += '.seccion .label { font-weight: 600; width: 60%; }';
+  html += '.seccion .valor { text-align: right; width: 40%; }';
+  html += '.total-seccion { font-weight: 700; background: #e8f4f8; border-top: 2px solid #2563eb; }';
+  html += '.total-final { margin: 20px 0; padding: 16px; background: #dcfce7; border: 3px solid #22c55e; border-radius: 6px; text-align: center; }';
+  html += '.total-final .label { font-size: 12px; color: #666; }';
+  html += '.total-final .monto { font-size: 28px; font-weight: 700; color: #22c55e; }';
+  html += '.no-paga { color: #dc2626; }';
+  html += '.si-paga { color: #22c55e; font-weight: 600; }';
+  html += '@media print { body { margin: 0; } .no-print { display: none; } }';
+  html += '</style></head><body>';
+
+  // Encabezado
+  html += '<div class="encabezado">';
+  html += '<h1>TROPICALES DEL VALLE S.A.</h1>';
+  html += '<p><strong>Liquidación Laboral</strong></p>';
+  html += '</div>';
+
+  // Datos del trabajador
+  html += '<div class="datos-trabajador">';
+  html += '<table>';
+  html += '<tr><td><strong>Nombre del Trabajador:</strong></td><td>' + liq.empleado + '</td><td style="text-align:right"><strong>Identificación nº</strong></td><td style="text-align:right">' + liq.identificacion + '</td></tr>';
+  html += '<tr><td><strong>Digite la fecha inicio:</strong></td><td>' + liq.fechaIngreso + '</td><td style="text-align:right"><strong>Digite la fecha salida:</strong></td><td style="text-align:right">' + liq.fechaSalida + '</td></tr>';
+  html += '<tr><td><strong>Meses Laborados:</strong></td><td>' + liq.mesesLaborados + ',' + String(liq.diasAdicionales).padStart(2,'0') + '</td><td style="text-align:right"><strong>Tipo de nómina:</strong></td><td style="text-align:right">' + (liq.tipoNomina === 'Semanal' ? 'X' : ' ') + ' Semanal | ' + (liq.tipoNomina === 'Quincenal' ? 'X' : ' ') + ' Quincenal</td></tr>';
+  html += '</table>';
+  html += '</div>';
+
+  // Motivo de salida
+  html += '<div class="datos-trabajador">';
+  html += '<strong>Motivo de Salida:</strong><br>';
+  html += 'Despido Con Responsabilidad Patronal ' + (liq.motivoSalida === 'despido_con_resp' ? '☒' : '☐') + '<br>';
+  html += 'Despido Sin Responsablidad Patronal ' + (liq.motivoSalida === 'despido_sin_resp' ? '☒' : '☐') + '<br>';
+  html += 'Renuncia del Trabajador ' + (liq.motivoSalida === 'renuncia' ? '☒' : '☐');
+  html += '</div>';
+
+  // 1. Aguinaldo
+  html += '<div class="seccion">';
+  html += '<h3>1- Calculo del Aguinaldo:</h3>';
+  html += '<table>';
+  html += '<tr><td class="label">Total Por Aguinaldo:</td><td class="valor total-seccion">₡' + formatearNumero(liq.aguinaldo) + '</td></tr>';
+  html += '</table>';
+  html += '</div>';
+
+  // 2. Vacaciones
+  html += '<div class="seccion">';
+  html += '<h3>2- Cálculo de las Vacaciones:</h3>';
+  html += '<table>';
+  html += '<tr><td class="label">Salario Promedio Mensual:</td><td class="valor">₡' + formatearNumero(liq.salarioMensual) + '</td></tr>';
+  html += '<tr><td class="label">Salario por Día:</td><td class="valor">₡' + formatearNumero(liq.salarioDiario) + '</td></tr>';
+  html += '<tr><td class="label">Días a Recibir Vacaciones:</td><td class="valor">5,00</td></tr>';
+  html += '<tr><td class="label">Total Por Vacaciones:</td><td class="valor total-seccion">₡' + formatearNumero(liq.vacaciones) + '</td></tr>';
+  html += '</table>';
+  html += '</div>';
+
+  // 3. Cesantía
+  html += '<div class="seccion">';
+  html += '<h3>3- Calculo de la Cesantia:</h3>';
+  html += '<table>';
+  html += '<tr><td class="label">¿Corresponde el pago?:</td><td class="valor">' + (liq.cesantia > 0 ? '<span class="si-paga">SÍ</span>' : '<span class="no-paga">NO</span>') + '</td></tr>';
+  html += '<tr><td class="label">Salario promedio mensual:</td><td class="valor">₡' + (liq.cesantia > 0 ? formatearNumero(liq.salarioMensual) : '0,00') + '</td></tr>';
+  html += '<tr><td class="label">Días que corresponden</td><td class="valor">' + (liq.cesantia > 0 ? (liq.cesantia / (liq.salarioMensual / 30)).toFixed(2) : '00,0') + ' dias</td></tr>';
+  html += '<tr><td class="label">Total Por Auxilio de Cesantia:</td><td class="valor total-seccion">₡' + formatearNumero(liq.cesantia) + '</td></tr>';
+  html += '</table>';
+  html += '</div>';
+
+  // 4. Preaviso
+  html += '<div class="seccion">';
+  html += '<h3>4- Calculo del Preaviso:</h3>';
+  html += '<table>';
+  html += '<tr><td class="label">¿Desea conocer el tiempo?</td><td class="valor">' + (liq.preaviso > 0 ? 'SÍ' : 'NO') + '</td></tr>';
+  html += '<tr><td class="label">¿Corresponde el pago?</td><td class="valor">' + (liq.preaviso > 0 ? '<span class="si-paga">SÍ</span>' : '<span class="no-paga">NO</span>') + '</td></tr>';
+  html += '<tr><td class="label">Salario por Día</td><td class="valor">₡' + (liq.preaviso > 0 ? formatearNumero(liq.salarioDiario) : '0,00') + '</td></tr>';
+  html += '<tr><td class="label">30 dias</td><td class="valor"></td></tr>';
+  html += '<tr><td class="label">Total Por Preaviso:</td><td class="valor total-seccion">₡' + formatearNumero(liq.preaviso) + '</td></tr>';
+  html += '</table>';
+  html += '</div>';
+
+  // Total Prestaciones
+  html += '<div class="total-final">';
+  html += '<div class="label">Total Prestaciones Laborales:</div>';
+  html += '<div class="monto">₡' + formatearNumero(liq.totalPrestaciones) + '</div>';
+  html += '</div>';
+
+  html += '<div class="no-print" style="text-align:center;margin-top:20px">';
+  html += '<button onclick="window.print()" style="padding:10px 20px;background:#2563eb;color:white;border:none;border-radius:4px;cursor:pointer;font-size:14px">🖨️ Imprimir</button>';
+  html += '</div>';
+
+  html += '</body></html>';
+
+  return {
+    ok: true,
+    html: html
+  };
+}
+
+/** Formatea número con puntos de miles y 2 decimales. */
+function formatearNumero(num) {
+  return (Number(num) || 0).toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 /** Calcula liquidación laboral completa según estructura Costa Rica (modelo Tropicales del Valle). */
 function calcularLiquidacion(empleadoId, fechaSalida, motivoSalida) {
   var emp = obtenerEmpleadoCompleto(empleadoId);
