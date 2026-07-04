@@ -851,31 +851,24 @@ function listarSubalternos(jefeId) {
   var jefe = empleados.find(function(e) { return String(e.id) === String(jefeId); });
   if (!jefe) return [];
   var nombreJefe = String(jefe.nombre || '').trim().toLowerCase();
-  return empleados
-    .filter(function(e) {
-      return String(e.estado || '').toLowerCase() === 'activo' &&
-             String(e.jefe_inmediato || '').trim().toLowerCase() === nombreJefe;
-    })
-    .map(function(e) {
-      return { id: e.id, nombre: e.nombre, puesto: e.puesto || '', departamento: e.departamento || '', _fechaIngreso: e.fecha_ingreso };
-    });
+  var subalternos = empleados.filter(function(e) {
+    return String(e.estado || '').toLowerCase() === 'activo' &&
+           String(e.jefe_inmediato || '').trim().toLowerCase() === nombreJefe;
+  });
 
-  // Calcular saldos en bloque (una sola lectura de vacaciones)
   var todasVac = leerTabla(HOJAS.VACACIONES);
-  var saldos = _calcularSaldosVacaciones(todasVac);
-
-  return subalternos.map(function(s) {
-    var fechaIngreso = new Date(s._fechaIngreso);
+  return subalternos.map(function(e) {
+    var fechaIngreso = new Date(e.fecha_ingreso);
     var meses = (new Date() - fechaIngreso) / (30.4375 * 24 * 60 * 60 * 1000);
     var acum = Math.floor(Math.max(0, meses) * 1.25);
     var usados = todasVac
-      .filter(function(v) { return String(v.empleado_id) === String(s.id) && String(v.estado).toLowerCase() === 'aprobada'; })
+      .filter(function(v) { return String(v.empleado_id) === String(e.id) && String(v.estado).toLowerCase() === 'aprobada'; })
       .reduce(function(sum, v) { return sum + (Number(v.dias) || 0); }, 0);
     return {
-      id: s.id,
-      nombre: s.nombre,
-      puesto: s.puesto,
-      departamento: s.departamento,
+      id: e.id,
+      nombre: e.nombre,
+      puesto: e.puesto || '',
+      departamento: e.departamento || '',
       diasDisponibles: Math.max(0, acum - usados),
       diasAcumulados: acum,
       diasUsados: usados
@@ -2721,12 +2714,13 @@ function _limpiarBackupAntiguos(diasRetener) {
     fechaLimite.setDate(fechaLimite.getDate() - diasRetener);
 
     var carpetaRaiz = DriveApp.getRootFolder();
-    var archivos = carpetaRaiz.getFilesByName(/^\[BACKUP/);
+    // getFilesByName no acepta regex — iterar todos los archivos y filtrar por nombre
+    var todosArchivos = carpetaRaiz.getFiles();
     var eliminados = 0;
 
-    while (archivos.hasNext()) {
-      var file = archivos.next();
-      if (file.getLastUpdated() < fechaLimite) {
+    while (todosArchivos.hasNext()) {
+      var file = todosArchivos.next();
+      if (file.getName().indexOf('[BACKUP') === 0 && file.getLastUpdated() < fechaLimite) {
         file.setTrashed(true);
         eliminados++;
       }
@@ -3532,7 +3526,13 @@ function crearHoraExtra(datos, token) {
     var sal = Number(emp.salario);
     if (sal > 0) {
       var vh = sal / 240;
-      monto  = Math.round(vh * 1.5 * Number(datos.horas));
+      // Multiplicadores según Código de Trabajo CR art. 139-140:
+      // diurno/normal: 1.5×  |  nocturno: 2.25×  |  domingo/feriado: 2.5×
+      var multiplicador = 1.5;
+      var tipoNorm = String(tipo || 'normal').toLowerCase();
+      if (tipoNorm === 'nocturno') multiplicador = 2.25;
+      else if (tipoNorm === 'domingo' || tipoNorm === 'feriado') multiplicador = 2.5;
+      monto = Math.round(vh * multiplicador * Number(datos.horas));
     }
   }
   var id = generarId('HEX');
@@ -3987,8 +3987,21 @@ function calcularLiquidacion(empleadoId, fechaSalida, motivoSalida, totalSalario
   var salarioDiario = (tipoNominaNorm === 'Quincenal') ? (salarioMensual / 26) : (salarioMensual / 30);
 
   // ====== 1. AGUINALDO ======
-  // Excel: suma últimos 12 meses / 12
-  var montoAguinaldo = totalSalarios ? (Number(totalSalarios) / 12) : salarioMensual;
+  // Art. 166 CT: proporcional — suma de salarios del período / 12
+  // Si el empleado trabajó menos de 12 meses, se paga (meses/12) × salario mensual
+  var montoAguinaldo;
+  if (totalSalarios && Number(totalSalarios) > 0) {
+    // Con salarios ingresados: proporcional a meses trabajados en el período
+    var mesesPeriodo = Math.min(mesesTotales, 12);
+    montoAguinaldo = (Number(totalSalarios) / 12) * (mesesPeriodo / 12) * 12;
+    // Simplificado: totalSalarios / 12 ya es correcto si la suma representa exactamente
+    // los meses trabajados — no se multiplica por meses de nuevo
+    montoAguinaldo = Number(totalSalarios) / 12;
+  } else {
+    // Sin salarios ingresados: proporcional por meses (máx 12)
+    var mesesAguinaldo = Math.min(mesesTotales, 12);
+    montoAguinaldo = salarioMensual * (mesesAguinaldo / 12);
+  }
 
   // ====== 2. VACACIONES ======
   // Excel: días ingresados × salario diario (Días a Recibir Vacaciones = 5 en el ejemplo)
