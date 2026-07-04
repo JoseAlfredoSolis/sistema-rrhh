@@ -3910,21 +3910,22 @@ function calcularLiquidacion(empleadoId, fechaSalida, motivoSalida, totalSalario
   var tipoNominaNorm = tipoNomina || emp.tipo_nomina || 'Semanal';
   var motivo = motivoSalida || 'renuncia';
 
-  // Meses laborados — fórmula exacta del Excel:
-  // Quincenal: (diasDiff / 30)   Semanal: (diasDiff / 365) * 12
+  // Meses laborados — fórmula exacta Excel F13:
+  // Semanal (G15="x"): diasDiff/30   Quincenal (F15="x"): (diasDiff/365)*12
   var diasDiff = Math.round((fechaSal - fechaIng) / (24 * 60 * 60 * 1000));
-  var mesesTotales = (tipoNominaNorm === 'Quincenal') ? (diasDiff / 30) : ((diasDiff / 365) * 12);
+  var mesesTotales = (tipoNominaNorm === 'Semanal') ? (diasDiff / 30) : ((diasDiff / 365) * 12);
   var mesesLaborados = Math.floor(mesesTotales);
   var diasAdicionales = Math.round((mesesTotales - mesesLaborados) * 30);
 
-  // Días en año 360 (usado para tablas de cesantía y preaviso, igual que Excel)
+  // Días en año 360 (usado para tabla de cesantía, igual que Excel BN12)
   var diasTrabajados360 = mesesTotales * 30;
 
   // Salario mensual (promedio 6 meses si se ingresó, si no el base)
   var salarioMensual = Number(promedioSalarios) || Number(emp.salario) || 0;
 
-  // Salario diario según tipo de nómina (Excel: Semanal=/26, Quincenal=/30)
-  var salarioDiario = (tipoNominaNorm === 'Quincenal') ? (salarioMensual / 30) : (salarioMensual / 26);
+  // Salario diario — fórmula exacta Excel G28:
+  // Quincenal (F15="X"): promedio/26   Semanal (G15="X"): promedio/30
+  var salarioDiario = (tipoNominaNorm === 'Quincenal') ? (salarioMensual / 26) : (salarioMensual / 30);
 
   // ====== 1. AGUINALDO ======
   // Excel: suma últimos 12 meses / 12
@@ -3956,7 +3957,7 @@ function calcularLiquidacion(empleadoId, fechaSalida, motivoSalida, totalSalario
   var diasPreaviso = 0;
   var montoPreaviso = 0;
   if (correspondePreaviso) {
-    diasPreaviso = calcularDiasPreaviso(diasTrabajados360);
+    diasPreaviso = calcularDiasPreaviso(mesesTotales);
     montoPreaviso = diasPreaviso * salarioDiario;
   }
 
@@ -4039,24 +4040,14 @@ function calcularCesantiaCompleta(salarioDiario, diasTrabajados360) {
 }
 
 /**
- * Calcula días de preaviso según nueva ley (Código de Trabajo CR).
- * diasTrabajados360 = mesesTotales * 30 (año 360 días)
- * Capeado a 2880 días (8 años) según ley.
+ * Calcula días de preaviso según tabla Excel BX14:CB16 (Código de Trabajo CR art. 28).
+ * Usa mesesTotales como entrada (igual que BX12 = F13 en el Excel).
+ * Bandas por meses: 3-5.99→7d, 6-11.99→15d, 12+→30d.
  */
-function calcularDiasPreaviso(diasTrabajados360) {
-  var dias360 = Math.min(diasTrabajados360, 2880);
-  var tabla = [
-    { desde: 89,   hasta: 181,   dias: 7    },
-    { desde: 181,  hasta: 361,   dias: 14   },
-    { desde: 361,  hasta: 541,   dias: 19.5 },
-    { desde: 541,  hasta: 721,   dias: 40   },
-    { desde: 721,  hasta: 901,   dias: 40   },
-    { desde: 901,  hasta: 1081,  dias: 61.5 },
-    { desde: 1081, hasta: 99999, dias: 84   }
-  ];
-  for (var i = 0; i < tabla.length; i++) {
-    if (dias360 >= tabla[i].desde && dias360 < tabla[i].hasta) return tabla[i].dias;
-  }
+function calcularDiasPreaviso(mesesTotales) {
+  if (mesesTotales >= 3 && mesesTotales < 6)   return 7;
+  if (mesesTotales >= 6 && mesesTotales < 12)  return 15;
+  if (mesesTotales >= 12)                       return 30;
   return 0;
 }
 
