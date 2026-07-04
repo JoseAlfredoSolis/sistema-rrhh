@@ -429,7 +429,7 @@
   }
 
   function guardarCalculoLiquidacion() {
-    if (!CALCULO_ACTUAL) return;
+    if (!CALCULO_ACTUAL) { mostrarMensaje('Primero realiza un cálculo.', 'error'); return; }
 
     var datos = {
       empleado_id: document.getElementById('calcEmpleado').value,
@@ -438,18 +438,23 @@
       fecha_calculo: new Date().toISOString().slice(0,10),
       monto: CALCULO_ACTUAL.totalNeto,
       estado: document.getElementById('calcEstado').value,
+      tipoNomina: document.querySelector('input[name="calcTipoNomina"]:checked').value,
       notas: 'Cálculo automático - ' + CALCULO_ACTUAL.motivoSalida
     };
 
     if (!confirm('¿Guardar esta liquidación por ₡' + formatoDinero(datos.monto) + '?')) return;
 
-    var btn = event.target;
-    btn.disabled = true;
-    btn.textContent = 'Guardando...';
+    var btn = document.querySelector('button[onclick="guardarCalculoLiquidacion()"]');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Guardando...';
+    }
 
     llamarBackend('crearLiquidacion', [datos], function(res) {
-      btn.disabled = false;
-      btn.textContent = '💾 Guardar Liquidación';
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = '💾 Guardar Liquidación';
+      }
 
       if (res.ok) {
         mostrarMensaje('✅ Liquidación guardada correctamente', 'exito');
