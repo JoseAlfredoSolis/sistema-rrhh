@@ -63,8 +63,7 @@
     if (dedInput && !dedInput.value) dedInput.value = d.total;
   }
 
-  // Duplica calcularDeduccionesCR() de Code.gs para previsualizar sin round-trip al servidor.
-  // Si cambian los tramos/porcentajes de CCSS o renta, actualizar también allá.
+  // Preview local (sin latencia). Mantener sincronizado con calcularDeduccionesCR() en Code.gs.
   function _calcDed(sal) {
     sal = Number(sal)||0;
     var ccss = Math.round(sal*0.1067);

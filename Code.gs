@@ -33,7 +33,8 @@ var HOJAS = {
   TURNOS:            'Turnos',
   INCAPACIDADES:     'Incapacidades',
   FERIADOS:          'Feriados',
-  LIQUIDACIONES:     'Liquidaciones'
+  LIQUIDACIONES:     'Liquidaciones',
+  PERMISOS:          'Permisos'
 };
 
 /**
@@ -62,8 +63,25 @@ var ENCABEZADOS = {
   Turnos:            ['id', 'empleado_id', 'semana', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'],
   Incapacidades:     ['id', 'empleado_id', 'fecha_desde', 'fecha_hasta', 'dias', 'entidad', 'especialidad', 'notas'],
   Feriados:          ['id', 'fecha', 'nombre', 'tipo'],
-  Liquidaciones:     ['id', 'empleado_id', 'fecha_salida', 'motivo', 'fecha_calculo', 'monto', 'estado', 'notas']
+  Liquidaciones:     ['id', 'empleado_id', 'fecha_salida', 'motivo', 'fecha_calculo', 'monto', 'estado', 'notas'],
+  Permisos:          ['id', 'empleado_id', 'tipo', 'fecha_inicio', 'fecha_fin', 'estado', 'motivo', 'notas']
 };
+
+// Columnas por posición (1-based para Sheets, 0-based _IDX para arrays).
+// Derivadas de ENCABEZADOS — no cambiar a mano; agregar campos allá.
+var COLS = (function () {
+  function col(hoja, campo) { return ENCABEZADOS[hoja].indexOf(campo) + 1; }
+  function idx(hoja, campo) { return ENCABEZADOS[hoja].indexOf(campo); }
+  return {
+    EMP_ESTADO:      col('Empleados',     'estado'),
+    EMP_SALARIO:     col('Empleados',     'salario'),
+    EMP_ESTADO_IDX:  idx('Empleados',     'estado'),
+    EMP_SALARIO_IDX: idx('Empleados',     'salario'),
+    VAC_ESTADO:      col('Vacaciones',    'estado'),
+    LIQ_ESTADO:      col('Liquidaciones', 'estado'),
+    PRM_ESTADO:      col('Permisos',      'estado')
+  };
+})();
 
 
 // ---- PUNTO DE ENTRADA DE LA WEB APP -------------------------------
@@ -461,8 +479,8 @@ function actualizarEmpleado(emp, token) {
   var numCols = ENCABEZADOS.Empleados.length;
   var filaActual = hoja.getRange(fila, 1, 1, numCols).getValues()[0];
 
-  var estadoActual    = filaActual[7] || 'activo';
-  var salarioAnterior = Number(filaActual[6]) || 0;
+  var estadoActual    = filaActual[COLS.EMP_ESTADO_IDX]  || 'activo';
+  var salarioAnterior = Number(filaActual[COLS.EMP_SALARIO_IDX]) || 0;
   var salarioNuevo    = Number(emp.salario);
 
   var valores = [
@@ -985,7 +1003,7 @@ function cambiarEstadoVacaciones(id, nuevoEstado, token) {
     }
   }
 
-  hoja.getRange(fila, 6).setValue(nuevoEstado); // columna 6 = estado
+  hoja.getRange(fila, COLS.VAC_ESTADO).setValue(nuevoEstado);
 
   registrarBitacora('modificar', 'Vacaciones', id,
     'Estado cambió a: ' + nuevoEstado);
@@ -1318,7 +1336,7 @@ function obtenerDashboard() {
  */
 function mapaEmpleados() {
   var mapa = {};
-  leerTabla(HOJAS.EMPLEADOS).forEach(function (e) {
+  leerTablaConCache(HOJAS.EMPLEADOS).forEach(function (e) {
     mapa[e.id] = e.nombre;
   });
   return mapa;
@@ -1329,7 +1347,7 @@ function mapaEmpleados() {
  * de los demás módulos: [{id, nombre}, ...].
  */
 function listarEmpleadosSelect() {
-  return leerTabla(HOJAS.EMPLEADOS)
+  return leerTablaConCache(HOJAS.EMPLEADOS)
     .filter(function (e) { return estadoNormalizado(e.estado) === 'activo'; })
     .map(function (e) {
       return { id: e.id, nombre: e.nombre, salario: Number(e.salario) || 0 };
@@ -4190,7 +4208,7 @@ function marcarLiquidacionPagada(id, token) {
   var hoja = getHoja(HOJAS.LIQUIDACIONES);
   var fila = buscarFilaPorId(hoja, id);
   if (fila === -1) return { ok: false, mensaje: 'No se encontró la liquidación.' };
-  hoja.getRange(fila, 7).setValue('pagada'); // columna 7 = estado
+  hoja.getRange(fila, COLS.LIQ_ESTADO).setValue('pagada');
   registrarBitacora('actualizar', 'Liquidacion', id, 'Marcada como pagada');
   return { ok: true, mensaje: 'Liquidación marcada como pagada.' };
 }
@@ -4603,7 +4621,7 @@ var VALIDADORES = {
  * @return {Object[]}
  */
 function listarPermisos(empleadoId, estado) {
-  var permisos = leerTabla(HOJAS.PERMISOS || 'Permisos') || [];
+  var permisos = leerTablaConCache(HOJAS.PERMISOS) || [];
   if (empleadoId) permisos = permisos.filter(function (p) { return String(p.empleado_id) === String(empleadoId); });
   if (estado) permisos = permisos.filter(function (p) { return String(p.estado).toLowerCase() === String(estado).toLowerCase(); });
 
@@ -4633,10 +4651,11 @@ function crearPermiso(datos, token) {
   }
 
   try {
-    var hoja = getHoja(HOJAS.PERMISOS || 'Permisos');
+    var hoja = getHoja(HOJAS.PERMISOS);
     var id = generarId('PRM');
     hoja.appendRow([id, datos.empleado_id, tipo, datos.fecha_inicio || '',
                     datos.fecha_fin || '', 'pendiente', datos.motivo || '', datos.notas || '']);
+    invalidarCache(HOJAS.PERMISOS);
     registrarBitacora('crear', 'Permiso', id, tipo + ' - ' + datos.motivo);
     return { ok: true, mensaje: 'Permiso creado.', id: id };
   } catch (e) {
@@ -4687,7 +4706,7 @@ function aprobarSolicitud(tipoSolicitud, solicitudId, nuevoEstado, token, notas)
   try {
     var hojaMap = {
       'vacacion': HOJAS.VACACIONES,
-      'permiso': HOJAS.PERMISOS || 'Permisos'
+      'permiso': HOJAS.PERMISOS
     };
 
     var nombreHoja = hojaMap[tipoSolicitud];
