@@ -97,16 +97,22 @@
 
     var reader = new FileReader();
     reader.onload = function (e) {
-      try {
-        var wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
-        CARGA.avisos = [];
-        CARGA.formulasAnalisis = _analizarFormulas(wb);
-        CARGA.datos = _convertirLibro(wb);
-        _pintarResumenCarga();
-        _pintarAnalisisFormulas();
-      } catch (err) {
-        mostrarMensaje('No se pudo leer el archivo: ' + err.message, 'error');
-      }
+      cargarLibreriaLocal('xlsx', function () {
+        if (typeof XLSX === 'undefined') {
+          mostrarMensaje('La librería XLSX no está cargada.', 'error');
+          return;
+        }
+        try {
+          var wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+          CARGA.avisos = [];
+          CARGA.formulasAnalisis = _analizarFormulas(wb);
+          CARGA.datos = _convertirLibro(wb);
+          _pintarResumenCarga();
+          _pintarAnalisisFormulas();
+        } catch (err) {
+          mostrarMensaje('No se pudo leer el archivo: ' + err.message, 'error');
+        }
+      });
     };
     reader.readAsArrayBuffer(file);
     input.value = '';
