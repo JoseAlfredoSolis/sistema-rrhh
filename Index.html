@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, viewport-fit=cover">
-  <title>Sistema RRHH v42</title>
+  <title>Sistema RRHH v43</title>
 
   <!-- Librerías JS embebidas (mismo origen que la app — sin CDN externo) -->
   <?!= include('Stylesheet'); ?>
@@ -979,6 +979,7 @@
           <option value="pendiente">Pendiente</option>
           <option value="pagada">Pagada</option>
         </select>
+        <button class="btn btn-primario" onclick="abrirCalculadoraLiquidacion()">🧮 Calcular liquidación</button>
         <button class="btn btn-primario" onclick="abrirFormLiquidacion()">+ Nueva liquidación</button>
         <button class="btn" onclick="exportarTabla('tablaLiquidaciones','Liquidaciones')">⬇ Excel</button>
       </div>
@@ -1412,6 +1413,36 @@
         <div class="campo" id="liqInactivarWrap"><label style="display:flex;align-items:center;gap:8px;font-weight:400"><input type="checkbox" id="liqInactivar" style="width:auto"> Marcar empleado como inactivo al guardar</label></div>
         <div class="modal-pie"><button type="button" class="btn btn-secundario" onclick="cerrarModalLiquidacion()">Cancelar</button><button type="submit" class="btn btn-primario" id="btnGuardarLiq">Guardar</button></div>
       </form>
+    </div>
+  </div>
+
+  <!-- Modal Calculadora Liquidación -->
+  <div id="modalCalculadoraLiq" class="modal oculto">
+    <div class="modal-contenido" style="max-width:700px">
+      <div class="modal-cabecera"><h2>🧮 Calculadora de Liquidación Laboral</h2><button class="cerrar" onclick="cerrarCalculadoraLiquidacion()">&times;</button></div>
+      <form id="formCalculadoraLiq" onsubmit="calcularYMostrarLiquidacion(event)">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="campo"><label>Empleado *</label><select id="calcEmpleado" required onchange="autocompletarCalculadora()"></select></div>
+          <div class="campo"><label>Fecha de salida *</label><input type="date" id="calcFechaSalida" required onchange="autocompletarCalculadora()"></div>
+          <div class="campo"><label>Motivo de salida *</label>
+            <select id="calcMotivo" required>
+              <option value="">Seleccionar...</option>
+              <option value="renuncia">Renuncia del Trabajador</option>
+              <option value="despido_con_resp">Despido Con Responsabilidad Patronal</option>
+              <option value="despido_sin_resp">Despido Sin Responsabilidad Patronal</option>
+            </select>
+          </div>
+          <div class="campo"><label>Estado *</label><select id="calcEstado" required><option value="pendiente">Pendiente</option><option value="pagada">Pagada</option></select></div>
+        </div>
+        <div class="modal-pie"><button type="submit" class="btn btn-primario" id="btnCalcular">🧮 Calcular</button></div>
+      </form>
+      <div id="calcResultado" class="oculto" style="margin-top:16px;padding:16px;background:var(--surface-2);border-radius:6px;max-height:400px;overflow-y:auto">
+        <h3 style="margin-top:0">Resultado del Cálculo</h3>
+        <div id="calcDetalles"></div>
+        <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+          <button type="button" class="btn btn-primario" onclick="guardarCalculoLiquidacion()" style="width:100%">💾 Guardar Liquidación</button>
+        </div>
+      </div>
     </div>
   </div>
 

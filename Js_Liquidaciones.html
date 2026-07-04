@@ -223,4 +223,154 @@
       if (res.ok) cargarLiquidaciones();
     });
   }
+
+  // ====== CALCULADORA DE LIQUIDACIÓN ======
+
+  var CALCULO_ACTUAL = null;
+
+  function abrirCalculadoraLiquidacion() {
+    if (!puedeEditar()) { mostrarMensaje('Sin permisos.', 'error'); return; }
+    llenarSelectEmpleados('calcEmpleado');
+    document.getElementById('calcEmpleado').value = '';
+    document.getElementById('calcFechaSalida').value = '';
+    document.getElementById('calcMotivo').value = '';
+    document.getElementById('calcEstado').value = 'pendiente';
+    document.getElementById('calcResultado').classList.add('oculto');
+    document.getElementById('modalCalculadoraLiq').classList.remove('oculto');
+  }
+
+  function cerrarCalculadoraLiquidacion() {
+    document.getElementById('modalCalculadoraLiq').classList.add('oculto');
+    CALCULO_ACTUAL = null;
+  }
+
+  function autocompletarCalculadora() {
+    // Auto-llenar fecha de cálculo si se ingresa fecha de salida
+    var fechaSalida = document.getElementById('calcFechaSalida').value;
+    if (fechaSalida) {
+      var hoy = new Date().toISOString().slice(0,10);
+      // Auto-establecer motivo si se selecciona empleado
+    }
+  }
+
+  function calcularYMostrarLiquidacion(event) {
+    event.preventDefault();
+    var empleadoId = document.getElementById('calcEmpleado').value;
+    var fechaSalida = document.getElementById('calcFechaSalida').value;
+    var motivo = document.getElementById('calcMotivo').value;
+
+    if (!empleadoId || !fechaSalida || !motivo) {
+      mostrarMensaje('Completa todos los campos requeridos.', 'error');
+      return;
+    }
+
+    document.getElementById('btnCalcular').disabled = true;
+    document.getElementById('btnCalcular').textContent = 'Calculando...';
+
+    llamarBackend('calcularLiquidacion', [empleadoId, fechaSalida, motivo], function(res) {
+      document.getElementById('btnCalcular').disabled = false;
+      document.getElementById('btnCalcular').textContent = '🧮 Calcular';
+
+      if (!res.ok) {
+        mostrarMensaje(res.mensaje, 'error');
+        return;
+      }
+
+      CALCULO_ACTUAL = res;
+      _mostrarResultadoCalculadora(res);
+    });
+  }
+
+  function _mostrarResultadoCalculadora(liq) {
+    var html = '';
+
+    // Encabezado
+    html += '<div style="background:var(--p);color:white;padding:10px;border-radius:4px;margin-bottom:12px">';
+    html += '<strong>'+escapar(liq.empleado)+'</strong> | '+escapar(liq.fechaIngreso)+' → '+escapar(liq.fechaSalida);
+    html += '</div>';
+
+    // Tabla de cálculos
+    html += '<table style="width:100%;border-collapse:collapse;font-size:13px">';
+
+    html += '<tr style="background:var(--surface);font-weight:600;border-bottom:2px solid var(--p)">';
+    html += '<td style="padding:8px">Concepto</td>';
+    html += '<td style="padding:8px;text-align:right">Monto</td>';
+    html += '</tr>';
+
+    // Aguinaldo
+    html += '<tr style="border-bottom:1px solid var(--border)">';
+    html += '<td style="padding:8px">Aguinaldo (Decimocuarto mes)</td>';
+    html += '<td style="padding:8px;text-align:right;color:var(--ok);font-weight:600">'+formatoDinero(liq.aguinaldo)+'</td>';
+    html += '</tr>';
+
+    // Vacaciones
+    html += '<tr style="border-bottom:1px solid var(--border)">';
+    html += '<td style="padding:8px">Vacaciones no tomadas (5 días)</td>';
+    html += '<td style="padding:8px;text-align:right;color:var(--ok);font-weight:600">'+formatoDinero(liq.vacaciones)+'</td>';
+    html += '</tr>';
+
+    // Cesantía
+    html += '<tr style="border-bottom:1px solid var(--border)">';
+    html += '<td style="padding:8px">Cesantía ('+Number(liq.cesantia > 0 ? (liq.cesantia / (liq.salarioMensual / 30)).toFixed(2) : 0)+' días)</td>';
+    html += '<td style="padding:8px;text-align:right;color:'+(liq.cesantia > 0 ? 'var(--ok)' : 'var(--txt-3)')+';font-weight:600">'+formatoDinero(liq.cesantia)+'</td>';
+    html += '</tr>';
+
+    // Preaviso
+    html += '<tr style="border-bottom:2px solid var(--p)">';
+    html += '<td style="padding:8px">Preaviso (30 días)</td>';
+    html += '<td style="padding:8px;text-align:right;color:'+(liq.preaviso > 0 ? 'var(--ok)' : 'var(--txt-3)')+';font-weight:600">'+formatoDinero(liq.preaviso)+'</td>';
+    html += '</tr>';
+
+    // Total
+    html += '<tr style="background:var(--ok-bg);font-weight:700;color:var(--ok)">';
+    html += '<td style="padding:10px">TOTAL PRESTACIONES LABORALES</td>';
+    html += '<td style="padding:10px;text-align:right;font-size:16px">'+formatoDinero(liq.totalNeto)+'</td>';
+    html += '</tr>';
+
+    html += '</table>';
+
+    // Información adicional
+    html += '<div style="margin-top:12px;padding:10px;background:var(--surface-2);border-radius:4px;font-size:12px">';
+    html += '<strong>Detalles:</strong><br>';
+    html += 'Meses laborados: '+liq.mesesLaborados + ',' + String(liq.diasAdicionales).padStart(2,'0') + '<br>';
+    html += 'Salario mensual: '+formatoDinero(liq.salarioMensual)+'<br>';
+    html += 'Motivo de salida: '+escapar(liq.motivoSalida.replace(/_/g, ' '));
+    html += '</div>';
+
+    document.getElementById('calcDetalles').innerHTML = html;
+    document.getElementById('calcResultado').classList.remove('oculto');
+  }
+
+  function guardarCalculoLiquidacion() {
+    if (!CALCULO_ACTUAL) return;
+
+    var datos = {
+      empleado_id: document.getElementById('calcEmpleado').value,
+      fecha_salida: document.getElementById('calcFechaSalida').value,
+      motivo: document.getElementById('calcMotivo').value,
+      fecha_calculo: new Date().toISOString().slice(0,10),
+      monto: CALCULO_ACTUAL.totalNeto,
+      estado: document.getElementById('calcEstado').value,
+      notas: 'Cálculo automático - ' + CALCULO_ACTUAL.motivoSalida
+    };
+
+    if (!confirm('¿Guardar esta liquidación por ₡' + formatoDinero(datos.monto) + '?')) return;
+
+    var btn = event.target;
+    btn.disabled = true;
+    btn.textContent = 'Guardando...';
+
+    llamarBackend('crearLiquidacion', [datos], function(res) {
+      btn.disabled = false;
+      btn.textContent = '💾 Guardar Liquidación';
+
+      if (res.ok) {
+        mostrarMensaje('✅ Liquidación guardada correctamente', 'exito');
+        cerrarCalculadoraLiquidacion();
+        cargarLiquidaciones();
+      } else {
+        mostrarMensaje(res.mensaje, 'error');
+      }
+    });
+  }
 </script>
