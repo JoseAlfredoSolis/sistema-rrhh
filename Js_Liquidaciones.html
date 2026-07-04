@@ -235,8 +235,50 @@
     document.getElementById('calcFechaSalida').value = '';
     document.getElementById('calcMotivo').value = '';
     document.getElementById('calcEstado').value = 'pendiente';
+
+    // Limpiar campos de salarios
+    ['Diciembre', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo',
+     'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre'].forEach(function(mes) {
+      document.getElementById('sal' + mes).value = '';
+    });
+
+    recalcularAguinaldo(); // Mostrar 0 inicialmente
     document.getElementById('calcResultado').classList.add('oculto');
     document.getElementById('modalCalculadoraLiq').classList.remove('oculto');
+  }
+
+  function recalcularAguinaldo() {
+    // Obtener valores de todos los meses
+    var meses = ['Diciembre', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo',
+                 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre'];
+
+    var valores = meses.map(function(mes) {
+      var val = Number(document.getElementById('sal' + mes).value) || 0;
+      return val;
+    });
+
+    // Calcular total (todos los 12 meses)
+    var total = valores.reduce(function(a, b) { return a + b; }, 0);
+
+    // Calcular promedio últimos 6 meses (Mayo a Octubre, indices 4-9)
+    var ultimos6 = valores.slice(4, 10);
+    var promedio = ultimos6.length > 0 ? ultimos6.reduce(function(a, b) { return a + b; }, 0) / ultimos6.length : 0;
+
+    // Mostrar valores
+    document.getElementById('totalSalarios').textContent = formatearNumero(total);
+    document.getElementById('promedioSalarios').textContent = formatearNumero(promedio);
+
+    // Guardar en variables globales para usar en el cálculo
+    window.SALARIOS_INGRESADOS = {
+      total: total,
+      promedio: promedio,
+      aguinaldo: total / 12,
+      salarioDiario: promedio / 30
+    };
+  }
+
+  function formatearNumero(num) {
+    return (Number(num) || 0).toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
   function cerrarCalculadoraLiquidacion() {
@@ -264,12 +306,17 @@
       return;
     }
 
+    // Obtener salarios ingresados si están disponibles
+    var salarios = window.SALARIOS_INGRESADOS || null;
+    var totalSalarios = salarios ? salarios.total : null;
+    var promedioSalarios = salarios ? salarios.promedio : null;
+
     document.getElementById('btnCalcular').disabled = true;
     document.getElementById('btnCalcular').textContent = 'Calculando...';
 
-    llamarBackend('calcularLiquidacion', [empleadoId, fechaSalida, motivo], function(res) {
+    llamarBackend('calcularLiquidacion', [empleadoId, fechaSalida, motivo, totalSalarios, promedioSalarios], function(res) {
       document.getElementById('btnCalcular').disabled = false;
-      document.getElementById('btnCalcular').textContent = '🧮 Calcular';
+      document.getElementById('btnCalcular').textContent = '🧮 Calcular Liquidación';
 
       if (!res.ok) {
         mostrarMensaje(res.mensaje, 'error');

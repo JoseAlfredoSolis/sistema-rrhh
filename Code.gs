@@ -3896,7 +3896,7 @@ function formatearNumero(num) {
 }
 
 /** Calcula liquidación laboral completa según estructura Costa Rica (modelo Tropicales del Valle). */
-function calcularLiquidacion(empleadoId, fechaSalida, motivoSalida) {
+function calcularLiquidacion(empleadoId, fechaSalida, motivoSalida, totalSalarios, promedioSalarios) {
   var emp = obtenerEmpleadoCompleto(empleadoId);
   if (!emp) return { ok: false, mensaje: 'Empleado no encontrado.' };
 
@@ -3919,9 +3919,13 @@ function calcularLiquidacion(empleadoId, fechaSalida, motivoSalida) {
     diasAdicionales += 30;
   }
 
+  // Usar salarios ingresados si están disponibles, sino usar salario base del empleado
+  var salarioMensual = (promedioSalarios || emp.salario);
+  var salarioDiario = salarioMensual / 30;
+
   // ====== 1. AGUINALDO ======
-  // Suma de salarios últimos 12 meses / 12
-  var montoAguinaldo = (emp.salario / 12); // Simplificado: un mes
+  // Si se ingresaron salarios: suma / 12. Si no: un mes de salario
+  var montoAguinaldo = (totalSalarios ? (totalSalarios / 12) : (salarioMensual));
   detalles.push({
     titulo: '1- Cálculo del Aguinaldo:',
     concepto: 'Total Por Aguinaldo',
@@ -3933,7 +3937,7 @@ function calcularLiquidacion(empleadoId, fechaSalida, motivoSalida) {
   // 5 días por año (2.5 días por semestre en CR)
   var balance = obtenerBalanceVacaciones(empleadoId);
   var diasVacaciones = Math.min(balance.diasDisponibles || 0, 5); // Max 5 días en liquidación
-  var salarioDiarioVac = emp.salario / 30;
+  var salarioDiarioVac = salarioDiario;
   var montoVacaciones = diasVacaciones * salarioDiarioVac;
 
   detalles.push({
@@ -3953,7 +3957,7 @@ function calcularLiquidacion(empleadoId, fechaSalida, motivoSalida) {
 
   if (correspondeCesantia) {
     var diasTrabajados = Math.round((fechaSal - fechaIng) / (24 * 60 * 60 * 1000));
-    montoCesantia = calcularCesantiaCompleta(emp.salario, diasTrabajados);
+    montoCesantia = calcularCesantiaCompleta(salarioMensual, diasTrabajados);
   }
 
   detalles.push({
@@ -3970,7 +3974,7 @@ function calcularLiquidacion(empleadoId, fechaSalida, motivoSalida) {
   var correspondePreaviso = (motivoSalida === 'renuncia'); // Normalmente renuncia paga preaviso
 
   if (correspondePreaviso) {
-    montoPreaviso = emp.salario; // 30 días como un mes
+    montoPreaviso = salarioMensual; // 30 días como un mes
   }
 
   detalles.push({
@@ -4000,8 +4004,8 @@ function calcularLiquidacion(empleadoId, fechaSalida, motivoSalida) {
     diasAdicionales: diasAdicionales,
     tipoNomina: emp.tipo_nomina || 'Semanal',
     motivoSalida: motivoSalida || 'renuncia',
-    salarioMensual: emp.salario,
-    salarioDiario: Math.round((emp.salario / 30) * 100) / 100,
+    salarioMensual: Math.round(salarioMensual * 100) / 100,
+    salarioDiario: Math.round(salarioDiario * 100) / 100,
 
     // Detalles de cada concepto
     detalles: detalles,
