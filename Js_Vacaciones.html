@@ -5,7 +5,9 @@
 
   function cargarVacaciones() {
     llenarSelectEmpleadosFiltro('filtroEmpVac');
-    llamarBackend('listarVacaciones', [], function (lista) {
+    var empId = (document.getElementById('filtroEmpVac')||{}).value || '';
+    var estado = (document.getElementById('filtroEstadoVac')||{}).value || '';
+    llamarBackend('listarVacaciones', [empId||null, estado||null], function (lista) {
       var cuerpo = document.getElementById('cuerpoVacaciones');
       cuerpo.innerHTML = '';
       document.getElementById('sinVacaciones').classList.toggle('oculto', (lista || []).length > 0);
@@ -44,6 +46,7 @@
       document.getElementById('balAcum').textContent  = res.diasAcumulados;
       document.getElementById('balUsado').textContent = res.diasUsados;
       document.getElementById('balDisp').textContent  = res.diasDisponibles;
+      document.getElementById('balValor').textContent = formatearMoneda(res.valor_vacaciones || 0);
       panel.classList.remove('oculto');
     });
   }

@@ -7,7 +7,8 @@
   function cargarLiquidaciones() {
     llenarSelectEmpleadosFiltro('filtroEmpLiq');
     var empId = (document.getElementById('filtroEmpLiq')||{}).value || '';
-    llamarBackend('listarLiquidaciones', [empId||null], function(lista) {
+    var estado = (document.getElementById('filtroEstadoLiq')||{}).value || '';
+    llamarBackend('listarLiquidaciones', [empId||null, estado||null], function(lista) {
       LIQUIDACIONES = lista || [];
       _pintarLiquidaciones();
     });

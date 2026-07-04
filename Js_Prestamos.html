@@ -7,7 +7,8 @@
   function cargarPrestamos() {
     llenarSelectEmpleadosFiltro('filtroEmpPre');
     var empId = (document.getElementById('filtroEmpPre')||{}).value || '';
-    llamarBackend('listarPrestamos', [empId||null], function(lista) {
+    var estado = (document.getElementById('filtroEstadoPre')||{}).value || '';
+    llamarBackend('listarPrestamos', [empId||null, estado||null], function(lista) {
       PRESTAMOS = lista || [];
       _pintarPrestamos();
     });

@@ -7,7 +7,8 @@
   function cargarActivos() {
     llenarSelectEmpleadosFiltro('filtroEmpAct');
     var empId = (document.getElementById('filtroEmpAct')||{}).value || '';
-    llamarBackend('listarActivos', [empId||null], function(lista) {
+    var estado = (document.getElementById('filtroEstadoAct')||{}).value || '';
+    llamarBackend('listarActivos', [empId||null, estado||null], function(lista) {
       ACTIVOS = lista || [];
       _pintarActivos();
     });
