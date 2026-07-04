@@ -287,12 +287,50 @@
   }
 
   function autocompletarCalculadora() {
-    // Auto-llenar fecha de cálculo si se ingresa fecha de salida
+    // Se llama cuando se selecciona un empleado
+    calcularMesesLaborados();
+  }
+
+  function calcularMesesLaborados() {
+    var fechaInicio = document.getElementById('calcFechaInicio').value;
     var fechaSalida = document.getElementById('calcFechaSalida').value;
-    if (fechaSalida) {
-      var hoy = new Date().toISOString().slice(0,10);
-      // Auto-establecer motivo si se selecciona empleado
+
+    if (!fechaInicio || !fechaSalida) {
+      document.getElementById('calcMesesLaborados').value = '';
+      return;
     }
+
+    var inicio = new Date(fechaInicio + 'T00:00:00');
+    var salida = new Date(fechaSalida + 'T00:00:00');
+
+    if (salida < inicio) {
+      document.getElementById('calcMesesLaborados').value = 'Error: fecha inv.';
+      return;
+    }
+
+    // Calcular meses completos
+    var mesesCompletos = (salida.getFullYear() - inicio.getFullYear()) * 12 +
+                         (salida.getMonth() - inicio.getMonth());
+
+    // Calcular días adicionales
+    var diasAdicionales = salida.getDate() - inicio.getDate();
+    if (diasAdicionales < 0) {
+      mesesCompletos--;
+      diasAdicionales += 30;
+    }
+
+    // Convertir a formato decimal: meses,días
+    var mesesTotales = mesesCompletos + (diasAdicionales / 30);
+    var mesesFormato = mesesCompletos + ',' + String(Math.round(diasAdicionales)).padStart(2, '0');
+
+    document.getElementById('calcMesesLaborados').value = mesesFormato;
+
+    // Guardar para usar en el cálculo
+    window.MESES_CALCULADOS = {
+      mesesCompletos: mesesCompletos,
+      diasAdicionales: diasAdicionales,
+      mesesTotales: mesesTotales
+    };
   }
 
   function calcularYMostrarLiquidacion(event) {

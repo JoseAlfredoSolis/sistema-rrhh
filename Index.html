@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, viewport-fit=cover">
-  <title>Sistema RRHH v44</title>
+  <title>Sistema RRHH v45</title>
 
   <!-- Librerías JS embebidas (mismo origen que la app — sin CDN externo) -->
   <?!= include('Stylesheet'); ?>
@@ -1427,7 +1427,9 @@
           <h4 style="margin-top:0">Datos del Empleado</h4>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
             <div class="campo"><label>Empleado *</label><select id="calcEmpleado" required onchange="autocompletarCalculadora()"></select></div>
-            <div class="campo"><label>Fecha de salida *</label><input type="date" id="calcFechaSalida" required onchange="autocompletarCalculadora()"></div>
+            <div class="campo"><label>Digite la fecha inicio: *</label><input type="date" id="calcFechaInicio" required onchange="calcularMesesLaborados()"></div>
+            <div class="campo"><label>Digite la fecha salida: *</label><input type="date" id="calcFechaSalida" required onchange="calcularMesesLaborados()"></div>
+            <div class="campo"><label>Meses Laborados</label><input type="text" id="calcMesesLaborados" readonly style="background:var(--surface);cursor:not-allowed;font-weight:600;color:var(--p)" placeholder="0,00"></div>
             <div class="campo"><label>Motivo de salida *</label>
               <select id="calcMotivo" required>
                 <option value="">Seleccionar...</option>
