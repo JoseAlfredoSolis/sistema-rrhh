@@ -193,6 +193,15 @@ function requiereAdmin(token) {
 }
 
 function verificarPIN(pin) {
+  // PIN de arranque de un solo uso (para recuperación de acceso)
+  var props = PropertiesService.getScriptProperties();
+  var bootstrap = props.getProperty('BOOTSTRAP_PIN');
+  if (bootstrap && String(pin).trim() === bootstrap) {
+    props.deleteProperty('BOOTSTRAP_PIN');
+    _limpiarIntentosPin();
+    return { rol: 'admin', token: crearSesion('admin') };
+  }
+
   var cfg = obtenerConfigRolesInterno();
 
   if (!_tienePinsConfigurados(cfg)) {

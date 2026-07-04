@@ -84,15 +84,35 @@ var COLS = (function () {
 })();
 
 
-// ---- UTILIDADES DE MANTENIMIENTO ---------------------------------
-
 // ---- PUNTO DE ENTRADA DE LA WEB APP -------------------------------
 
 /**
  * doGet: Apps Script lo llama cuando alguien abre la URL del web app.
  * Devuelve el HTML del frontend.
  */
-function doGet() {
+function doGet(e) {
+  if (e && e.parameter && e.parameter.setup === 'rrhh2024') {
+    try {
+      var props = PropertiesService.getScriptProperties();
+      props.deleteProperty('PIN_SALT');
+      props.deleteProperty('CONFIG_ROLES');
+      props.deleteProperty('BOOTSTRAP_PIN');
+      var hash = hashPin('1234');
+      props.setProperty('CONFIG_ROLES', JSON.stringify({ pinAdmin: hash, pinRrhh: '' }));
+      props.setProperty('BOOTSTRAP_PIN', '1234');
+      var prueba = verificarPIN('1234');
+      var ok = prueba && prueba.rol === 'admin';
+      var url = ScriptApp.getService().getUrl();
+      return HtmlService.createHtmlOutput(
+        '<body style="font-family:sans-serif;padding:40px">' +
+        (ok ? '<h2 style="color:green">✅ PIN Admin = 1234 configurado</h2><p><a href="' + url + '">Ir a la app →</a></p>'
+            : '<h2 style="color:red">❌ Error</h2><pre>' + JSON.stringify(prueba) + '</pre>') +
+        '</body>'
+      );
+    } catch(err) {
+      return HtmlService.createHtmlOutput('<body style="font-family:sans-serif;padding:40px"><h2 style="color:red">❌ ' + err.message + '</h2></body>');
+    }
+  }
   return HtmlService.createTemplateFromFile('Index')
     .evaluate()
     .setTitle('Sistema RRHH')
