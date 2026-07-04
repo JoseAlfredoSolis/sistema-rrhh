@@ -1182,6 +1182,31 @@ function obtenerDashboard() {
     return { nombre: d, total: porDepto[d] };
   });
 
+  // KPIs adicionales (Fase 3)
+  var costoPorEmpleado = activos.length > 0 ? Math.round((masaSalarial / activos.length) * 100) / 100 : 0;
+  var rotacionMensual = empleados.length > 0 ? Math.round(((empleados.length - activos.length) / empleados.length) * 100 * 100) / 100 : 0;
+
+  // Costo total de nómina mensual (incluyendo CCSS patronal ~10.67%)
+  var costTotalMes = totalNeto * 1.1067;  // Agregamos CCSS patronal
+
+  // Análisis por departamento - costo
+  var costoPorDepto = {};
+  activos.forEach(function (e) {
+    var dep = String(e.departamento || '').trim() || 'Sin asignar';
+    costoPorDepto[dep] = (costoPorDepto[dep] || 0) + (Number(e.salario) || 0);
+  });
+  var depotosConCosto = Object.keys(costoPorDepto).map(function (d) {
+    return { nombre: d, costo: Math.round(costoPorDepto[d] * 100) / 100, empleados: porDepto[d] };
+  }).sort(function (a, b) { return b.costo - a.costo; });
+
+  // Incapacidades este mes
+  var incapacidades = leerTabla(HOJAS.INCAPACIDADES) || [];
+  var incapacidadesMes = incapacidades.filter(function (i) {
+    var fechaDesde = new Date(i.fecha_desde);
+    return fechaDesde.getFullYear() === new Date().getFullYear() &&
+           fechaDesde.getMonth() === new Date().getMonth();
+  });
+
   return {
     totalEmpleados: empleados.length,
     empleadosActivos: activos.length,
@@ -1192,10 +1217,21 @@ function obtenerDashboard() {
     nominasMesActual: nominaMes.length,
     totalNetoMes: Math.round(totalNeto * 100) / 100,
     masaSalarial: Math.round(masaSalarial * 100) / 100,
+
+    // KPIs - Fase 3
+    costoPorEmpleado: costoPorEmpleado,
+    rotacionPorcentaje: rotacionMensual,
+    costTotalMesConCCSS: Math.round(costTotalMes * 100) / 100,
+    incapacidadesEsMes: incapacidadesMes.length,
+    diasIncapacidadEsMes: incapacidadesMes.reduce(function (sum, i) {
+      return sum + (Number(i.dias) || 0);
+    }, 0),
+
     alertas: alertas,
     alertasCriticas: alertas.filter(function (a) { return a.urgencia === 'crítica'; }).length,
     alertasAltas: alertas.filter(function (a) { return a.urgencia === 'alta'; }).length,
     empleadosPorDepto: empleadosPorDepto,
+    depotosConCosto: depotosConCosto,
     nominaHistorica: nominaHistorica
   };
 }
@@ -3879,5 +3915,176 @@ function eliminarFila(nombreHoja, id, entidad) {
 
 function hoy() {
   return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+}
+
+
+// ===================================================================
+// MÓDULO: PERMISOS (Fase 3 - Item 9)
+// ===================================================================
+// Permisos diferentes a vacaciones según ley CR
+// Tipos: personal, médico, administrativo, asuntos_propios
+
+/**
+ * Lista permisos con detalles de empleados.
+ * @param {string} [empleadoId] - Filtrar por empleado (opcional)
+ * @param {string} [estado] - Filtrar por estado (opcional)
+ * @return {Object[]}
+ */
+function listarPermisos(empleadoId, estado) {
+  var permisos = leerTabla(HOJAS.PERMISOS || 'Permisos') || [];
+  if (empleadoId) permisos = permisos.filter(function (p) { return String(p.empleado_id) === String(empleadoId); });
+  if (estado) permisos = permisos.filter(function (p) { return String(p.estado).toLowerCase() === String(estado).toLowerCase(); });
+
+  var nombres = mapaEmpleados();
+  permisos.forEach(function (p) {
+    p.empleado_nombre = nombres[p.empleado_id] || '(desconocido)';
+  });
+  return permisos;
+}
+
+/**
+ * Crea un nuevo permiso (personal, médico, etc.).
+ * @param {Object} datos - {empleado_id, tipo, fecha_inicio, fecha_fin, motivo, notas}
+ * @param {string} token
+ * @return {Object} {ok, mensaje, id}
+ */
+function crearPermiso(datos, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
+  if (!datos || !datos.empleado_id) return { ok: false, mensaje: 'Empleado requerido.' };
+
+  var tiposValidos = ['personal', 'medico', 'administrativo', 'asuntos_propios'];
+  var tipo = String(datos.tipo || 'personal').toLowerCase();
+  if (tiposValidos.indexOf(tipo) === -1) {
+    return { ok: false, mensaje: 'Tipo inválido. Use: ' + tiposValidos.join(', ') };
+  }
+
+  try {
+    var hoja = getHoja(HOJAS.PERMISOS || 'Permisos');
+    var id = generarId('PRM');
+    hoja.appendRow([id, datos.empleado_id, tipo, datos.fecha_inicio || '',
+                    datos.fecha_fin || '', 'pendiente', datos.motivo || '', datos.notas || '']);
+    registrarBitacora('crear', 'Permiso', id, tipo + ' - ' + datos.motivo);
+    return { ok: true, mensaje: 'Permiso creado.', id: id };
+  } catch (e) {
+    return { ok: false, mensaje: 'Error: ' + e.message };
+  }
+}
+
+// ===================================================================
+// MÓDULO: REPORTES AUTOMATIZADOS (Fase 3 - Item 6)
+// ===================================================================
+
+/**
+ * Genera un reporte HTML de nómina del mes especificado.
+ * Formato HTML optimizado para imprimir/convertir a PDF.
+ * @param {string} mes - Formato yyyy-MM
+ * @return {Object} {ok, html, fileName}
+ */
+function generarReporteNomina(mes) {
+  var nominas = leerTabla(HOJAS.NOMINA).filter(function (n) {
+    return String(n.mes) === mes;
+  });
+
+  if (!nominas.length) return { ok: false, mensaje: 'Sin nóminas para ' + mes };
+
+  var empleados = leerTabla(HOJAS.EMPLEADOS);
+  var empleadosMap = {};
+  empleados.forEach(function (e) { empleadosMap[e.id] = e; });
+
+  var totalBruto = 0, totalDeducciones = 0, totalNeto = 0;
+
+  var tablaNominas = '<table style="width:100%;border-collapse:collapse;font-size:11px"><tr>' +
+    '<th style="border:1px solid #ccc;padding:4px">Empleado</th>' +
+    '<th style="border:1px solid #ccc;padding:4px">Salario Base</th>' +
+    '<th style="border:1px solid #ccc;padding:4px">Deducciones</th>' +
+    '<th style="border:1px solid #ccc;padding:4px">Neto</th></tr>';
+
+  nominas.forEach(function (n) {
+    var emp = empleadosMap[n.empleado_id] || {};
+    var bruto = Number(n.salario_base) || 0;
+    var ded = Number(n.deducciones) || 0;
+    var neto = Number(n.neto) || 0;
+    totalBruto += bruto;
+    totalDeducciones += ded;
+    totalNeto += neto;
+
+    tablaNominas += '<tr>' +
+      '<td style="border:1px solid #ccc;padding:4px">' + (emp.nombre || '?') + '</td>' +
+      '<td style="border:1px solid #ccc;padding:4px;text-align:right">₡' + Math.round(bruto).toLocaleString() + '</td>' +
+      '<td style="border:1px solid #ccc;padding:4px;text-align:right">₡' + Math.round(ded).toLocaleString() + '</td>' +
+      '<td style="border:1px solid #ccc;padding:4px;text-align:right">₡' + Math.round(neto).toLocaleString() + '</td></tr>';
+  });
+
+  tablaNominas += '<tr style="font-weight:bold;background:#f0f0f0">' +
+    '<td style="border:1px solid #ccc;padding:4px">TOTAL</td>' +
+    '<td style="border:1px solid #ccc;padding:4px;text-align:right">₡' + Math.round(totalBruto).toLocaleString() + '</td>' +
+    '<td style="border:1px solid #ccc;padding:4px;text-align:right">₡' + Math.round(totalDeducciones).toLocaleString() + '</td>' +
+    '<td style="border:1px solid #ccc;padding:4px;text-align:right">₡' + Math.round(totalNeto).toLocaleString() + '</td></tr></table>';
+
+  var html = '<html><body style="font-family:Arial"><h2>Reporte de Nómina - ' + mes + '</h2>' +
+    '<p>Fecha: ' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm') + '</p>' +
+    tablaNominas +
+    '<p style="margin-top:20px;font-size:10px;color:#666">Este es un reporte generado automáticamente por Sistema RRHH.</p>' +
+    '</body></html>';
+
+  return {
+    ok: true,
+    html: html,
+    fileName: 'Nomina_' + mes + '.html',
+    totalEmpleados: nominas.length,
+    totalNeto: Math.round(totalNeto * 100) / 100
+  };
+}
+
+/**
+ * Envía un reporte por email.
+ * @param {string} destinatario - Email del destinatario
+ * @param {string} asunto - Asunto del email
+ * @param {string} htmlContent - Contenido HTML del reporte
+ * @param {string} [nombreArchivo] - Opcional, para adjuntar
+ * @return {Object} {ok, mensaje}
+ */
+function enviarReportePorEmail(destinatario, asunto, htmlContent, nombreArchivo) {
+  if (!destinatario || !destinatario.includes('@')) {
+    return { ok: false, mensaje: 'Email inválido: ' + destinatario };
+  }
+
+  try {
+    GmailApp.sendEmail(destinatario, asunto, htmlContent, {
+      htmlBody: htmlContent,
+      name: 'Sistema RRHH'
+    });
+
+    registrarBitacora('enviar', 'Reporte', destinatario, 'Reporte enviado: ' + asunto);
+    return { ok: true, mensaje: 'Reporte enviado a ' + destinatario };
+  } catch (e) {
+    return { ok: false, mensaje: 'Error al enviar: ' + e.message };
+  }
+}
+
+/**
+ * Resumen de alertas para reportar.
+ * @return {string} HTML formateado
+ */
+function generarReporteAlertas() {
+  var alertas = obtenerAlertas();
+  if (!alertas.length) return '<p>Sin alertas activas.</p>';
+
+  var html = '<h3>Alertas Activas</h3><table style="width:100%;border-collapse:collapse;font-size:10px">' +
+    '<tr><th style="border:1px solid #ccc;padding:4px">Urgencia</th>' +
+    '<th style="border:1px solid #ccc;padding:4px">Tipo</th>' +
+    '<th style="border:1px solid #ccc;padding:4px">Descripción</th></tr>';
+
+  alertas.slice(0, 20).forEach(function (a) {
+    var urgenciaColor = a.urgencia === 'crítica' ? '#ff6b6b' : a.urgencia === 'alta' ? '#ffa500' : '#ffeb3b';
+    html += '<tr><td style="border:1px solid #ccc;padding:4px;background:' + urgenciaColor + '">' + a.urgencia + '</td>' +
+      '<td style="border:1px solid #ccc;padding:4px">' + a.tipo + '</td>' +
+      '<td style="border:1px solid #ccc;padding:4px">' + a.descripcion + '</td></tr>';
+  });
+
+  html += '</table>';
+  return html;
 }
 
