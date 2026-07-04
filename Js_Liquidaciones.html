@@ -456,12 +456,16 @@
         btn.textContent = '💾 Guardar Liquidación';
       }
 
+      if (!res) {
+        mostrarMensaje('Error: no se recibió respuesta del servidor.', 'error');
+        return;
+      }
       if (res.ok) {
         mostrarMensaje('✅ Liquidación guardada correctamente', 'exito');
         cerrarCalculadoraLiquidacion();
         cargarLiquidaciones();
       } else {
-        mostrarMensaje(res.mensaje, 'error');
+        mostrarMensaje('Error al guardar: ' + (res.mensaje || 'Error desconocido'), 'error');
       }
     });
   }
