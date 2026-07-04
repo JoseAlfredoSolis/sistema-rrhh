@@ -2191,11 +2191,71 @@ function obtenerConfiguracion() {
 }
 
 /**
+ * Mapeo de nombres alternativos (variantes comunes de hojas importadas)
+ * hacia el nombre canónico que espera el sistema.
+ * Se usa al conectar una hoja existente para renombrar automáticamente.
+ */
+var ALIAS_PESTANAS = {
+  // Empleados
+  'BASE DATOS PERSONAL': 'Empleados',
+  'EMPLEADOS':           'Empleados',
+  'PERSONAL':            'Empleados',
+  'TRABAJADORES':        'Empleados',
+  // Vacaciones
+  'VACACIONES':          'Vacaciones',
+  // Incapacidades
+  'INCAPACIDADES CCSS-INS': 'Incapacidades',
+  'INCAPACIDADES':          'Incapacidades',
+  // Asistencia
+  'ASISTENCIA':          'Asistencia',
+  'CONTROL ASISTENCIA':  'Asistencia',
+  // Feriados
+  'FERIADOS':            'Feriados',
+  'DIAS FERIADOS':       'Feriados',
+  // Liquidaciones
+  'LIQUIDACION LABORAL':  'Liquidaciones',
+  'LIQUIDACIÓN LABORAL':  'Liquidaciones',
+  'LIQUIDACIONES':        'Liquidaciones',
+  // Departamentos
+  'DEPARTAMENTOS':        'Departamentos',
+  'AREAS':                'Departamentos',
+};
+
+/**
+ * Recorre las pestañas de un libro e intenta renombrar las que coincidan
+ * con algún alias en ALIAS_PESTANAS pero cuyo nombre canónico no exista aún.
+ * Devuelve lista de cambios realizados.
+ * @param {Spreadsheet} libro
+ * @return {string[]} descripción de cada cambio
+ */
+function _normalizarPestanas(libro) {
+  var cambios = [];
+  var nombresCanonicos = Object.keys(HOJAS).map(function(k) { return HOJAS[k]; });
+  var hojas = libro.getSheets();
+
+  hojas.forEach(function(hoja) {
+    var nombre = hoja.getName();
+    var nombreUpper = nombre.toUpperCase().trim();
+    var canonico = ALIAS_PESTANAS[nombre.trim()] || ALIAS_PESTANAS[nombreUpper];
+    if (!canonico) return; // sin alias conocido, no tocar
+    if (nombre === canonico) return; // ya tiene el nombre correcto
+    // Solo renombrar si la pestaña canónica no existe ya
+    var yaExiste = hojas.some(function(h) { return h.getName() === canonico; });
+    if (yaExiste) return;
+    hoja.setName(canonico);
+    cambios.push('"' + nombre + '" → "' + canonico + '"');
+  });
+
+  return cambios;
+}
+
+/**
  * Guarda el ID de la hoja de Google que se usará como base de datos.
- * Valida que el ID se pueda abrir antes de guardarlo.
+ * Valida que el ID se pueda abrir antes de guardarlo y normaliza
+ * automáticamente los nombres de las pestañas si usan variantes conocidas.
  *
  * @param {string} id  ID de la hoja (la parte larga de la URL).
- * @return {Object} {ok, mensaje}
+ * @return {Object} {ok, mensaje, renombradas?}
  */
 function guardarIdHoja(id, token) {
   var _authErr = requiereAdmin(token);
@@ -2212,7 +2272,14 @@ function guardarIdHoja(id, token) {
   try {
     var libro = SpreadsheetApp.openById(id); // valida acceso
     PropertiesService.getScriptProperties().setProperty(CLAVE_ID_HOJA, id);
-    return { ok: true, mensaje: 'Hoja conectada: "' + libro.getName() + '".' };
+
+    // Normalizar nombres de pestañas automáticamente
+    var cambios = _normalizarPestanas(libro);
+    var msgExtra = cambios.length
+      ? ' Pestañas renombradas automáticamente: ' + cambios.join(', ') + '.'
+      : '';
+
+    return { ok: true, mensaje: 'Hoja conectada: "' + libro.getName() + '".' + msgExtra, renombradas: cambios };
   } catch (e) {
     return { ok: false, mensaje: 'No se pudo abrir esa hoja. Verifica el ID y ' +
       'que tu cuenta tenga acceso. Detalle: ' + e.message };
