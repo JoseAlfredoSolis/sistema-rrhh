@@ -110,6 +110,12 @@
       <button class="nav-item" data-vista="bitacora"       data-tooltip="Bitácora"       onclick="mostrarVista('bitacora')">
         <span class="nav-icon">📋</span><span class="nav-label">Bitácora</span>
       </button>
+      <button class="nav-item" data-vista="comunicaciones" data-tooltip="Comunicaciones" onclick="mostrarVista('comunicaciones')">
+        <span class="nav-icon">✉️</span><span class="nav-label">Comunicaciones</span>
+      </button>
+      <button class="nav-item" data-vista="errores"        data-tooltip="Errores"        onclick="mostrarVista('errores')">
+        <span class="nav-icon">⚠️</span><span class="nav-label">Errores</span>
+      </button>
       <button class="nav-item" data-vista="configuracion"  data-tooltip="Configuración"  onclick="mostrarVista('configuracion')">
         <span class="nav-icon">⚙️</span><span class="nav-label">Configuración</span>
       </button>
@@ -657,6 +663,143 @@
       </div>
     </section>
 
+    <!-- ============== VISTA: ERRORES ============== -->
+    <section id="vista-errores" class="vista oculto">
+      <div class="barra-acciones">
+        <h2 class="titulo-vista">Registro de errores</h2>
+        <button class="btn btn-secundario" onclick="cargarErrores()">🔄 Actualizar</button>
+        <button class="btn btn-peligro" onclick="limpiarRegistroErrores()">🗑️ Limpiar registro</button>
+      </div>
+      <p class="config-ayuda">
+        Cada vez que falla una acción del sistema (guardar, calcular, importar, etc.)
+        queda registrada aquí automáticamente. Se muestran los últimos 500, más recientes primero.
+      </p>
+      <div class="tabla-envoltorio">
+        <table class="tabla" id="tablaErrores">
+          <thead><tr><th>Fecha</th><th>Origen</th><th>Mensaje</th><th>Usuario</th><th>Contexto</th></tr></thead>
+          <tbody id="cuerpoErrores"></tbody>
+        </table>
+        <p id="sinErrores" class="sin-datos oculto">No hay errores registrados. 🎉</p>
+      </div>
+    </section>
+
+    <!-- ============== VISTA: COMUNICACIONES ============== -->
+    <section id="vista-comunicaciones" class="vista oculto">
+      <h2 class="titulo-vista">Comunicaciones</h2>
+
+      <!-- Enviar mensaje -->
+      <div class="config-bloque">
+        <h3>📤 Enviar mensaje</h3>
+        <p class="config-ayuda">
+          Elige un empleado y, si querés, una plantilla guardada — se rellena sola con
+          los datos del empleado. También podés escribir el mensaje directo.
+        </p>
+        <div class="config-fila">
+          <select id="comEmpleado">
+            <option value="">— Selecciona un empleado —</option>
+          </select>
+          <select id="comTipo" onchange="cambiarTipoComunicacion()">
+            <option value="email">📧 Correo</option>
+            <option value="whatsapp">💬 WhatsApp</option>
+          </select>
+          <select id="comPlantilla" onchange="aplicarPlantillaAEnvio()">
+            <option value="">— Sin plantilla (mensaje libre) —</option>
+          </select>
+        </div>
+        <div class="campo" id="comAsuntoWrap">
+          <label for="comAsunto">Asunto (solo correo)</label>
+          <input type="text" id="comAsunto" placeholder="Asunto del correo">
+        </div>
+        <div class="campo">
+          <label for="comCuerpo">Mensaje</label>
+          <textarea id="comCuerpo" rows="6" placeholder="Escribe el mensaje..."></textarea>
+          <p class="config-ayuda">
+            Variables disponibles: <code>{{nombre}}</code> <code>{{puesto}}</code>
+            <code>{{departamento}}</code> <code>{{cedula}}</code> <code>{{correo}}</code>
+            <code>{{telefono}}</code> <code>{{salario}}</code> <code>{{fecha_ingreso}}</code> <code>{{fecha}}</code>
+          </p>
+        </div>
+        <button class="btn btn-primario" id="btnEnviarComunicacion" onclick="enviarComunicacion()">🚀 Enviar</button>
+        <div id="comResultado" style="margin-top:10px;font-size:13px"></div>
+      </div>
+
+      <!-- Plantillas guardadas -->
+      <div class="config-bloque">
+        <div class="barra-acciones">
+          <h3 style="margin:0">📝 Plantillas guardadas</h3>
+          <button class="btn btn-secundario" onclick="abrirFormPlantilla()">+ Nueva plantilla</button>
+        </div>
+        <div class="tabla-envoltorio" style="margin-top:12px">
+          <table class="tabla">
+            <thead><tr><th>Nombre</th><th>Tipo</th><th>Asunto</th><th class="no-print">Acciones</th></tr></thead>
+            <tbody id="cuerpoPlantillas"></tbody>
+          </table>
+          <p id="sinPlantillas" class="sin-datos oculto">No hay plantillas guardadas todavía.</p>
+        </div>
+      </div>
+
+      <!-- Historial de envíos -->
+      <div class="config-bloque">
+        <div class="barra-acciones">
+          <h3 style="margin:0">📜 Historial de envíos</h3>
+          <select id="filtroTipoHistorial" onchange="cargarComunicaciones()" style="max-width:180px">
+            <option value="">Todos los tipos</option>
+            <option value="email">📧 Correo</option>
+            <option value="whatsapp">💬 WhatsApp</option>
+          </select>
+          <button class="btn btn-secundario" onclick="cargarComunicaciones()">🔄 Actualizar</button>
+        </div>
+        <div class="tabla-envoltorio" style="margin-top:12px">
+          <table class="tabla">
+            <thead><tr><th>Fecha</th><th>Tipo</th><th>Empleado</th><th>Destinatario</th><th>Asunto / Mensaje</th><th>Estado</th></tr></thead>
+            <tbody id="cuerpoComunicaciones"></tbody>
+          </table>
+          <p id="sinComunicaciones" class="sin-datos oculto">No hay comunicaciones registradas todavía.</p>
+        </div>
+      </div>
+
+      <!-- Modal: crear / editar plantilla -->
+      <div id="modalPlantilla" class="modal oculto">
+        <div class="modal-contenido">
+          <div class="modal-cabecera">
+            <h2 id="modalPlantillaTitulo">Nueva plantilla</h2>
+            <button class="cerrar" onclick="cerrarModalPlantilla()">&times;</button>
+          </div>
+          <form id="formPlantilla" onsubmit="guardarPlantillaUI(event)" novalidate>
+            <input type="hidden" id="pltId">
+            <div class="campo">
+              <label for="pltNombre">Nombre *</label>
+              <input type="text" id="pltNombre" required>
+            </div>
+            <div class="campo">
+              <label for="pltTipo">Tipo *</label>
+              <select id="pltTipo" required onchange="toggleAsuntoPlantilla()">
+                <option value="email">📧 Correo</option>
+                <option value="whatsapp">💬 WhatsApp</option>
+              </select>
+            </div>
+            <div class="campo" id="pltAsuntoWrap">
+              <label for="pltAsunto">Asunto (solo correo)</label>
+              <input type="text" id="pltAsunto">
+            </div>
+            <div class="campo">
+              <label for="pltCuerpo">Cuerpo *</label>
+              <textarea id="pltCuerpo" rows="8" required></textarea>
+              <p class="config-ayuda">
+                Variables: <code>{{nombre}}</code> <code>{{puesto}}</code> <code>{{departamento}}</code>
+                <code>{{cedula}}</code> <code>{{correo}}</code> <code>{{telefono}}</code>
+                <code>{{salario}}</code> <code>{{fecha_ingreso}}</code> <code>{{fecha}}</code>
+              </p>
+            </div>
+            <div class="modal-pie">
+              <button type="button" class="btn btn-secundario" onclick="cerrarModalPlantilla()">Cancelar</button>
+              <button type="submit" class="btn btn-primario">💾 Guardar plantilla</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </section>
+
     <!-- ============== VISTA: CONFIGURACIÓN ============== -->
     <section id="vista-configuracion" class="vista oculto">
       <h2 class="titulo-vista">Configuración de los archivos de Google</h2>
@@ -837,6 +980,28 @@
           <button class="btn btn-secundario" onclick="probarConfigCorreo()">🧪 Enviar correo de prueba</button>
         </div>
         <div id="correoEstado" style="margin-top:10px"></div>
+      </div>
+
+      <!-- ──────────── WhatsApp (CallMeBot) ──────────── -->
+      <div class="config-bloque">
+        <h3>💬 WhatsApp (CallMeBot)</h3>
+        <p class="config-ayuda">
+          Para enviar WhatsApp desde <strong>Comunicaciones</strong> necesitas una API Key de
+          <a href="https://www.callmebot.com/blog/free-api-whatsapp-messages/" target="_blank" rel="noopener">CallMeBot</a>
+          (gratis). El número que la genera debe agregar el contacto de CallMeBot en WhatsApp y
+          enviarle el mensaje de activación una vez.
+        </p>
+        <div class="campo">
+          <label for="callmebotApiKey">API Key <span id="callmebotApiKeyHint" style="font-weight:400;color:var(--txt-3)"></span></label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="password" id="callmebotApiKey" placeholder="Pega aquí tu API Key de CallMeBot" style="flex:1">
+            <button type="button" class="btn btn-secundario" style="padding:8px 12px;font-size:13px" onclick="toggleCallMeBotKey()">👁</button>
+          </div>
+          <small style="color:var(--txt-3);font-size:12px;margin-top:4px;display:block">
+            Deja el campo vacío para mantener la key guardada actualmente.
+          </small>
+        </div>
+        <button class="btn btn-primario" onclick="guardarConfigCallMeBotUI()">Guardar API Key</button>
       </div>
 
       <!-- ──────────── Respaldo automático ──────────── -->
@@ -1624,6 +1789,8 @@
   <?!= include('Js_Evaluaciones'); ?>
   <?!= include('Js_Documentos'); ?>
   <?!= include('Js_Bitacora'); ?>
+  <?!= include('Js_Errores'); ?>
+  <?!= include('Js_Comunicaciones'); ?>
   <?!= include('Js_Prestamos'); ?>
   <?!= include('Js_HorasExtra'); ?>
   <?!= include('Js_Activos'); ?>

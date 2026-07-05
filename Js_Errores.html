@@ -1,0 +1,36 @@
+<script>
+  /* ============================================================
+     MÓDULO REGISTRO DE ERRORES — v1
+     ============================================================ */
+
+  function cargarErrores() {
+    llamarBackend('listarErrores', [], function (lista) {
+      if (lista && lista.ok === false) {
+        mostrarMensaje(lista.mensaje, 'error');
+        lista = [];
+      }
+      var cuerpo = document.getElementById('cuerpoErrores');
+      cuerpo.innerHTML = '';
+      document.getElementById('sinErrores').classList.toggle('oculto', (lista || []).length > 0);
+      (lista || []).forEach(function (r) {
+        var tr = document.createElement('tr');
+        tr.innerHTML =
+          '<td style="font-size:var(--fs-xs);white-space:nowrap">' + escapar(r.fecha) + '</td>' +
+          '<td style="font-size:var(--fs-xs)">' + escapar(r.origen || '—') + '</td>' +
+          '<td style="font-size:var(--fs-xs);color:var(--err)">' + escapar(r.mensaje || '—') + '</td>' +
+          '<td style="font-size:var(--fs-xs)">' + escapar(r.usuario || '—') + '</td>' +
+          '<td style="font-size:var(--fs-2xs);color:var(--txt-3);max-width:280px;overflow-wrap:anywhere">' + escapar(r.contexto || '') + '</td>';
+        cuerpo.appendChild(tr);
+      });
+    });
+  }
+
+  function limpiarRegistroErrores() {
+    confirmarAccion('¿Borrar todo el registro de errores? Esta acción no se puede deshacer.', function () {
+      llamarBackend('limpiarErrores', [], function (res) {
+        mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+        if (res.ok) cargarErrores();
+      });
+    }, 'Limpiar registro');
+  }
+</script>

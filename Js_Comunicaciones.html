@@ -1,0 +1,228 @@
+<script>
+  /* ============================================================
+     MÓDULO COMUNICACIONES — v1
+     Plantillas de correo/WhatsApp + envío + historial.
+     ============================================================ */
+
+  var PLANTILLAS_CACHE = [];
+
+  function cargarComunicaciones() {
+    llenarSelectEmpleados('comEmpleado');
+    cambiarTipoComunicacion();
+    llamarBackend('listarPlantillas', [null], function (lista) {
+      PLANTILLAS_CACHE = lista || [];
+      _pintarPlantillas();
+      _llenarSelectPlantillasEnvio();
+    });
+    _cargarHistorialComunicaciones();
+  }
+
+  function _cargarHistorialComunicaciones() {
+    var tipo = (document.getElementById('filtroTipoHistorial') || {}).value || null;
+    llamarBackend('listarComunicaciones', [null, tipo], function (lista) {
+      var cuerpo = document.getElementById('cuerpoComunicaciones');
+      cuerpo.innerHTML = '';
+      document.getElementById('sinComunicaciones').classList.toggle('oculto', (lista || []).length > 0);
+      (lista || []).forEach(function (r) {
+        var icono = r.tipo === 'whatsapp' ? '💬' : '📧';
+        var estadoColor = r.estado === 'enviado' ? 'var(--ok)' : 'var(--err)';
+        var asuntoMensaje = r.asunto ? escapar(r.asunto) : escapar(String(r.cuerpo || '').slice(0, 80));
+        var tr = document.createElement('tr');
+        tr.innerHTML =
+          '<td style="font-size:var(--fs-xs);white-space:nowrap">' + escapar(r.fecha) + '</td>' +
+          '<td style="font-size:var(--fs-xs)">' + icono + ' ' + escapar(r.tipo) + '</td>' +
+          '<td style="font-size:var(--fs-xs)">' + escapar(r.empleado_nombre || '—') + '</td>' +
+          '<td style="font-size:var(--fs-xs)">' + escapar(r.destinatario || '—') + '</td>' +
+          '<td style="font-size:var(--fs-xs);max-width:320px;overflow-wrap:anywhere">' + asuntoMensaje + '</td>' +
+          '<td style="font-size:var(--fs-xs);color:' + estadoColor + ';font-weight:600;text-transform:capitalize">' + escapar(r.estado) + '</td>';
+        cuerpo.appendChild(tr);
+      });
+    });
+  }
+
+  // ── Enviar mensaje ──────────────────────────────────────────
+
+  function cambiarTipoComunicacion() {
+    var tipo = document.getElementById('comTipo').value;
+    document.getElementById('comAsuntoWrap').style.display = (tipo === 'email') ? '' : 'none';
+    _llenarSelectPlantillasEnvio();
+  }
+
+  function _llenarSelectPlantillasEnvio() {
+    var tipo = document.getElementById('comTipo').value;
+    var sel = document.getElementById('comPlantilla');
+    var valorActual = sel.value;
+    sel.innerHTML = '<option value="">— Sin plantilla (mensaje libre) —</option>';
+    PLANTILLAS_CACHE.filter(function (p) { return p.tipo === tipo; }).forEach(function (p) {
+      var opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = p.nombre;
+      sel.appendChild(opt);
+    });
+    sel.value = valorActual;
+  }
+
+  function aplicarPlantillaAEnvio() {
+    var id = document.getElementById('comPlantilla').value;
+    if (!id) return;
+    var plantilla = PLANTILLAS_CACHE.filter(function (p) { return String(p.id) === String(id); })[0];
+    if (!plantilla) return;
+    document.getElementById('comAsunto').value = plantilla.asunto || '';
+    document.getElementById('comCuerpo').value = plantilla.cuerpo || '';
+  }
+
+  function enviarComunicacion() {
+    if (!puedeEditar()) { mostrarMensaje('Sin permisos.', 'error'); return; }
+    var empleadoId = document.getElementById('comEmpleado').value;
+    var tipo = document.getElementById('comTipo').value;
+    var plantillaId = document.getElementById('comPlantilla').value;
+    var asunto = document.getElementById('comAsunto').value.trim();
+    var cuerpo = document.getElementById('comCuerpo').value.trim();
+
+    if (!empleadoId) { mostrarMensaje('Selecciona un empleado.', 'error'); return; }
+    if (!plantillaId && !cuerpo) { mostrarMensaje('Escribe un mensaje o elige una plantilla.', 'error'); return; }
+
+    var btn = document.getElementById('btnEnviarComunicacion');
+    var resultado = document.getElementById('comResultado');
+    resultado.textContent = '';
+    btn.disabled = true;
+    btn.textContent = 'Enviando...';
+
+    var datos = { empleado_id: empleadoId, plantilla_id: plantillaId || null, asunto: asunto, cuerpo: cuerpo };
+    var fn = tipo === 'whatsapp' ? 'enviarWhatsappPlantilla' : 'enviarCorreoPlantilla';
+
+    llamarBackend(fn, [datos], function (res) {
+      btn.disabled = false;
+      btn.textContent = '🚀 Enviar';
+      resultado.innerHTML = res.ok
+        ? '<span style="color:var(--ok)">✅ ' + escapar(res.mensaje) + '</span>'
+        : '<span style="color:var(--err)">❌ ' + escapar(res.mensaje) + '</span>';
+      if (res.ok) _cargarHistorialComunicaciones();
+    });
+  }
+
+  // ── Plantillas: listar / crear / editar / eliminar ──────────
+
+  function _pintarPlantillas() {
+    var cuerpo = document.getElementById('cuerpoPlantillas');
+    cuerpo.innerHTML = '';
+    document.getElementById('sinPlantillas').classList.toggle('oculto', PLANTILLAS_CACHE.length > 0);
+    PLANTILLAS_CACHE.forEach(function (p) {
+      var icono = p.tipo === 'whatsapp' ? '💬 WhatsApp' : '📧 Correo';
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td>' + escapar(p.nombre) + '</td>' +
+        '<td>' + icono + '</td>' +
+        '<td style="font-size:var(--fs-xs);color:var(--txt-2)">' + escapar(p.asunto || '—') + '</td>' +
+        '<td class="no-print"></td>';
+      var tdAcciones = tr.querySelector('td.no-print');
+      if (puedeEditar()) {
+        var btnEditar = document.createElement('button');
+        btnEditar.className = 'btn-mini';
+        btnEditar.textContent = 'Editar';
+        btnEditar.onclick = function () { editarPlantilla(p.id); };
+        var btnEliminar = document.createElement('button');
+        btnEliminar.className = 'btn-mini peligro';
+        btnEliminar.textContent = 'Eliminar';
+        btnEliminar.onclick = function () { eliminarPlantillaUI(p.id); };
+        tdAcciones.appendChild(btnEditar);
+        tdAcciones.appendChild(btnEliminar);
+      }
+      cuerpo.appendChild(tr);
+    });
+  }
+
+  function toggleAsuntoPlantilla() {
+    var tipo = document.getElementById('pltTipo').value;
+    document.getElementById('pltAsuntoWrap').style.display = (tipo === 'email') ? '' : 'none';
+  }
+
+  function abrirFormPlantilla() {
+    if (!puedeEditar()) { mostrarMensaje('Sin permisos.', 'error'); return; }
+    document.getElementById('formPlantilla').reset();
+    document.getElementById('pltId').value = '';
+    document.getElementById('modalPlantillaTitulo').textContent = 'Nueva plantilla';
+    toggleAsuntoPlantilla();
+    document.getElementById('modalPlantilla').classList.remove('oculto');
+  }
+
+  function editarPlantilla(id) {
+    if (!puedeEditar()) { mostrarMensaje('Sin permisos.', 'error'); return; }
+    var p = PLANTILLAS_CACHE.filter(function (x) { return String(x.id) === String(id); })[0];
+    if (!p) return;
+    document.getElementById('pltId').value = p.id;
+    document.getElementById('pltNombre').value = p.nombre;
+    document.getElementById('pltTipo').value = p.tipo;
+    document.getElementById('pltAsunto').value = p.asunto || '';
+    document.getElementById('pltCuerpo').value = p.cuerpo || '';
+    document.getElementById('modalPlantillaTitulo').textContent = 'Editar plantilla';
+    toggleAsuntoPlantilla();
+    document.getElementById('modalPlantilla').classList.remove('oculto');
+  }
+
+  function cerrarModalPlantilla() {
+    document.getElementById('modalPlantilla').classList.add('oculto');
+  }
+
+  function guardarPlantillaUI(event) {
+    event.preventDefault();
+    var datos = {
+      id: document.getElementById('pltId').value,
+      nombre: document.getElementById('pltNombre').value.trim(),
+      tipo: document.getElementById('pltTipo').value,
+      asunto: document.getElementById('pltAsunto').value.trim(),
+      cuerpo: document.getElementById('pltCuerpo').value.trim()
+    };
+    if (!datos.nombre || !datos.cuerpo) { mostrarMensaje('Nombre y cuerpo son obligatorios.', 'error'); return; }
+    llamarBackend('guardarPlantilla', [datos], function (res) {
+      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+      if (res.ok) {
+        cerrarModalPlantilla();
+        llamarBackend('listarPlantillas', [null], function (lista) {
+          PLANTILLAS_CACHE = lista || [];
+          _pintarPlantillas();
+          _llenarSelectPlantillasEnvio();
+        });
+      }
+    });
+  }
+
+  function eliminarPlantillaUI(id) {
+    confirmarAccion('¿Eliminar esta plantilla? Esta acción no se puede deshacer.', function () {
+      llamarBackend('eliminarPlantilla', [id], function (res) {
+        mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+        if (res.ok) {
+          PLANTILLAS_CACHE = PLANTILLAS_CACHE.filter(function (p) { return String(p.id) !== String(id); });
+          _pintarPlantillas();
+          _llenarSelectPlantillasEnvio();
+        }
+      });
+    }, 'Eliminar');
+  }
+
+  // ── Configuración: API Key de CallMeBot ──────────────────────
+
+  function cargarConfigCallMeBot() {
+    llamarBackend('obtenerConfigCallMeBot', [], function (cfg) {
+      if (!cfg || cfg.ok === false) return;
+      var hint = document.getElementById('callmebotApiKeyHint');
+      if (hint) hint.textContent = cfg.tieneApiKey ? '(configurada: ' + cfg.apiKey + ')' : '(sin configurar)';
+    });
+  }
+
+  function toggleCallMeBotKey() {
+    var inp = document.getElementById('callmebotApiKey');
+    inp.type = inp.type === 'password' ? 'text' : 'password';
+  }
+
+  function guardarConfigCallMeBotUI() {
+    var cfg = { apiKey: document.getElementById('callmebotApiKey').value.trim() };
+    llamarBackend('guardarConfigCallMeBot', [cfg], function (res) {
+      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+      if (res.ok) {
+        document.getElementById('callmebotApiKey').value = '';
+        cargarConfigCallMeBot();
+      }
+    });
+  }
+</script>

@@ -34,7 +34,10 @@ var HOJAS = {
   INCAPACIDADES:     'Incapacidades',
   FERIADOS:          'Feriados',
   LIQUIDACIONES:     'Liquidaciones',
-  PERMISOS:          'Permisos'
+  PERMISOS:          'Permisos',
+  ERRORES:           'Errores',
+  PLANTILLAS:        'Plantillas',
+  COMUNICACIONES:    'Comunicaciones'
 };
 
 /**
@@ -64,7 +67,10 @@ var ENCABEZADOS = {
   Incapacidades:     ['id', 'empleado_id', 'fecha_desde', 'fecha_hasta', 'dias', 'entidad', 'especialidad', 'notas'],
   Feriados:          ['id', 'fecha', 'nombre', 'tipo'],
   Liquidaciones:     ['id', 'empleado_id', 'fecha_salida', 'motivo', 'fecha_calculo', 'monto', 'estado', 'notas'],
-  Permisos:          ['id', 'empleado_id', 'tipo', 'fecha_inicio', 'fecha_fin', 'estado', 'motivo', 'notas']
+  Permisos:          ['id', 'empleado_id', 'tipo', 'fecha_inicio', 'fecha_fin', 'estado', 'motivo', 'notas'],
+  Errores:           ['id', 'fecha', 'origen', 'mensaje', 'usuario', 'contexto'],
+  Plantillas:        ['id', 'nombre', 'tipo', 'asunto', 'cuerpo'],
+  Comunicaciones:    ['id', 'fecha', 'tipo', 'empleado_id', 'destinatario', 'asunto', 'cuerpo', 'estado', 'detalle', 'usuario']
 };
 
 // Columnas por posición (1-based para Sheets, 0-based _IDX para arrays).
@@ -2432,6 +2438,336 @@ function listarBitacora(limite) {
   registros.sort(function (a, b) { return b.fecha > a.fecha ? 1 : -1; });
   if (limite) registros = registros.slice(0, Number(limite));
   return registros;
+}
+
+// ===================================================================
+// MÓDULO: REGISTRO DE ERRORES DEL SISTEMA
+// ===================================================================
+// El frontend reporta aquí automáticamente cualquier error que llegue
+// al withFailureHandler de llamarBackend (ver Js_Comun.html). Además,
+// algunos puntos críticos del propio backend llaman a esta función
+// directamente desde un catch para guardar el detalle completo.
+// ===================================================================
+
+/**
+ * Registra un error del sistema. Best-effort: nunca lanza excepción,
+ * para que un fallo al loguear no rompa el flujo que lo está reportando.
+ * @param {string} origen   función o módulo donde ocurrió el error.
+ * @param {string} mensaje  mensaje de error.
+ * @param {string} [contexto] datos adicionales (argumentos, stack, etc.)
+ * @param {string} [token]  token de sesión (opcional).
+ * @return {Object} {ok:boolean}
+ */
+function registrarErrorSistema(origen, mensaje, contexto, token) {
+  try {
+    var usuario = '';
+    try {
+      var sesion = validarSesion(token);
+      if (sesion.ok) usuario = sesion.rol;
+    } catch (e) {}
+    if (!usuario) {
+      try { usuario = Session.getActiveUser().getEmail(); } catch (e) {}
+    }
+    var hoja = getHoja(HOJAS.ERRORES);
+    hoja.appendRow([
+      generarId('ERR'),
+      new Date(),
+      String(origen || '').slice(0, 200),
+      String(mensaje || '').slice(0, 1000),
+      usuario || '',
+      String(contexto || '').slice(0, 1000)
+    ]);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false };
+  }
+}
+
+/**
+ * Lista los errores registrados (más recientes primero, máx. 500). Solo Admin.
+ * @param {string} token
+ * @return {Object[]|Object}
+ */
+function listarErrores(token) {
+  var _authErr = requiereAdmin(token);
+  if (_authErr) return _authErr;
+
+  var registros = leerTabla(HOJAS.ERRORES);
+  registros.forEach(function (r) {
+    r.fecha = r.fecha instanceof Date
+      ? Utilities.formatDate(r.fecha, Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm')
+      : String(r.fecha);
+  });
+  registros.sort(function (a, b) { return b.fecha > a.fecha ? 1 : -1; });
+  return registros.slice(0, 500);
+}
+
+/**
+ * Borra todo el registro de errores. Solo Admin.
+ * @param {string} token
+ * @return {Object} {ok, mensaje}
+ */
+function limpiarErrores(token) {
+  var _authErr = requiereAdmin(token);
+  if (_authErr) return _authErr;
+
+  var hoja = getHoja(HOJAS.ERRORES);
+  var ultimaFila = hoja.getLastRow();
+  if (ultimaFila > 1) {
+    hoja.getRange(2, 1, ultimaFila - 1, hoja.getLastColumn()).clearContent();
+  }
+  return { ok: true, mensaje: 'Registro de errores limpiado.' };
+}
+
+// ===================================================================
+// MÓDULO: COMUNICACIONES (plantillas de correo/WhatsApp + historial)
+// ===================================================================
+// Plantillas reutilizables con variables {{campo}} que se rellenan con
+// los datos del empleado. El envío de WhatsApp usa la API de CallMeBot
+// (callmebot.com) vía UrlFetchApp — requiere una API Key configurada
+// en Configuración (cada número debe activar el bot de CallMeBot antes
+// de poder recibir mensajes).
+// ===================================================================
+
+var CLAVE_CONFIG_CALLMEBOT = 'CONFIG_CALLMEBOT';
+
+function obtenerConfigCallMeBotInterno() {
+  var raw = PropertiesService.getScriptProperties().getProperty(CLAVE_CONFIG_CALLMEBOT);
+  var def = { apiKey: '' };
+  if (!raw) return def;
+  try { return Object.assign(def, JSON.parse(raw)); } catch (e) { return def; }
+}
+
+/** Devuelve la config de CallMeBot con la API Key enmascarada. Solo Admin. */
+function obtenerConfigCallMeBot(token) {
+  var _authErr = requiereAdmin(token);
+  if (_authErr) return _authErr;
+  var cfg = obtenerConfigCallMeBotInterno();
+  return { apiKey: enmascararSecreto(cfg.apiKey), tieneApiKey: !!cfg.apiKey };
+}
+
+/** Guarda la API Key de CallMeBot. Solo Admin. */
+function guardarConfigCallMeBot(cfg, token) {
+  var _authErr = requiereAdmin(token);
+  if (_authErr) return _authErr;
+  var actual = obtenerConfigCallMeBotInterno();
+  if (cfg && cfg.apiKey && String(cfg.apiKey).trim()) actual.apiKey = String(cfg.apiKey).trim();
+  PropertiesService.getScriptProperties().setProperty(CLAVE_CONFIG_CALLMEBOT, JSON.stringify(actual));
+  return { ok: true, mensaje: 'API Key de CallMeBot guardada.' };
+}
+
+/** Formatea un monto como colones (₡) sin depender de helpers del frontend. */
+function _formatoMonedaCRC(monto) {
+  var n = Number(monto) || 0;
+  var texto = n.toLocaleString('es-CR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  return '₡' + texto;
+}
+
+/**
+ * Reemplaza variables {{campo}} en un texto usando los datos del empleado.
+ * Variables soportadas: nombre, cedula, puesto, departamento, correo,
+ * telefono, salario, fecha_ingreso, fecha (fecha actual).
+ */
+function _reemplazarVariablesPlantilla(texto, emp) {
+  if (!texto) return '';
+  emp = emp || {};
+  var mapa = {
+    nombre:        emp.nombre || '',
+    cedula:        emp.cedula || '',
+    puesto:        emp.puesto || '',
+    departamento:  emp.departamento || '',
+    correo:        emp.correo || '',
+    telefono:      emp.telefono || '',
+    salario:       emp.salario ? _formatoMonedaCRC(emp.salario) : '',
+    fecha_ingreso: formatearFecha(emp.fecha_ingreso),
+    fecha:         formatearFecha(new Date())
+  };
+  return String(texto).replace(/\{\{\s*(\w+)\s*\}\}/g, function (m, campo) {
+    return (mapa[campo] !== undefined) ? mapa[campo] : m;
+  });
+}
+
+/** Lista las plantillas guardadas, opcionalmente filtradas por tipo ('email'|'whatsapp'). */
+function listarPlantillas(tipo) {
+  var plantillas = leerTabla(HOJAS.PLANTILLAS);
+  if (tipo) plantillas = plantillas.filter(function (p) { return p.tipo === tipo; });
+  return plantillas;
+}
+
+/** Crea o actualiza una plantilla. Requiere permiso de escritura. */
+function guardarPlantilla(datos, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
+  if (!datos || !datos.nombre || !datos.tipo) {
+    return { ok: false, mensaje: 'Nombre y tipo son obligatorios.' };
+  }
+  if (datos.tipo !== 'email' && datos.tipo !== 'whatsapp') {
+    return { ok: false, mensaje: 'Tipo de plantilla inválido.' };
+  }
+
+  var hoja = getHoja(HOJAS.PLANTILLAS);
+  if (datos.id) {
+    var fila = buscarFilaPorId(hoja, datos.id);
+    if (fila === -1) return { ok: false, mensaje: 'Plantilla no encontrada.' };
+    hoja.getRange(fila, 1, 1, ENCABEZADOS.Plantillas.length).setValues([[
+      datos.id, datos.nombre, datos.tipo, datos.asunto || '', datos.cuerpo || ''
+    ]]);
+    return { ok: true, mensaje: 'Plantilla actualizada.', id: datos.id };
+  }
+
+  var id = generarId('PLT');
+  hoja.appendRow([id, datos.nombre, datos.tipo, datos.asunto || '', datos.cuerpo || '']);
+  return { ok: true, mensaje: 'Plantilla creada.', id: id };
+}
+
+/** Elimina una plantilla. Requiere permiso de escritura. */
+function eliminarPlantilla(id, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
+  var hoja = getHoja(HOJAS.PLANTILLAS);
+  var fila = buscarFilaPorId(hoja, id);
+  if (fila === -1) return { ok: false, mensaje: 'Plantilla no encontrada.' };
+  hoja.deleteRow(fila);
+  return { ok: true, mensaje: 'Plantilla eliminada.' };
+}
+
+/** Busca el registro completo (todas las columnas) de un empleado por id. */
+function _buscarEmpleadoRaw(empleadoId) {
+  return leerTabla(HOJAS.EMPLEADOS).filter(function (e) {
+    return String(e.id) === String(empleadoId);
+  })[0] || null;
+}
+
+/** Registra una comunicación enviada (correo o WhatsApp) en el historial. */
+function _registrarComunicacion(tipo, empleadoId, destinatario, asunto, cuerpo, estado, detalle, token) {
+  try {
+    var usuario = '';
+    try {
+      var sesion = validarSesion(token);
+      if (sesion.ok) usuario = sesion.rol;
+    } catch (e) {}
+    var hoja = getHoja(HOJAS.COMUNICACIONES);
+    hoja.appendRow([
+      generarId('COM'), new Date(), tipo, empleadoId || '', destinatario || '',
+      asunto || '', String(cuerpo || '').slice(0, 3000), estado, String(detalle || '').slice(0, 500), usuario
+    ]);
+  } catch (e) { /* no bloquear el envío si falla el registro */ }
+}
+
+/**
+ * Envía un correo usando una plantilla (o asunto/cuerpo directos) a un
+ * empleado, sustituyendo variables, y registra el envío en el historial.
+ * @param {Object} datos {empleado_id, plantilla_id?, asunto?, cuerpo?, destinatarioOverride?}
+ * @param {string} token
+ */
+function enviarCorreoPlantilla(datos, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
+  if (!datos || !datos.empleado_id) return { ok: false, mensaje: 'Selecciona un empleado.' };
+  var emp = _buscarEmpleadoRaw(datos.empleado_id);
+  if (!emp) return { ok: false, mensaje: 'Empleado no encontrado.' };
+
+  var destinatario = String(datos.destinatarioOverride || emp.correo || '').trim();
+  if (!destinatario) return { ok: false, mensaje: 'El empleado no tiene correo registrado.' };
+
+  var asuntoBase = datos.asunto || '';
+  var cuerpoBase = datos.cuerpo || '';
+  if (datos.plantilla_id) {
+    var plantilla = leerTabla(HOJAS.PLANTILLAS).filter(function (p) { return String(p.id) === String(datos.plantilla_id); })[0];
+    if (!plantilla) return { ok: false, mensaje: 'Plantilla no encontrada.' };
+    asuntoBase = plantilla.asunto;
+    cuerpoBase = plantilla.cuerpo;
+  }
+
+  var asunto = _reemplazarVariablesPlantilla(asuntoBase, emp);
+  var cuerpo = _reemplazarVariablesPlantilla(cuerpoBase, emp);
+
+  try {
+    _enviarCorreo([destinatario], asunto, cuerpo.replace(/\n/g, '<br>'));
+    _registrarComunicacion('email', emp.id, destinatario, asunto, cuerpo, 'enviado', '', token);
+    return { ok: true, mensaje: 'Correo enviado a ' + destinatario + '.' };
+  } catch (e) {
+    _registrarComunicacion('email', emp.id, destinatario, asunto, cuerpo, 'error', e.message, token);
+    registrarErrorSistema('enviarCorreoPlantilla', e.message, JSON.stringify(datos), token);
+    return { ok: false, mensaje: 'Error al enviar: ' + e.message };
+  }
+}
+
+/**
+ * Envía un WhatsApp usando una plantilla (o mensaje directo) a un
+ * empleado vía CallMeBot, y registra el envío en el historial.
+ * @param {Object} datos {empleado_id, plantilla_id?, cuerpo?, telefonoOverride?}
+ * @param {string} token
+ */
+function enviarWhatsappPlantilla(datos, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
+  var cfg = obtenerConfigCallMeBotInterno();
+  if (!cfg.apiKey) {
+    return { ok: false, mensaje: 'Configura primero la API Key de CallMeBot en Configuración.' };
+  }
+
+  if (!datos || !datos.empleado_id) return { ok: false, mensaje: 'Selecciona un empleado.' };
+  var emp = _buscarEmpleadoRaw(datos.empleado_id);
+  if (!emp) return { ok: false, mensaje: 'Empleado no encontrado.' };
+
+  var telefono = String(datos.telefonoOverride || emp.telefono || '').replace(/[^\d]/g, '');
+  if (!telefono) return { ok: false, mensaje: 'El empleado no tiene teléfono registrado.' };
+
+  var cuerpoBase = datos.cuerpo || '';
+  if (datos.plantilla_id) {
+    var plantilla = leerTabla(HOJAS.PLANTILLAS).filter(function (p) { return String(p.id) === String(datos.plantilla_id); })[0];
+    if (!plantilla) return { ok: false, mensaje: 'Plantilla no encontrada.' };
+    cuerpoBase = plantilla.cuerpo;
+  }
+  var mensaje = _reemplazarVariablesPlantilla(cuerpoBase, emp);
+  if (!mensaje.trim()) return { ok: false, mensaje: 'El mensaje está vacío.' };
+
+  try {
+    var url = 'https://api.callmebot.com/whatsapp.php?phone=' + encodeURIComponent(telefono) +
+      '&text=' + encodeURIComponent(mensaje) + '&apikey=' + encodeURIComponent(cfg.apiKey);
+    var res = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    var codigo = res.getResponseCode();
+    var texto = res.getContentText();
+
+    if (codigo >= 200 && codigo < 300 && !/error/i.test(texto)) {
+      _registrarComunicacion('whatsapp', emp.id, telefono, '', mensaje, 'enviado', texto.slice(0, 200), token);
+      return { ok: true, mensaje: 'WhatsApp enviado a ' + telefono + '.' };
+    }
+    _registrarComunicacion('whatsapp', emp.id, telefono, '', mensaje, 'error', texto.slice(0, 200), token);
+    return { ok: false, mensaje: 'CallMeBot respondió con un error: ' + texto.slice(0, 200) };
+  } catch (e) {
+    _registrarComunicacion('whatsapp', emp.id, telefono, '', mensaje, 'error', e.message, token);
+    registrarErrorSistema('enviarWhatsappPlantilla', e.message, JSON.stringify(datos), token);
+    return { ok: false, mensaje: 'Error al enviar: ' + e.message };
+  }
+}
+
+/**
+ * Lista el historial de comunicaciones enviadas (más recientes primero),
+ * opcionalmente filtrado por empleado y/o tipo.
+ * @param {string} [empleadoId]
+ * @param {string} [tipo] 'email' | 'whatsapp'
+ */
+function listarComunicaciones(empleadoId, tipo) {
+  var registros = leerTabla(HOJAS.COMUNICACIONES);
+  var empleados = leerTabla(HOJAS.EMPLEADOS);
+  if (empleadoId) registros = registros.filter(function (r) { return String(r.empleado_id) === String(empleadoId); });
+  if (tipo) registros = registros.filter(function (r) { return r.tipo === tipo; });
+
+  registros.forEach(function (r) {
+    var emp = empleados.filter(function (e) { return String(e.id) === String(r.empleado_id); })[0];
+    r.empleado_nombre = emp ? emp.nombre : '—';
+    r.fecha = r.fecha instanceof Date
+      ? Utilities.formatDate(r.fecha, Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm')
+      : String(r.fecha);
+  });
+  registros.sort(function (a, b) { return b.fecha > a.fecha ? 1 : -1; });
+  return registros.slice(0, 500);
 }
 
 
