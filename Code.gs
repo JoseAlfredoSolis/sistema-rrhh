@@ -3061,7 +3061,15 @@ function crearCarpetaEmpleado(empleadoId, token) {
   }
 }
 
-function listarDocumentos(empleadoId) {
+/**
+ * Lista los documentos (cédulas, contratos, certificados) de un empleado.
+ * Requiere permiso de escritura: son documentos personales sensibles, no
+ * de solo-consulta como la mayoría de los "listar*" del sistema.
+ */
+function listarDocumentos(empleadoId, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   try {
     var raiz = _getCarpetaRaizDocs();
     var emp  = leerTabla(HOJAS.EMPLEADOS).filter(function (e) {
