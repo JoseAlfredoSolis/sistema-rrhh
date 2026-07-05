@@ -1170,14 +1170,14 @@ function obtenerAlertas() {
   empleados.forEach(function (emp) {
     // Alerta: Cédula próxima a vencer (< 31 días)
     if (emp.vencimiento_cedula) {
-      var fechaCed = new Date(emp.vencimiento_cedula + 'T00:00:00');
+      var fechaCed = new Date(formatearFecha(emp.vencimiento_cedula) + 'T00:00:00');
       if (fechaCed >= hace31dias && fechaCed <= hoy) {
         alertas.push({
           tipo: 'cedula_vencida',
           empleado: emp.nombre,
           empleado_id: emp.id,
           mensaje: 'Cédula VENCIDA',
-          fecha: emp.vencimiento_cedula,
+          fecha: formatearFecha(emp.vencimiento_cedula),
           urgencia: 'crítica'
         });
       } else if (fechaCed > hoy && fechaCed <= new Date(hoy.getTime() + 31 * 24 * 60 * 60 * 1000)) {
@@ -1186,7 +1186,7 @@ function obtenerAlertas() {
           empleado: emp.nombre,
           empleado_id: emp.id,
           mensaje: 'Cédula próxima a vencer',
-          fecha: emp.vencimiento_cedula,
+          fecha: formatearFecha(emp.vencimiento_cedula),
           urgencia: 'alta'
         });
       }
@@ -1194,14 +1194,14 @@ function obtenerAlertas() {
 
     // Alerta: Licencia próxima a vencer
     if (emp.vencimiento_licencia) {
-      var fechaLic = new Date(emp.vencimiento_licencia + 'T00:00:00');
+      var fechaLic = new Date(formatearFecha(emp.vencimiento_licencia) + 'T00:00:00');
       if (fechaLic >= hace31dias && fechaLic <= hoy) {
         alertas.push({
           tipo: 'licencia_vencida',
           empleado: emp.nombre,
           empleado_id: emp.id,
           mensaje: 'Licencia de conducir VENCIDA',
-          fecha: emp.vencimiento_licencia,
+          fecha: formatearFecha(emp.vencimiento_licencia),
           urgencia: 'media'
         });
       } else if (fechaLic > hoy && fechaLic <= new Date(hoy.getTime() + 31 * 24 * 60 * 60 * 1000)) {
@@ -1210,7 +1210,7 @@ function obtenerAlertas() {
           empleado: emp.nombre,
           empleado_id: emp.id,
           mensaje: 'Licencia próxima a vencer',
-          fecha: emp.vencimiento_licencia,
+          fecha: formatearFecha(emp.vencimiento_licencia),
           urgencia: 'media'
         });
       }
@@ -2723,11 +2723,17 @@ function enviarWhatsappPlantilla(datos, token) {
 
 /**
  * Lista el historial de comunicaciones enviadas (más recientes primero),
- * opcionalmente filtrado por empleado y/o tipo.
+ * opcionalmente filtrado por empleado y/o tipo. Incluye teléfonos y
+ * contenido de mensajes, así que requiere permiso de escritura (no es
+ * de solo-consulta como la mayoría de los "listar*" del sistema).
  * @param {string} [empleadoId]
  * @param {string} [tipo] 'email' | 'whatsapp'
+ * @param {string} token
  */
-function listarComunicaciones(empleadoId, tipo) {
+function listarComunicaciones(empleadoId, tipo, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   var registros = leerTabla(HOJAS.COMUNICACIONES);
   var empleados = leerTabla(HOJAS.EMPLEADOS);
   if (empleadoId) registros = registros.filter(function (r) { return String(r.empleado_id) === String(empleadoId); });
@@ -3875,6 +3881,9 @@ function pagarCuotaPrestamo(id, token) {
   var rows = hoja.getDataRange().getValues();
   for (var i = 1; i < rows.length; i++) {
     if (String(rows[i][0]) === String(id)) {
+      if (String(rows[i][6]) === 'saldado') {
+        return { ok: false, mensaje: 'Este préstamo ya está saldado.' };
+      }
       var pagadas = (Number(rows[i][5]) || 0) + 1;
       var total   = Number(rows[i][3]) || 1;
       var estado  = pagadas >= total ? 'saldado' : 'activo';

@@ -20,6 +20,10 @@
   function _cargarHistorialComunicaciones() {
     var tipo = (document.getElementById('filtroTipoHistorial') || {}).value || null;
     llamarBackend('listarComunicaciones', [null, tipo], function (lista) {
+      if (lista && lista.ok === false) {
+        mostrarMensaje(lista.mensaje, 'error');
+        lista = [];
+      }
       var cuerpo = document.getElementById('cuerpoComunicaciones');
       cuerpo.innerHTML = '';
       document.getElementById('sinComunicaciones').classList.toggle('oculto', (lista || []).length > 0);
