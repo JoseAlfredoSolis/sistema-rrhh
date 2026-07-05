@@ -200,29 +200,6 @@
     }, 'Eliminar');
   }
 
-  // ── Configuración: API Key de CallMeBot ──────────────────────
-
-  function cargarConfigCallMeBot() {
-    llamarBackend('obtenerConfigCallMeBot', [], function (cfg) {
-      if (!cfg || cfg.ok === false) return;
-      var hint = document.getElementById('callmebotApiKeyHint');
-      if (hint) hint.textContent = cfg.tieneApiKey ? '(configurada: ' + cfg.apiKey + ')' : '(sin configurar)';
-    });
-  }
-
-  function toggleCallMeBotKey() {
-    var inp = document.getElementById('callmebotApiKey');
-    inp.type = inp.type === 'password' ? 'text' : 'password';
-  }
-
-  function guardarConfigCallMeBotUI() {
-    var cfg = { apiKey: document.getElementById('callmebotApiKey').value.trim() };
-    llamarBackend('guardarConfigCallMeBot', [cfg], function (res) {
-      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
-      if (res.ok) {
-        document.getElementById('callmebotApiKey').value = '';
-        cargarConfigCallMeBot();
-      }
-    });
-  }
+  // Nota: la API Key de CallMeBot se configura en Alertas → Notificaciones
+  // por WhatsApp (módulo compartido, ver Js_Alertas.html). No se duplica aquí.
 </script>

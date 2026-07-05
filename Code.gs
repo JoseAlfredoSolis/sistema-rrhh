@@ -2529,32 +2529,12 @@ function limpiarErrores(token) {
 // de poder recibir mensajes).
 // ===================================================================
 
-var CLAVE_CONFIG_CALLMEBOT = 'CONFIG_CALLMEBOT';
-
-function obtenerConfigCallMeBotInterno() {
-  var raw = PropertiesService.getScriptProperties().getProperty(CLAVE_CONFIG_CALLMEBOT);
-  var def = { apiKey: '' };
-  if (!raw) return def;
-  try { return Object.assign(def, JSON.parse(raw)); } catch (e) { return def; }
-}
-
-/** Devuelve la config de CallMeBot con la API Key enmascarada. Solo Admin. */
-function obtenerConfigCallMeBot(token) {
-  var _authErr = requiereAdmin(token);
-  if (_authErr) return _authErr;
-  var cfg = obtenerConfigCallMeBotInterno();
-  return { apiKey: enmascararSecreto(cfg.apiKey), tieneApiKey: !!cfg.apiKey };
-}
-
-/** Guarda la API Key de CallMeBot. Solo Admin. */
-function guardarConfigCallMeBot(cfg, token) {
-  var _authErr = requiereAdmin(token);
-  if (_authErr) return _authErr;
-  var actual = obtenerConfigCallMeBotInterno();
-  if (cfg && cfg.apiKey && String(cfg.apiKey).trim()) actual.apiKey = String(cfg.apiKey).trim();
-  PropertiesService.getScriptProperties().setProperty(CLAVE_CONFIG_CALLMEBOT, JSON.stringify(actual));
-  return { ok: true, mensaje: 'API Key de CallMeBot guardada.' };
-}
+// Nota: la configuración de CallMeBot (API Key) ya existe en el módulo
+// de Alertas (ver CONFIG_WHATSAPP / obtenerConfigWhatsAppInterno() más
+// abajo, sección "NOTIFICACIONES WHATSAPP"). Este módulo la reutiliza en
+// vez de mantener una segunda API Key duplicada — cada número de
+// WhatsApp solo tiene UNA API Key de CallMeBot, así que un segundo
+// campo de configuración sería redundante y confuso.
 
 /** Formatea un monto como colones (₡) sin depender de helpers del frontend. */
 function _formatoMonedaCRC(monto) {
@@ -2709,16 +2689,16 @@ function enviarWhatsappPlantilla(datos, token) {
   var _authErr = requiereEscritura(token);
   if (_authErr) return _authErr;
 
-  var cfg = obtenerConfigCallMeBotInterno();
-  if (!cfg.apiKey) {
-    return { ok: false, mensaje: 'Configura primero la API Key de CallMeBot en Configuración.' };
+  var cfgWhatsApp = obtenerConfigWhatsAppInterno();
+  if (!cfgWhatsApp.apikey) {
+    return { ok: false, mensaje: 'Configura primero la API Key de CallMeBot en Configuración > Notificaciones por WhatsApp.' };
   }
 
   if (!datos || !datos.empleado_id) return { ok: false, mensaje: 'Selecciona un empleado.' };
   var emp = _buscarEmpleadoRaw(datos.empleado_id);
   if (!emp) return { ok: false, mensaje: 'Empleado no encontrado.' };
 
-  var telefono = String(datos.telefonoOverride || emp.telefono || '').replace(/[^\d]/g, '');
+  var telefono = String(datos.telefonoOverride || emp.telefono || '').trim();
   if (!telefono) return { ok: false, mensaje: 'El empleado no tiene teléfono registrado.' };
 
   var cuerpoBase = datos.cuerpo || '';
@@ -2732,24 +2712,13 @@ function enviarWhatsappPlantilla(datos, token) {
   var mensaje = _reemplazarVariablesPlantilla(cuerpoBase, emp);
   if (!mensaje.trim()) return { ok: false, mensaje: 'El mensaje está vacío.' };
 
-  try {
-    var url = 'https://api.callmebot.com/whatsapp.php?phone=' + encodeURIComponent(telefono) +
-      '&text=' + encodeURIComponent(mensaje) + '&apikey=' + encodeURIComponent(cfg.apiKey);
-    var res = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
-    var codigo = res.getResponseCode();
-    var texto = res.getContentText();
+  // Reutiliza el envío/normalización de teléfono/truncado ya probados del
+  // módulo de Alertas — solo cambia el teléfono destino por el del empleado.
+  var res = _enviarWhatsApp(mensaje, { telefono: telefono, apikey: cfgWhatsApp.apikey }, { forzar: true });
 
-    if (codigo >= 200 && codigo < 300 && !/error/i.test(texto)) {
-      _registrarComunicacion('whatsapp', emp.id, telefono, '', mensaje, 'enviado', texto.slice(0, 200), token);
-      return { ok: true, mensaje: 'WhatsApp enviado a ' + telefono + '.' };
-    }
-    _registrarComunicacion('whatsapp', emp.id, telefono, '', mensaje, 'error', texto.slice(0, 200), token);
-    return { ok: false, mensaje: 'CallMeBot respondió con un error: ' + texto.slice(0, 200) };
-  } catch (e) {
-    _registrarComunicacion('whatsapp', emp.id, telefono, '', mensaje, 'error', e.message, token);
-    registrarErrorSistema('enviarWhatsappPlantilla', e.message, JSON.stringify(datos), token);
-    return { ok: false, mensaje: 'Error al enviar: ' + e.message };
-  }
+  _registrarComunicacion('whatsapp', emp.id, telefono, '', mensaje, res.ok ? 'enviado' : 'error', res.mensaje, token);
+  if (!res.ok) registrarErrorSistema('enviarWhatsappPlantilla', res.mensaje, JSON.stringify(datos), token);
+  return res;
 }
 
 /**

@@ -693,6 +693,8 @@
         <p class="config-ayuda">
           Elige un empleado y, si querés, una plantilla guardada — se rellena sola con
           los datos del empleado. También podés escribir el mensaje directo.
+          Para WhatsApp necesitás la API Key de CallMeBot configurada en
+          <strong>Alertas → Notificaciones por WhatsApp</strong>.
         </p>
         <div class="config-fila">
           <select id="comEmpleado">
@@ -980,28 +982,6 @@
           <button class="btn btn-secundario" onclick="probarConfigCorreo()">🧪 Enviar correo de prueba</button>
         </div>
         <div id="correoEstado" style="margin-top:10px"></div>
-      </div>
-
-      <!-- ──────────── WhatsApp (CallMeBot) ──────────── -->
-      <div class="config-bloque">
-        <h3>💬 WhatsApp (CallMeBot)</h3>
-        <p class="config-ayuda">
-          Para enviar WhatsApp desde <strong>Comunicaciones</strong> necesitas una API Key de
-          <a href="https://www.callmebot.com/blog/free-api-whatsapp-messages/" target="_blank" rel="noopener">CallMeBot</a>
-          (gratis). El número que la genera debe agregar el contacto de CallMeBot en WhatsApp y
-          enviarle el mensaje de activación una vez.
-        </p>
-        <div class="campo">
-          <label for="callmebotApiKey">API Key <span id="callmebotApiKeyHint" style="font-weight:400;color:var(--txt-3)"></span></label>
-          <div style="display:flex;gap:8px;align-items:center">
-            <input type="password" id="callmebotApiKey" placeholder="Pega aquí tu API Key de CallMeBot" style="flex:1">
-            <button type="button" class="btn btn-secundario" style="padding:8px 12px;font-size:13px" onclick="toggleCallMeBotKey()">👁</button>
-          </div>
-          <small style="color:var(--txt-3);font-size:12px;margin-top:4px;display:block">
-            Deja el campo vacío para mantener la key guardada actualmente.
-          </small>
-        </div>
-        <button class="btn btn-primario" onclick="guardarConfigCallMeBotUI()">Guardar API Key</button>
       </div>
 
       <!-- ──────────── Respaldo automático ──────────── -->
