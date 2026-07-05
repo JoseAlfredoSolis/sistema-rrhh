@@ -2675,7 +2675,10 @@ function enviarCorreoPlantilla(datos, token) {
 
   var asuntoBase = datos.asunto || '';
   var cuerpoBase = datos.cuerpo || '';
-  if (datos.plantilla_id) {
+  // Si viene plantilla_id pero el frontend ya mandó asunto/cuerpo (el usuario
+  // pudo haber editado el texto precargado), respetamos lo que mandó el
+  // frontend en vez de sobreescribirlo con el original guardado.
+  if (datos.plantilla_id && !cuerpoBase) {
     var plantilla = leerTabla(HOJAS.PLANTILLAS).filter(function (p) { return String(p.id) === String(datos.plantilla_id); })[0];
     if (!plantilla) return { ok: false, mensaje: 'Plantilla no encontrada.' };
     asuntoBase = plantilla.asunto;
@@ -2719,7 +2722,9 @@ function enviarWhatsappPlantilla(datos, token) {
   if (!telefono) return { ok: false, mensaje: 'El empleado no tiene teléfono registrado.' };
 
   var cuerpoBase = datos.cuerpo || '';
-  if (datos.plantilla_id) {
+  // Igual que en el correo: si el frontend ya mandó un cuerpo (posiblemente
+  // editado por el usuario), lo respetamos en vez de sobreescribirlo.
+  if (datos.plantilla_id && !cuerpoBase) {
     var plantilla = leerTabla(HOJAS.PLANTILLAS).filter(function (p) { return String(p.id) === String(datos.plantilla_id); })[0];
     if (!plantilla) return { ok: false, mensaje: 'Plantilla no encontrada.' };
     cuerpoBase = plantilla.cuerpo;

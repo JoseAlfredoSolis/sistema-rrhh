@@ -512,6 +512,13 @@
     });
   }
 
+  // Funciones cuyos argumentos pueden incluir PINs, API keys u otros
+  // secretos — nunca se incluyen en el registro de errores automático.
+  var _FUNCIONES_SENSIBLES = {
+    verificarPIN: true, guardarConfigRoles: true, guardarConfigCorreo: true,
+    guardarConfigCallMeBot: true, renovarSesion: true
+  };
+
   // ── Backend helper ────────────────────────────────────────
   function llamarBackend(fn, args, alExito) {
     mostrarCargando(true);
@@ -537,7 +544,8 @@
         }
         mostrarMensaje('Error: ' + msg, 'error');
         if (fn !== 'registrarErrorSistema') {
-          google.script.run.registrarErrorSistema(fn, msg, JSON.stringify(args.slice(0, -1)).slice(0, 500), SESSION_TOKEN || '');
+          var contexto = _FUNCIONES_SENSIBLES[fn] ? '(argumentos omitidos por seguridad)' : JSON.stringify(args.slice(0, -1)).slice(0, 500);
+          google.script.run.registrarErrorSistema(fn, msg, contexto, SESSION_TOKEN || '');
         }
       });
     runner[fn].apply(runner, args);
