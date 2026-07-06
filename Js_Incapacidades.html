@@ -22,8 +22,8 @@
     document.getElementById('sinIncapacidades').classList.toggle('oculto', INCAPACIDADES.length > 0);
     INCAPACIDADES.forEach(function(inc) {
       var acciones = puedeEditar()
-        ? '<button class="btn-mini" onclick="editarIncapacidad(\''+inc.id+'\')">Editar</button>' +
-          '<button class="btn-mini peligro" onclick="eliminarIncapacidadUI(\''+inc.id+'\')">Eliminar</button>'
+        ? '<button class="btn-mini" onclick="editarIncapacidad(\''+escaparAttr(inc.id)+'\')">Editar</button>' +
+          '<button class="btn-mini peligro" onclick="eliminarIncapacidadUI(\''+escaparAttr(inc.id)+'\')">Eliminar</button>'
         : '<span style="color:var(--txt-3);font-size:12px">Solo lectura</span>';
       var tr = document.createElement('tr');
       tr.innerHTML =

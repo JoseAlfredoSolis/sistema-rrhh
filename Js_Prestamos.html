@@ -22,8 +22,8 @@
       var pct = Number(p.cuotas) > 0 ? Math.round((Number(p.cuotas_pagadas)||0) / Number(p.cuotas) * 100) : 0;
       var estadoClass = p.estado === 'saldado' ? 'activo' : (p.estado === 'activo' ? 'pendiente' : 'inactivo');
       var acciones = puedeEditar()
-        ? (p.estado === 'saldado' ? '' : '<button class="btn-mini" onclick="pagarCuota(\''+p.id+'\')">✓ Cuota</button>') +
-          '<button class="btn-mini peligro" onclick="eliminarPrestamoUI(\''+p.id+'\')">Eliminar</button>'
+        ? (p.estado === 'saldado' ? '' : '<button class="btn-mini" onclick="pagarCuota(\''+escaparAttr(p.id)+'\')">✓ Cuota</button>') +
+          '<button class="btn-mini peligro" onclick="eliminarPrestamoUI(\''+escaparAttr(p.id)+'\')">Eliminar</button>'
         : '<span style="color:var(--txt-3);font-size:12px">Solo lectura</span>';
       var tr = document.createElement('tr');
       tr.innerHTML =

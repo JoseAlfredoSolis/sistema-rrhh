@@ -20,8 +20,8 @@
     HORAS_EXTRA.forEach(function(h) {
       var apClass = h.aprobado === 'aprobado' ? 'activo' : (h.aprobado === 'rechazado' ? 'inactivo' : 'pendiente');
       var acciones = puedeEditar()
-        ? '<button class="btn-mini" onclick="editarHoraExtra(\''+h.id+'\')">Editar</button>'+
-          '<button class="btn-mini peligro" onclick="eliminarHexUI(\''+h.id+'\')">Eliminar</button>'
+        ? '<button class="btn-mini" onclick="editarHoraExtra(\''+escaparAttr(h.id)+'\')">Editar</button>'+
+          '<button class="btn-mini peligro" onclick="eliminarHexUI(\''+escaparAttr(h.id)+'\')">Eliminar</button>'
         : '';
       var tr = document.createElement('tr');
       tr.innerHTML =

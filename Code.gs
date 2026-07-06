@@ -82,6 +82,10 @@ var COLS = (function () {
     EMP_ESTADO:      col('Empleados',     'estado'),
     EMP_SALARIO:     col('Empleados',     'salario'),
     EMP_CEDULA:      col('Empleados',     'cedula'),
+    EMP_TELEFONO:    col('Empleados',     'telefono'),
+    EMP_CUENTA_IBAN: col('Empleados',     'cuenta_iban'),
+    EMP_CARNE_CCSS:  col('Empleados',     'carne_ccss'),
+    EMP_LICENCIA:    col('Empleados',     'licencia_conducir'),
     EMP_ESTADO_IDX:  idx('Empleados',     'estado'),
     EMP_SALARIO_IDX: idx('Empleados',     'salario'),
     VAC_ESTADO:      col('Vacaciones',    'estado'),
@@ -101,6 +105,16 @@ function doGet(e) {
   if (e && e.parameter && e.parameter.setup === 'rrhh2024') {
     try {
       var url = ScriptApp.getService().getUrl();
+      // Solo funciona en una instalación nueva (sin PINs configurados todavía).
+      // Antes esto permitía resetear el PIN admin a "1234" en cualquier momento
+      // con solo conocer este parámetro de URL (visible en el código fuente
+      // público del repo) — una puerta trasera permanente. Una vez configurados
+      // los PINs, esta ruta queda inerte; para recuperar acceso perdido hay que
+      // entrar al editor de Apps Script (requiere la cuenta de Google dueña del
+      // proyecto) y borrar la propiedad de script CONFIG_ROLES manualmente.
+      if (_tienePinsConfigurados()) {
+        return HtmlService.createHtmlOutput('<body style="font-family:sans-serif;padding:40px"><h2 style="color:red">❌ Ya hay PINs configurados</h2><p>Esta ruta de instalación solo funciona en una instalación nueva sin PINs. Si perdiste el acceso de administrador, entra al editor de Apps Script de este proyecto (Extensiones → Apps Script) y borra la propiedad de script <code>CONFIG_ROLES</code> desde Configuración del proyecto → Propiedades del script.</p></body>');
+      }
       // Si viene con resetHoja, limpiar el ID guardado y usar la hoja ligada
       if (e.parameter.resetHoja === '1') {
         PropertiesService.getScriptProperties().deleteProperty('SPREADSHEET_ID');
@@ -422,6 +436,19 @@ function formatearFecha(valor) {
 }
 
 /**
+ * Fuerza formato de texto en los campos tipo "identificador" del empleado
+ * (cédula, teléfono, cuenta IBAN, carné CCSS, licencia de conducir) ANTES
+ * de escribir la fila. Si alguno de estos valores es puramente numérico
+ * (sin guiones ni espacios), Sheets lo interpretaría como número y le
+ * borraría los ceros a la izquierda, rompiendo comparaciones exactas
+ * (ej. detección de cédulas duplicadas) y la visualización.
+ */
+function _forzarTextoCamposIdEmpleado(hoja, filaIndex) {
+  [COLS.EMP_CEDULA, COLS.EMP_TELEFONO, COLS.EMP_CUENTA_IBAN, COLS.EMP_CARNE_CCSS, COLS.EMP_LICENCIA]
+    .forEach(function (col) { hoja.getRange(filaIndex, col).setNumberFormat('@'); });
+}
+
+/**
  * CREAR un empleado nuevo.
  * @param {Object} emp  datos del formulario.
  * @return {Object} {ok:boolean, mensaje:string, id?:string}
@@ -456,10 +483,7 @@ function crearEmpleado(emp, token) {
   ].concat(_camposExtraEmpleado(emp, null));
 
   var filaIndex = hoja.getLastRow() + 1;
-  // Forzar formato de texto en la cédula ANTES de escribir: si es puro numérica
-  // (sin guiones), Sheets la interpretaría como número y borraría ceros a la
-  // izquierda, rompiendo la detección de cédulas duplicadas y la visualización.
-  hoja.getRange(filaIndex, COLS.EMP_CEDULA).setNumberFormat('@');
+  _forzarTextoCamposIdEmpleado(hoja, filaIndex);
   hoja.getRange(filaIndex, 1, 1, fila.length).setValues([fila]);
   registrarBitacora('crear', 'Empleados', id, String(emp.nombre).trim());
   return { ok: true, mensaje: 'Empleado creado correctamente.', id: id };
@@ -539,7 +563,7 @@ function actualizarEmpleado(emp, token) {
     emp.telefono ? String(emp.telefono).trim() : (String(filaActual[9] || ''))
   ].concat(_camposExtraEmpleado(emp, filaActual));
 
-  hoja.getRange(fila, COLS.EMP_CEDULA).setNumberFormat('@');
+  _forzarTextoCamposIdEmpleado(hoja, fila);
   hoja.getRange(fila, 1, 1, valores.length).setValues([valores]);
 
   if (salarioAnterior !== salarioNuevo) {
@@ -1023,47 +1047,53 @@ function cambiarEstadoVacaciones(id, nuevoEstado, token) {
   if (['pendiente', 'aprobada', 'rechazada'].indexOf(nuevoEstado) === -1) {
     return { ok: false, mensaje: 'Estado no válido.' };
   }
-  var hoja = getHoja(HOJAS.VACACIONES);
-  var fila = buscarFilaPorId(hoja, id);
-  if (fila === -1) return { ok: false, mensaje: 'No se encontró la solicitud.' };
 
-  // Leer la solicitud actual
-  var datos = leerTabla(HOJAS.VACACIONES);
-  var solicitud = datos.filter(function (s) { return String(s.id) === String(id); })[0];
-  if (!solicitud) return { ok: false, mensaje: 'No se encontró la solicitud.' };
+  return conLock(function () {
+    var hoja = getHoja(HOJAS.VACACIONES);
+    var fila = buscarFilaPorId(hoja, id);
+    if (fila === -1) return { ok: false, mensaje: 'No se encontró la solicitud.' };
 
-  // Si es para aprobar, validar que hay días disponibles
-  if (nuevoEstado === 'aprobada') {
-    var balance = obtenerBalanceVacaciones(solicitud.empleado_id);
-    if (!balance.ok) return balance;
+    // Leer la solicitud actual
+    var datos = leerTabla(HOJAS.VACACIONES);
+    var solicitud = datos.filter(function (s) { return String(s.id) === String(id); })[0];
+    if (!solicitud) return { ok: false, mensaje: 'No se encontró la solicitud.' };
 
-    var diasSolicitud = Number(solicitud.dias) || 0;
-    if (diasSolicitud > balance.diasDisponibles) {
-      return {
-        ok: false,
-        mensaje: 'No se puede aprobar. El empleado tiene ' + balance.diasDisponibles +
-                 ' días disponibles, pero solicita ' + diasSolicitud + ' días.'
-      };
+    // Si es para aprobar, validar que hay días disponibles.
+    // Este chequeo y la escritura de abajo deben quedar dentro del mismo
+    // lock: sin esto, dos aprobaciones simultáneas podrían leer el mismo
+    // saldo disponible y aprobar ambas, superando los días acumulados.
+    if (nuevoEstado === 'aprobada') {
+      var balance = obtenerBalanceVacaciones(solicitud.empleado_id);
+      if (!balance.ok) return balance;
+
+      var diasSolicitud = Number(solicitud.dias) || 0;
+      if (diasSolicitud > balance.diasDisponibles) {
+        return {
+          ok: false,
+          mensaje: 'No se puede aprobar. El empleado tiene ' + balance.diasDisponibles +
+                   ' días disponibles, pero solicita ' + diasSolicitud + ' días.'
+        };
+      }
     }
-  }
 
-  hoja.getRange(fila, COLS.VAC_ESTADO).setValue(nuevoEstado);
+    hoja.getRange(fila, COLS.VAC_ESTADO).setValue(nuevoEstado);
 
-  registrarBitacora('modificar', 'Vacaciones', id,
-    'Estado cambió a: ' + nuevoEstado);
+    registrarBitacora('modificar', 'Vacaciones', id,
+      'Estado cambió a: ' + nuevoEstado);
 
-  if (nuevoEstado === 'aprobada' || nuevoEstado === 'rechazada') {
-    var filaDatos = hoja.getRange(fila, 1, 1, 5).getValues()[0];
-    try {
-      _notificarWhatsAppVacacionDecidida({
-        empleado_id: filaDatos[1],
-        fecha_inicio: filaDatos[2],
-        fecha_fin: filaDatos[3],
-        dias: filaDatos[4]
-      }, nuevoEstado);
-    } catch (e) {}
-  }
-  return { ok: true, mensaje: 'Solicitud ' + nuevoEstado + '.' };
+    if (nuevoEstado === 'aprobada' || nuevoEstado === 'rechazada') {
+      var filaDatos = hoja.getRange(fila, 1, 1, 5).getValues()[0];
+      try {
+        _notificarWhatsAppVacacionDecidida({
+          empleado_id: filaDatos[1],
+          fecha_inicio: filaDatos[2],
+          fecha_fin: filaDatos[3],
+          dias: filaDatos[4]
+        }, nuevoEstado);
+      } catch (e) {}
+    }
+    return { ok: true, mensaje: 'Solicitud ' + nuevoEstado + '.' };
+  });
 }
 
 
@@ -1079,7 +1109,10 @@ function cambiarEstadoVacaciones(id, nuevoEstado, token) {
  * @param {string} mesFiltro - Mes en formato "YYYY-MM" (null = todos)
  * @return {Object[]} registros con {id, empleado_id, empleado_nombre, salario_base, deducciones, neto, ...}
  */
-function listarNomina(mesFiltro) {
+function listarNomina(mesFiltro, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   var lista = leerTabla(HOJAS.NOMINA);
   var nombres = mapaEmpleados();
   lista.forEach(function (n) {
@@ -1113,13 +1146,6 @@ function generarNomina(n, token) {
     deducciones = null;
   }
 
-  // Evitar duplicados empleado+mes.
-  var existentes = leerTabla(HOJAS.NOMINA);
-  var dup = existentes.some(function (x) {
-    return String(x.empleado_id) === String(n.empleado_id) && String(x.mes) === String(n.mes);
-  });
-  if (dup) return { ok: false, mensaje: 'Ya existe nómina para ese empleado en ese mes.' };
-
   // Salario base = salario del empleado.
   var empleado = leerTabla(HOJAS.EMPLEADOS).filter(function (e) {
     return String(e.id) === String(n.empleado_id);
@@ -1138,13 +1164,24 @@ function generarNomina(n, token) {
   }
   var neto = Math.round((salarioBase - deducciones) * 100) / 100;
 
-  var hoja = getHoja(HOJAS.NOMINA);
-  var id = generarId('NOM');
-  hoja.appendRow([id, n.empleado_id, n.mes, salarioBase, deducciones, neto]);
-  try {
-    _notificarWhatsAppNominaGenerada(empleado, n.mes, salarioBase, deducciones, neto);
-  } catch (e) {}
-  return { ok: true, mensaje: 'Nómina generada (neto: ' + neto + ').', id: id };
+  return conLock(function () {
+    // Evitar duplicados empleado+mes. El chequeo y el appendRow deben
+    // quedar dentro del mismo lock: si no, dos solicitudes simultáneas
+    // podrían pasar ambas la validación y crear dos nóminas duplicadas.
+    var existentes = leerTabla(HOJAS.NOMINA);
+    var dup = existentes.some(function (x) {
+      return String(x.empleado_id) === String(n.empleado_id) && String(x.mes) === String(n.mes);
+    });
+    if (dup) return { ok: false, mensaje: 'Ya existe nómina para ese empleado en ese mes.' };
+
+    var hoja = getHoja(HOJAS.NOMINA);
+    var id = generarId('NOM');
+    hoja.appendRow([id, n.empleado_id, n.mes, salarioBase, deducciones, neto]);
+    try {
+      _notificarWhatsAppNominaGenerada(empleado, n.mes, salarioBase, deducciones, neto);
+    } catch (e) {}
+    return { ok: true, mensaje: 'Nómina generada (neto: ' + neto + ').', id: id };
+  });
 }
 
 /** Elimina un registro de nómina. */
@@ -2435,7 +2472,10 @@ function consultarAuditoria(entidad, entidadId, limite) {
   return registros;
 }
 
-function listarBitacora(limite) {
+function listarBitacora(limite, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   var registros = leerTabla(HOJAS.BITACORA);
   registros.forEach(function (r) {
     r.fecha = r.fecha instanceof Date
@@ -2762,7 +2802,10 @@ function listarComunicaciones(empleadoId, tipo, token) {
 // MÓDULO: HISTORIAL DE SALARIOS
 // ===================================================================
 
-function listarHistorialSalario(empleadoId) {
+function listarHistorialSalario(empleadoId, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   var historial = leerTabla(HOJAS.HISTORIAL_SALARIOS);
   var nombres = mapaEmpleados();
   if (empleadoId) {
@@ -3841,7 +3884,10 @@ function listarResumenAsistencia(mes) {
 // MÓDULO: PRÉSTAMOS A EMPLEADOS
 // ===================================================================
 
-function listarPrestamos(empleadoId, estado) {
+function listarPrestamos(empleadoId, estado, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   var rows = leerTabla(HOJAS.PRESTAMOS);
   if (empleadoId) rows = rows.filter(function (r) { return String(r.empleado_id) === String(empleadoId); });
   if (estado) rows = rows.filter(function (r) { return String(r.estado).toLowerCase() === String(estado).toLowerCase(); });
@@ -3892,23 +3938,25 @@ function pagarCuotaPrestamo(id, token) {
   var _authErr = requiereEscritura(token);
   if (_authErr) return _authErr;
 
-  var hoja = getHoja(HOJAS.PRESTAMOS);
-  var rows = hoja.getDataRange().getValues();
-  for (var i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]) === String(id)) {
-      if (String(rows[i][6]) === 'saldado') {
-        return { ok: false, mensaje: 'Este préstamo ya está saldado.' };
+  return conLock(function () {
+    var hoja = getHoja(HOJAS.PRESTAMOS);
+    var rows = hoja.getDataRange().getValues();
+    for (var i = 1; i < rows.length; i++) {
+      if (String(rows[i][0]) === String(id)) {
+        if (String(rows[i][6]) === 'saldado') {
+          return { ok: false, mensaje: 'Este préstamo ya está saldado.' };
+        }
+        var pagadas = (Number(rows[i][5]) || 0) + 1;
+        var total   = Number(rows[i][3]) || 1;
+        var estado  = pagadas >= total ? 'saldado' : 'activo';
+        hoja.getRange(i+1, 6).setValue(pagadas);
+        hoja.getRange(i+1, 7).setValue(estado);
+        registrarBitacora('actualizar', 'Prestamo', id, 'Cuota pagada ' + pagadas + '/' + total);
+        return { ok: true, mensaje: 'Cuota registrada (' + pagadas + '/' + total + ').' };
       }
-      var pagadas = (Number(rows[i][5]) || 0) + 1;
-      var total   = Number(rows[i][3]) || 1;
-      var estado  = pagadas >= total ? 'saldado' : 'activo';
-      hoja.getRange(i+1, 6).setValue(pagadas);
-      hoja.getRange(i+1, 7).setValue(estado);
-      registrarBitacora('actualizar', 'Prestamo', id, 'Cuota pagada ' + pagadas + '/' + total);
-      return { ok: true, mensaje: 'Cuota registrada (' + pagadas + '/' + total + ').' };
     }
-  }
-  return { ok: false, mensaje: 'No encontrado.' };
+    return { ok: false, mensaje: 'No encontrado.' };
+  });
 }
 
 function eliminarPrestamo(id, token) {
@@ -4264,10 +4312,14 @@ function eliminarFeriado(id, token) {
 //             monto | estado ('pendiente' | 'pagada') | notas
 // ===================================================================
 
-function listarLiquidaciones(empleadoId) {
+function listarLiquidaciones(empleadoId, estado, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   var rows  = leerTabla(HOJAS.LIQUIDACIONES);
   var empls = leerTabla(HOJAS.EMPLEADOS);
   if (empleadoId) rows = rows.filter(function (r) { return String(r.empleado_id) === String(empleadoId); });
+  if (estado) rows = rows.filter(function (r) { return String(r.estado).toLowerCase() === String(estado).toLowerCase(); });
   return rows.map(function (r) {
     var emp = empls.filter(function (e) { return String(e.id) === String(r.empleado_id); })[0] || {};
     r.fecha_salida  = formatearFecha(r.fecha_salida);

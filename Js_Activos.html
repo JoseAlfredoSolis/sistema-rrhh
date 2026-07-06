@@ -21,8 +21,8 @@
     ACTIVOS.forEach(function(a) {
       var estClass = a.estado === 'asignado' ? 'activo' : (a.estado === 'devuelto' ? 'inactivo' : 'pendiente');
       var acciones = puedeEditar()
-        ? '<button class="btn-mini" onclick="editarActivoUI(\''+a.id+'\')">Editar</button>'+
-          '<button class="btn-mini peligro" onclick="eliminarActivoUI(\''+a.id+'\')">Eliminar</button>'
+        ? '<button class="btn-mini" onclick="editarActivoUI(\''+escaparAttr(a.id)+'\')">Editar</button>'+
+          '<button class="btn-mini peligro" onclick="eliminarActivoUI(\''+escaparAttr(a.id)+'\')">Eliminar</button>'
         : '';
       var iconos = { equipo:'💻', uniforme:'👕', herramienta:'🔧', vehiculo:'🚗', otro:'📦' };
       var tr = document.createElement('tr');

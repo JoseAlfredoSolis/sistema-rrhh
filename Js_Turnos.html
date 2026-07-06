@@ -19,14 +19,14 @@
     document.getElementById('sinTurnos').classList.toggle('oculto', TURNOS.length > 0);
     TURNOS.forEach(function(t) {
       var acciones = puedeEditar()
-        ? '<button class="btn-mini" onclick="editarTurnoUI(\''+t.id+'\')">Editar</button>'+
-          '<button class="btn-mini peligro" onclick="eliminarTurnoUI(\''+t.id+'\')">Eliminar</button>'
+        ? '<button class="btn-mini" onclick="editarTurnoUI(\''+escaparAttr(t.id)+'\')">Editar</button>'+
+          '<button class="btn-mini peligro" onclick="eliminarTurnoUI(\''+escaparAttr(t.id)+'\')">Eliminar</button>'
         : '';
       var tr = document.createElement('tr');
       var celdas = DIAS_SEMANA.map(function(d) {
         var val = t[d]||'';
         return '<td style="font-size:11px;text-align:center;color:'+(val?'var(--txt-1)':'var(--txt-3)')+'">'+
-          (val || '—')+'</td>';
+          (val ? escapar(val) : '—')+'</td>';
       }).join('');
       tr.innerHTML =
         '<td>'+escapar(t.empleado_nombre)+'</td>'+

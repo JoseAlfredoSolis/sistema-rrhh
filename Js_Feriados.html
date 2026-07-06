@@ -21,7 +21,7 @@
       var d = new Date(f.fecha + 'T00:00:00');
       var diaSemana = isNaN(d.getTime()) ? '—' : dias[d.getDay()];
       var acciones = puedeEditar()
-        ? '<button class="btn-mini peligro" onclick="eliminarFeriadoUI(\''+f.id+'\')">Eliminar</button>'
+        ? '<button class="btn-mini peligro" onclick="eliminarFeriadoUI(\''+escaparAttr(f.id)+'\')">Eliminar</button>'
         : '<span style="color:var(--txt-3);font-size:12px">Solo lectura</span>';
       var tr = document.createElement('tr');
       tr.innerHTML =

@@ -21,8 +21,8 @@
     EVALUACIONES.forEach(function (e) {
       var calColor = e.calificacion >= 7 ? 'var(--ok)' : e.calificacion >= 5 ? 'var(--warn)' : 'var(--err)';
       var acciones = puedeEditar()
-        ? '<button class="btn-mini" onclick="editarEvaluacion(\'' + e.id + '\')">Editar</button>' +
-          '<button class="btn-mini peligro" onclick="eliminarEvaluacion(\'' + e.id + '\')">Eliminar</button>'
+        ? '<button class="btn-mini" onclick="editarEvaluacion(\'' + escaparAttr(e.id) + '\')">Editar</button>' +
+          '<button class="btn-mini peligro" onclick="eliminarEvaluacion(\'' + escaparAttr(e.id) + '\')">Eliminar</button>'
         : '<span style="color:var(--txt-3);font-size:var(--fs-xs)">Solo lectura</span>';
       var tr = document.createElement('tr');
       tr.innerHTML =

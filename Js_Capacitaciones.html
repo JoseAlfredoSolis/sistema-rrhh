@@ -28,8 +28,8 @@
         ? '<a href="' + escapar(c.certificado_url) + '" target="_blank" class="btn-mini">Ver</a>'
         : '<span style="color:var(--txt-3)">—</span>';
       var acciones = puedeEditar()
-        ? '<button class="btn-mini" onclick="editarCapacitacion(\'' + c.id + '\')">Editar</button>' +
-          '<button class="btn-mini peligro" onclick="eliminarCapacitacion(\'' + c.id + '\')">Eliminar</button>'
+        ? '<button class="btn-mini" onclick="editarCapacitacion(\'' + escaparAttr(c.id) + '\')">Editar</button>' +
+          '<button class="btn-mini peligro" onclick="eliminarCapacitacion(\'' + escaparAttr(c.id) + '\')">Eliminar</button>'
         : '<span style="color:var(--txt-3);font-size:12px">Solo lectura</span>';
       var tr = document.createElement('tr');
       tr.innerHTML =

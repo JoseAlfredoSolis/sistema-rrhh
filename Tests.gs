@@ -58,7 +58,12 @@ var PRUEBAS_REGISTRO = [
   { nombre: 'listarErrores exige rol Admin (rrhh no alcanza)',                  fn: test_listarErrores_soloAdmin },
   { nombre: 'pagarCuotaPrestamo bloquea un préstamo ya saldado (regresión)',    fn: test_pagarCuotaPrestamo_yaSaldado },
   { nombre: 'eliminarDepartamento respeta la integridad referencial',           fn: test_eliminarDepartamento_conEmpleados },
-  { nombre: 'crearVacaciones rechaza una solicitud que excede el saldo disponible', fn: test_crearVacaciones_saldoInsuficiente }
+  { nombre: 'crearVacaciones rechaza una solicitud que excede el saldo disponible', fn: test_crearVacaciones_saldoInsuficiente },
+  { nombre: 'listarNomina bloquea sin sesión válida',                          fn: test_listarNomina_bloqueaSinToken },
+  { nombre: 'listarPrestamos bloquea sin sesión válida',                       fn: test_listarPrestamos_bloqueaSinToken },
+  { nombre: 'listarLiquidaciones bloquea sin sesión válida',                   fn: test_listarLiquidaciones_bloqueaSinToken },
+  { nombre: 'listarHistorialSalario bloquea sin sesión válida',                fn: test_listarHistorialSalario_bloqueaSinToken },
+  { nombre: 'listarBitacora bloquea sin sesión válida',                        fn: test_listarBitacora_bloqueaSinToken }
 ];
 
 // ===================================================================
@@ -319,7 +324,7 @@ function test_pagarCuotaPrestamo_yaSaldado(ctx) {
   var creado = crearPrestamo({ empleado_id: ctx.empleadoId, monto: 100000, cuotas: 1, fecha: hoy() }, ctx.token);
   _assertOk(creado, 'No se pudo preparar el préstamo de prueba');
 
-  var lista = listarPrestamos(ctx.empleadoId, null);
+  var lista = listarPrestamos(ctx.empleadoId, null, ctx.token);
   var prestamo = lista[lista.length - 1];
   _assert(!!prestamo, 'Debería encontrarse el préstamo recién creado');
   ctx.prestamoId = prestamo.id;
@@ -341,4 +346,29 @@ function test_crearVacaciones_saldoInsuficiente(ctx) {
   var fin = Utilities.formatDate(new Date(new Date().getTime() + 300 * 24 * 60 * 60 * 1000), Session.getScriptTimeZone(), 'yyyy-MM-dd');
   var res = crearVacaciones({ empleado_id: ctx.empleadoId, fecha_inicio: inicio, fecha_fin: fin }, ctx.token);
   _assertFalla(res, 'Debería rechazar una solicitud de vacaciones que excede el saldo disponible');
+}
+
+function test_listarNomina_bloqueaSinToken(ctx) {
+  var res = listarNomina(null, '');
+  _assertFalla(res, 'listarNomina debería bloquear sin un token de sesión válido (expone salarios)');
+}
+
+function test_listarPrestamos_bloqueaSinToken(ctx) {
+  var res = listarPrestamos(null, null, '');
+  _assertFalla(res, 'listarPrestamos debería bloquear sin un token de sesión válido');
+}
+
+function test_listarLiquidaciones_bloqueaSinToken(ctx) {
+  var res = listarLiquidaciones(null, null, '');
+  _assertFalla(res, 'listarLiquidaciones debería bloquear sin un token de sesión válido');
+}
+
+function test_listarHistorialSalario_bloqueaSinToken(ctx) {
+  var res = listarHistorialSalario(null, '');
+  _assertFalla(res, 'listarHistorialSalario debería bloquear sin un token de sesión válido');
+}
+
+function test_listarBitacora_bloqueaSinToken(ctx) {
+  var res = listarBitacora(50, '');
+  _assertFalla(res, 'listarBitacora debería bloquear sin un token de sesión válido');
 }
