@@ -63,7 +63,9 @@ var PRUEBAS_REGISTRO = [
   { nombre: 'listarPrestamos bloquea sin sesión válida',                       fn: test_listarPrestamos_bloqueaSinToken },
   { nombre: 'listarLiquidaciones bloquea sin sesión válida',                   fn: test_listarLiquidaciones_bloqueaSinToken },
   { nombre: 'listarHistorialSalario bloquea sin sesión válida',                fn: test_listarHistorialSalario_bloqueaSinToken },
-  { nombre: 'listarBitacora bloquea sin sesión válida',                        fn: test_listarBitacora_bloqueaSinToken }
+  { nombre: 'listarBitacora bloquea sin sesión válida',                        fn: test_listarBitacora_bloqueaSinToken },
+  { nombre: 'paquete de plantillas profesionales tiene datos válidos',        fn: test_paquetePlantillasProfesionales_esValido },
+  { nombre: 'enviarComunicacionAmbos exige al menos un medio',                fn: test_enviarComunicacionAmbos_exigeAlMenosUnMedio }
 ];
 
 // ===================================================================
@@ -371,4 +373,27 @@ function test_listarHistorialSalario_bloqueaSinToken(ctx) {
 function test_listarBitacora_bloqueaSinToken(ctx) {
   var res = listarBitacora(50, '');
   _assertFalla(res, 'listarBitacora debería bloquear sin un token de sesión válido');
+}
+
+function test_paquetePlantillasProfesionales_esValido(ctx) {
+  var paquete = _paquetePlantillasProfesionales();
+  _assert(Array.isArray(paquete) && paquete.length > 0, 'El paquete de plantillas profesionales no debería estar vacío');
+  var nombres = {};
+  paquete.forEach(function (p) {
+    _assert(!!p.nombre, 'Cada plantilla del paquete debe tener nombre');
+    _assert(p.tipo === 'email' || p.tipo === 'whatsapp', 'Cada plantilla del paquete debe ser tipo email o whatsapp (' + p.nombre + ')');
+    _assert(!!p.cuerpo && p.cuerpo.trim().length > 0, 'Cada plantilla del paquete debe tener cuerpo (' + p.nombre + ')');
+    if (p.tipo === 'email') {
+      _assert(!!p.asunto, 'Toda plantilla de email del paquete debe tener asunto (' + p.nombre + ')');
+    }
+    nombres[p.nombre + '|' + p.tipo] = (nombres[p.nombre + '|' + p.tipo] || 0) + 1;
+  });
+  Object.keys(nombres).forEach(function (clave) {
+    _assertIgual(nombres[clave], 1, 'No debería haber nombre+tipo repetido en el paquete (' + clave + ')');
+  });
+}
+
+function test_enviarComunicacionAmbos_exigeAlMenosUnMedio(ctx) {
+  var res = enviarComunicacionAmbos({ empleado_id: ctx.empleadoId, email: false, whatsapp: false }, ctx.token);
+  _assertFalla(res, 'enviarComunicacionAmbos debería exigir al menos un medio (correo o WhatsApp)');
 }

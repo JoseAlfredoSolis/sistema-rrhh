@@ -717,36 +717,58 @@
       <div class="config-bloque">
         <h3>📤 Enviar mensaje</h3>
         <p class="config-ayuda">
-          Elige un empleado y, si querés, una plantilla guardada — se rellena sola con
-          los datos del empleado. También podés escribir el mensaje directo.
-          Para WhatsApp necesitás la API Key de CallMeBot configurada en
-          <strong>Alertas → Notificaciones por WhatsApp</strong>.
+          Elige un empleado, marcá por cuál(es) medio(s) enviar y, si querés, una plantilla
+          guardada para cada uno — se rellena sola con los datos del empleado. También podés
+          escribir el mensaje directo. Para WhatsApp necesitás la API Key de CallMeBot configurada
+          en <strong>Alertas → Notificaciones por WhatsApp</strong>.
         </p>
         <div class="config-fila">
           <select id="comEmpleado">
             <option value="">— Selecciona un empleado —</option>
           </select>
-          <select id="comTipo" onchange="cambiarTipoComunicacion()">
-            <option value="email">📧 Correo</option>
-            <option value="whatsapp">💬 WhatsApp</option>
-          </select>
-          <select id="comPlantilla" onchange="aplicarPlantillaAEnvio()">
-            <option value="">— Sin plantilla (mensaje libre) —</option>
-          </select>
         </div>
-        <div class="campo" id="comAsuntoWrap">
-          <label for="comAsunto">Asunto (solo correo)</label>
-          <input type="text" id="comAsunto" placeholder="Asunto del correo">
+        <div class="config-fila" style="align-items:center">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600">
+            <input type="checkbox" id="comCanalEmail" checked onchange="cambiarCanalesComunicacion()"> 📧 Correo
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600">
+            <input type="checkbox" id="comCanalWhatsapp" onchange="cambiarCanalesComunicacion()"> 💬 WhatsApp
+          </label>
         </div>
-        <div class="campo">
-          <label for="comCuerpo">Mensaje</label>
-          <textarea id="comCuerpo" rows="6" placeholder="Escribe el mensaje..."></textarea>
-          <p class="config-ayuda">
-            Variables disponibles: <code>{{nombre}}</code> <code>{{puesto}}</code>
-            <code>{{departamento}}</code> <code>{{cedula}}</code> <code>{{correo}}</code>
-            <code>{{telefono}}</code> <code>{{salario}}</code> <code>{{fecha_ingreso}}</code> <code>{{fecha}}</code>
-          </p>
+
+        <div id="comBloqueEmail">
+          <div class="config-fila">
+            <select id="comPlantillaEmail" onchange="aplicarPlantillaEmail()">
+              <option value="">— Sin plantilla (mensaje libre) —</option>
+            </select>
+          </div>
+          <div class="campo">
+            <label for="comAsunto">Asunto del correo</label>
+            <input type="text" id="comAsunto" placeholder="Asunto del correo">
+          </div>
+          <div class="campo">
+            <label for="comCuerpoEmail">Mensaje de correo</label>
+            <textarea id="comCuerpoEmail" rows="6" placeholder="Escribe el mensaje..."></textarea>
+          </div>
         </div>
+
+        <div id="comBloqueWhatsapp" class="oculto">
+          <div class="config-fila">
+            <select id="comPlantillaWhatsapp" onchange="aplicarPlantillaWhatsapp()">
+              <option value="">— Sin plantilla (mensaje libre) —</option>
+            </select>
+          </div>
+          <div class="campo">
+            <label for="comCuerpoWhatsapp">Mensaje de WhatsApp</label>
+            <textarea id="comCuerpoWhatsapp" rows="6" placeholder="Escribe el mensaje..."></textarea>
+          </div>
+        </div>
+
+        <p class="config-ayuda">
+          Variables disponibles: <code>{{nombre}}</code> <code>{{puesto}}</code>
+          <code>{{departamento}}</code> <code>{{cedula}}</code> <code>{{correo}}</code>
+          <code>{{telefono}}</code> <code>{{salario}}</code> <code>{{fecha_ingreso}}</code> <code>{{fecha}}</code>
+        </p>
         <button class="btn btn-primario" id="btnEnviarComunicacion" onclick="enviarComunicacion()">🚀 Enviar</button>
         <div id="comResultado" style="margin-top:10px;font-size:13px"></div>
       </div>
@@ -755,8 +777,14 @@
       <div class="config-bloque">
         <div class="barra-acciones">
           <h3 style="margin:0">📝 Plantillas guardadas</h3>
+          <button class="btn btn-secundario" onclick="cargarPlantillasProfesionalesUI()">✨ Cargar plantillas profesionales</button>
           <button class="btn btn-secundario" onclick="abrirFormPlantilla()">+ Nueva plantilla</button>
         </div>
+        <p class="config-ayuda">
+          "Cargar plantillas profesionales" agrega un paquete listo de avisos comunes
+          (bienvenida, vacaciones, cumpleaños, planilla, etc.) en correo y WhatsApp.
+          Se puede pulsar varias veces sin duplicar lo que ya exista.
+        </p>
         <div class="tabla-envoltorio" style="margin-top:12px">
           <table class="tabla">
             <thead><tr><th>Nombre</th><th>Tipo</th><th>Asunto</th><th class="no-print">Acciones</th></tr></thead>

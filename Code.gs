@@ -2769,6 +2769,176 @@ function enviarWhatsappPlantilla(datos, token) {
 }
 
 /**
+ * Envía una comunicación por correo y/o WhatsApp en una sola acción.
+ * Reutiliza enviarCorreoPlantilla/enviarWhatsappPlantilla (cada una ya
+ * valida sus propios datos y registra su propia entrada en el historial),
+ * así que aquí solo se decide a cuáles llamar y se combina el resultado.
+ * @param {Object} datos {empleado_id, email:boolean, whatsapp:boolean,
+ *   plantilla_id_email?, asunto?, cuerpo_email?, plantilla_id_whatsapp?, cuerpo_whatsapp?}
+ * @param {string} token
+ */
+function enviarComunicacionAmbos(datos, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
+  if (!datos || !datos.empleado_id) return { ok: false, mensaje: 'Selecciona un empleado.' };
+  if (!datos.email && !datos.whatsapp) {
+    return { ok: false, mensaje: 'Elige al menos un medio (correo o WhatsApp).' };
+  }
+
+  var resultados = {};
+  if (datos.email) {
+    resultados.email = enviarCorreoPlantilla({
+      empleado_id: datos.empleado_id,
+      plantilla_id: datos.plantilla_id_email,
+      asunto: datos.asunto,
+      cuerpo: datos.cuerpo_email
+    }, token);
+  }
+  if (datos.whatsapp) {
+    resultados.whatsapp = enviarWhatsappPlantilla({
+      empleado_id: datos.empleado_id,
+      plantilla_id: datos.plantilla_id_whatsapp,
+      cuerpo: datos.cuerpo_whatsapp
+    }, token);
+  }
+
+  var claves = Object.keys(resultados);
+  var todosOk = claves.every(function (k) { return resultados[k].ok; });
+  var etiquetas = { email: 'Correo', whatsapp: 'WhatsApp' };
+  var partes = claves.map(function (k) { return etiquetas[k] + ': ' + resultados[k].mensaje; });
+  return { ok: todosOk, mensaje: partes.join(' — '), detalle: resultados };
+}
+
+/**
+ * Crea un paquete de plantillas profesionales predefinidas (correo +
+ * WhatsApp) para los avisos más comunes de RRHH. Es idempotente: compara
+ * por nombre+tipo exactos, así que se puede pulsar el botón varias veces
+ * sin duplicar las plantillas ya creadas.
+ * @param {string} token
+ * @return {Object} {ok, mensaje, creadas}
+ */
+function crearPlantillasProfesionales(token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
+  var existentes = leerTabla(HOJAS.PLANTILLAS);
+  var yaExiste = {};
+  existentes.forEach(function (p) { yaExiste[p.nombre + '|' + p.tipo] = true; });
+
+  var paquete = _paquetePlantillasProfesionales();
+  var hoja = getHoja(HOJAS.PLANTILLAS);
+  var creadas = 0;
+  paquete.forEach(function (p) {
+    if (yaExiste[p.nombre + '|' + p.tipo]) return;
+    hoja.appendRow([generarId('PLT'), p.nombre, p.tipo, p.asunto || '', p.cuerpo]);
+    creadas++;
+  });
+
+  return {
+    ok: true,
+    mensaje: creadas > 0
+      ? 'Se agregaron ' + creadas + ' plantillas profesionales nuevas.'
+      : 'Las plantillas profesionales ya estaban creadas — no se agregó nada.',
+    creadas: creadas
+  };
+}
+
+/** Paquete de plantillas profesionales (correo + WhatsApp) para escenarios comunes de RRHH. */
+function _paquetePlantillasProfesionales() {
+  return [
+    { nombre: 'Bienvenida a la empresa', tipo: 'email',
+      asunto: '¡Bienvenido(a) al equipo, {{nombre}}!',
+      cuerpo: 'Estimado(a) {{nombre}},\n\n' +
+        'Bienvenido(a) a nuestro equipo. Es un gusto contar con vos a partir de hoy en el puesto de {{puesto}}, dentro del departamento de {{departamento}}.\n\n' +
+        'En los próximos días recibirás la información necesaria para tu inducción y el acceso a las herramientas de trabajo. Si tenés alguna duda, no dudes en escribirnos.\n\n' +
+        'Éxitos en esta nueva etapa.\n\n' +
+        'Saludos cordiales,\nRecursos Humanos' },
+    { nombre: 'Bienvenida a la empresa', tipo: 'whatsapp',
+      cuerpo: '👋 ¡Hola {{nombre}}! Te damos la bienvenida al equipo como {{puesto}}. Cualquier duda que tengas, contanos por acá. ¡Éxitos en tu nueva etapa! 🎉' },
+
+    { nombre: 'Vacaciones aprobadas', tipo: 'email',
+      asunto: 'Tu solicitud de vacaciones fue aprobada',
+      cuerpo: 'Estimado(a) {{nombre}},\n\n' +
+        'Te confirmamos que tu solicitud de vacaciones ha sido aprobada. Podés revisar el detalle de fechas y días disponibles directamente en el sistema.\n\n' +
+        'Que disfrutes tu descanso.\n\n' +
+        'Saludos,\nRecursos Humanos' },
+    { nombre: 'Vacaciones aprobadas', tipo: 'whatsapp',
+      cuerpo: '✅ ¡Hola {{nombre}}! Tus vacaciones fueron *aprobadas*. Revisá las fechas en el sistema. ¡Que las disfrutés! 🌴' },
+
+    { nombre: 'Vacaciones no aprobadas', tipo: 'email',
+      asunto: 'Sobre tu solicitud de vacaciones',
+      cuerpo: 'Estimado(a) {{nombre}},\n\n' +
+        'Te informamos que tu solicitud de vacaciones no pudo ser aprobada en las fechas indicadas. Te invitamos a conversar con tu jefatura o con Recursos Humanos para revisar otras fechas posibles.\n\n' +
+        'Saludos,\nRecursos Humanos' },
+    { nombre: 'Vacaciones no aprobadas', tipo: 'whatsapp',
+      cuerpo: 'Hola {{nombre}}, tu solicitud de vacaciones no pudo aprobarse en esas fechas. Conversemos para buscar otra fecha. 🗓️' },
+
+    { nombre: 'Documento próximo a vencer', tipo: 'email',
+      asunto: 'Recordatorio: documento próximo a vencer',
+      cuerpo: 'Estimado(a) {{nombre}},\n\n' +
+        'Te recordamos que uno de tus documentos personales está próximo a vencer. Por favor, actualizá la información con Recursos Humanos lo antes posible para mantener tu expediente al día.\n\n' +
+        'Gracias por tu atención.\n\n' +
+        'Saludos,\nRecursos Humanos' },
+    { nombre: 'Documento próximo a vencer', tipo: 'whatsapp',
+      cuerpo: '⚠️ Hola {{nombre}}, tenés un documento próximo a vencer. Por favor acercate a RRHH para actualizarlo. ¡Gracias!' },
+
+    { nombre: 'Pago de planilla realizado', tipo: 'email',
+      asunto: 'Tu pago de planilla ha sido procesado',
+      cuerpo: 'Estimado(a) {{nombre}},\n\n' +
+        'Te confirmamos que tu pago correspondiente a la planilla ha sido procesado con éxito. Podés consultar el detalle de tu comprobante con Recursos Humanos.\n\n' +
+        'Saludos,\nRecursos Humanos' },
+    { nombre: 'Pago de planilla realizado', tipo: 'whatsapp',
+      cuerpo: '💰 Hola {{nombre}}, tu pago de planilla ya fue procesado. Cualquier consulta, escribinos. ¡Buen día!' },
+
+    { nombre: 'Recordatorio de evaluación de desempeño', tipo: 'email',
+      asunto: 'Tu evaluación de desempeño se acerca',
+      cuerpo: 'Estimado(a) {{nombre}},\n\n' +
+        'Te recordamos que tu evaluación de desempeño está próxima a realizarse. Es un buen momento para repasar tus logros y metas del período.\n\n' +
+        'Cualquier duda, con gusto te ayudamos.\n\n' +
+        'Saludos,\nRecursos Humanos' },
+    { nombre: 'Recordatorio de evaluación de desempeño', tipo: 'whatsapp',
+      cuerpo: '📋 Hola {{nombre}}, tu evaluación de desempeño está por realizarse. ¡Te esperamos con toda la actitud! 💪' },
+
+    { nombre: 'Notificación de ajuste salarial', tipo: 'email',
+      asunto: 'Notificación de ajuste salarial',
+      cuerpo: 'Estimado(a) {{nombre}},\n\n' +
+        'Te informamos que se ha aplicado un ajuste a tu salario, efectivo a partir de esta fecha. El detalle estará reflejado en tu próximo comprobante de pago.\n\n' +
+        'Felicitaciones y gracias por tu trabajo.\n\n' +
+        'Saludos,\nRecursos Humanos' },
+    { nombre: 'Notificación de ajuste salarial', tipo: 'whatsapp',
+      cuerpo: '🎉 ¡Hola {{nombre}}! Se aplicó un ajuste a tu salario. Vas a verlo reflejado en tu próximo pago. ¡Felicidades!' },
+
+    { nombre: 'Feliz cumpleaños', tipo: 'email',
+      asunto: '¡Feliz cumpleaños, {{nombre}}!',
+      cuerpo: 'Estimado(a) {{nombre}},\n\n' +
+        'Todo el equipo te desea un muy feliz cumpleaños. Esperamos que sea un día especial rodeado de las personas que querés.\n\n' +
+        '¡Felicidades!\n\n' +
+        'Saludos,\nRecursos Humanos' },
+    { nombre: 'Feliz cumpleaños', tipo: 'whatsapp',
+      cuerpo: '🎉🎂 ¡Feliz cumpleaños, {{nombre}}! Que tengas un día increíble. ¡Un abrazo del equipo!' },
+
+    { nombre: 'Aniversario laboral', tipo: 'email',
+      asunto: '¡Gracias por otro año con nosotros, {{nombre}}!',
+      cuerpo: 'Estimado(a) {{nombre}},\n\n' +
+        'Hoy celebramos un año más desde que te uniste a la empresa como {{puesto}}. Gracias por tu dedicación y compromiso durante este tiempo.\n\n' +
+        'Esperamos seguir contando con vos por muchos años más.\n\n' +
+        'Saludos,\nRecursos Humanos' },
+    { nombre: 'Aniversario laboral', tipo: 'whatsapp',
+      cuerpo: '🏆 ¡Hola {{nombre}}! Hoy celebramos tu aniversario laboral. ¡Gracias por tu compromiso durante este tiempo! 🎉' },
+
+    { nombre: 'Comunicado general', tipo: 'email',
+      asunto: 'Comunicado importante',
+      cuerpo: 'Estimado(a) {{nombre}},\n\n' +
+        'Queremos compartirte la siguiente información: [escribí aquí el detalle del comunicado].\n\n' +
+        'Quedamos atentos a cualquier consulta.\n\n' +
+        'Saludos,\nRecursos Humanos' },
+    { nombre: 'Comunicado general', tipo: 'whatsapp',
+      cuerpo: '📢 Hola {{nombre}}, te compartimos un comunicado importante: [escribí aquí el detalle]. Cualquier duda, contanos.' }
+  ];
+}
+
+/**
  * Lista el historial de comunicaciones enviadas (más recientes primero),
  * opcionalmente filtrado por empleado y/o tipo. Incluye teléfonos y
  * contenido de mensajes, así que requiere permiso de escritura (no es

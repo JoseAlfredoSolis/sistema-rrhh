@@ -1,18 +1,19 @@
 <script>
   /* ============================================================
-     MÓDULO COMUNICACIONES — v1
-     Plantillas de correo/WhatsApp + envío + historial.
+     MÓDULO COMUNICACIONES — v2
+     Plantillas de correo/WhatsApp + envío por uno o ambos medios + historial.
      ============================================================ */
 
   var PLANTILLAS_CACHE = [];
 
   function cargarComunicaciones() {
     llenarSelectEmpleados('comEmpleado');
-    cambiarTipoComunicacion();
+    cambiarCanalesComunicacion();
     llamarBackend('listarPlantillas', [null], function (lista) {
       PLANTILLAS_CACHE = lista || [];
       _pintarPlantillas();
-      _llenarSelectPlantillasEnvio();
+      _llenarSelectPlantillasEmail();
+      _llenarSelectPlantillasWhatsapp();
     });
     _cargarHistorialComunicaciones();
   }
@@ -46,18 +47,18 @@
 
   // ── Enviar mensaje ──────────────────────────────────────────
 
-  function cambiarTipoComunicacion() {
-    var tipo = document.getElementById('comTipo').value;
-    document.getElementById('comAsuntoWrap').style.display = (tipo === 'email') ? '' : 'none';
-    _llenarSelectPlantillasEnvio();
+  function cambiarCanalesComunicacion() {
+    var email = document.getElementById('comCanalEmail').checked;
+    var whatsapp = document.getElementById('comCanalWhatsapp').checked;
+    document.getElementById('comBloqueEmail').classList.toggle('oculto', !email);
+    document.getElementById('comBloqueWhatsapp').classList.toggle('oculto', !whatsapp);
   }
 
-  function _llenarSelectPlantillasEnvio() {
-    var tipo = document.getElementById('comTipo').value;
-    var sel = document.getElementById('comPlantilla');
+  function _llenarSelectPlantillasEmail() {
+    var sel = document.getElementById('comPlantillaEmail');
     var valorActual = sel.value;
     sel.innerHTML = '<option value="">— Sin plantilla (mensaje libre) —</option>';
-    PLANTILLAS_CACHE.filter(function (p) { return p.tipo === tipo; }).forEach(function (p) {
+    PLANTILLAS_CACHE.filter(function (p) { return p.tipo === 'email'; }).forEach(function (p) {
       var opt = document.createElement('option');
       opt.value = p.id;
       opt.textContent = p.nombre;
@@ -66,25 +67,57 @@
     sel.value = valorActual;
   }
 
-  function aplicarPlantillaAEnvio() {
-    var id = document.getElementById('comPlantilla').value;
+  function _llenarSelectPlantillasWhatsapp() {
+    var sel = document.getElementById('comPlantillaWhatsapp');
+    var valorActual = sel.value;
+    sel.innerHTML = '<option value="">— Sin plantilla (mensaje libre) —</option>';
+    PLANTILLAS_CACHE.filter(function (p) { return p.tipo === 'whatsapp'; }).forEach(function (p) {
+      var opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = p.nombre;
+      sel.appendChild(opt);
+    });
+    sel.value = valorActual;
+  }
+
+  function aplicarPlantillaEmail() {
+    var id = document.getElementById('comPlantillaEmail').value;
     if (!id) return;
     var plantilla = PLANTILLAS_CACHE.filter(function (p) { return String(p.id) === String(id); })[0];
     if (!plantilla) return;
     document.getElementById('comAsunto').value = plantilla.asunto || '';
-    document.getElementById('comCuerpo').value = plantilla.cuerpo || '';
+    document.getElementById('comCuerpoEmail').value = plantilla.cuerpo || '';
+  }
+
+  function aplicarPlantillaWhatsapp() {
+    var id = document.getElementById('comPlantillaWhatsapp').value;
+    if (!id) return;
+    var plantilla = PLANTILLAS_CACHE.filter(function (p) { return String(p.id) === String(id); })[0];
+    if (!plantilla) return;
+    document.getElementById('comCuerpoWhatsapp').value = plantilla.cuerpo || '';
   }
 
   function enviarComunicacion() {
     if (!puedeEditar()) { mostrarMensaje('Sin permisos.', 'error'); return; }
     var empleadoId = document.getElementById('comEmpleado').value;
-    var tipo = document.getElementById('comTipo').value;
-    var plantillaId = document.getElementById('comPlantilla').value;
-    var asunto = document.getElementById('comAsunto').value.trim();
-    var cuerpo = document.getElementById('comCuerpo').value.trim();
+    var porEmail = document.getElementById('comCanalEmail').checked;
+    var porWhatsapp = document.getElementById('comCanalWhatsapp').checked;
 
     if (!empleadoId) { mostrarMensaje('Selecciona un empleado.', 'error'); return; }
-    if (!plantillaId && !cuerpo) { mostrarMensaje('Escribe un mensaje o elige una plantilla.', 'error'); return; }
+    if (!porEmail && !porWhatsapp) { mostrarMensaje('Marca al menos un medio (Correo o WhatsApp).', 'error'); return; }
+
+    var plantillaIdEmail = document.getElementById('comPlantillaEmail').value;
+    var asunto = document.getElementById('comAsunto').value.trim();
+    var cuerpoEmail = document.getElementById('comCuerpoEmail').value.trim();
+    var plantillaIdWhatsapp = document.getElementById('comPlantillaWhatsapp').value;
+    var cuerpoWhatsapp = document.getElementById('comCuerpoWhatsapp').value.trim();
+
+    if (porEmail && !plantillaIdEmail && !cuerpoEmail) {
+      mostrarMensaje('Escribe un mensaje de correo o elige una plantilla.', 'error'); return;
+    }
+    if (porWhatsapp && !plantillaIdWhatsapp && !cuerpoWhatsapp) {
+      mostrarMensaje('Escribe un mensaje de WhatsApp o elige una plantilla.', 'error'); return;
+    }
 
     var btn = document.getElementById('btnEnviarComunicacion');
     var resultado = document.getElementById('comResultado');
@@ -92,17 +125,36 @@
     btn.disabled = true;
     btn.textContent = 'Enviando...';
 
-    var datos = { empleado_id: empleadoId, plantilla_id: plantillaId || null, asunto: asunto, cuerpo: cuerpo };
-    var fn = tipo === 'whatsapp' ? 'enviarWhatsappPlantilla' : 'enviarCorreoPlantilla';
-
-    llamarBackend(fn, [datos], function (res) {
+    function terminar(res) {
       btn.disabled = false;
       btn.textContent = '🚀 Enviar';
       resultado.innerHTML = res.ok
         ? '<span style="color:var(--ok)">✅ ' + escapar(res.mensaje) + '</span>'
         : '<span style="color:var(--err)">❌ ' + escapar(res.mensaje) + '</span>';
       if (res.ok) _cargarHistorialComunicaciones();
-    });
+    }
+
+    // Un solo medio: usar las funciones simples de siempre.
+    if (porEmail && !porWhatsapp) {
+      llamarBackend('enviarCorreoPlantilla', [{
+        empleado_id: empleadoId, plantilla_id: plantillaIdEmail || null, asunto: asunto, cuerpo: cuerpoEmail
+      }], terminar);
+      return;
+    }
+    if (porWhatsapp && !porEmail) {
+      llamarBackend('enviarWhatsappPlantilla', [{
+        empleado_id: empleadoId, plantilla_id: plantillaIdWhatsapp || null, cuerpo: cuerpoWhatsapp
+      }], terminar);
+      return;
+    }
+
+    // Ambos medios a la vez.
+    llamarBackend('enviarComunicacionAmbos', [{
+      empleado_id: empleadoId,
+      email: true, whatsapp: true,
+      plantilla_id_email: plantillaIdEmail || null, asunto: asunto, cuerpo_email: cuerpoEmail,
+      plantilla_id_whatsapp: plantillaIdWhatsapp || null, cuerpo_whatsapp: cuerpoWhatsapp
+    }], terminar);
   }
 
   // ── Plantillas: listar / crear / editar / eliminar ──────────
@@ -168,6 +220,15 @@
     document.getElementById('modalPlantilla').classList.add('oculto');
   }
 
+  function _recargarPlantillas() {
+    llamarBackend('listarPlantillas', [null], function (lista) {
+      PLANTILLAS_CACHE = lista || [];
+      _pintarPlantillas();
+      _llenarSelectPlantillasEmail();
+      _llenarSelectPlantillasWhatsapp();
+    });
+  }
+
   function guardarPlantillaUI(event) {
     event.preventDefault();
     var datos = {
@@ -182,11 +243,7 @@
       mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
       if (res.ok) {
         cerrarModalPlantilla();
-        llamarBackend('listarPlantillas', [null], function (lista) {
-          PLANTILLAS_CACHE = lista || [];
-          _pintarPlantillas();
-          _llenarSelectPlantillasEnvio();
-        });
+        _recargarPlantillas();
       }
     });
   }
@@ -198,10 +255,25 @@
         if (res.ok) {
           PLANTILLAS_CACHE = PLANTILLAS_CACHE.filter(function (p) { return String(p.id) !== String(id); });
           _pintarPlantillas();
-          _llenarSelectPlantillasEnvio();
+          _llenarSelectPlantillasEmail();
+          _llenarSelectPlantillasWhatsapp();
         }
       });
     }, 'Eliminar');
+  }
+
+  function cargarPlantillasProfesionalesUI() {
+    if (!puedeEditar()) { mostrarMensaje('Sin permisos.', 'error'); return; }
+    confirmarAccion(
+      'Esto agrega un paquete de plantillas profesionales (bienvenida, vacaciones, cumpleaños, planilla, etc.) en correo y WhatsApp. Si ya existen no se duplican. ¿Continuar?',
+      function () {
+        llamarBackend('crearPlantillasProfesionales', [], function (res) {
+          mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+          if (res.ok) _recargarPlantillas();
+        });
+      },
+      'Cargar plantillas'
+    );
   }
 
   // Nota: la API Key de CallMeBot se configura en Alertas → Notificaciones
