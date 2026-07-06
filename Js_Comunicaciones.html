@@ -199,6 +199,7 @@
     document.getElementById('pltId').value = '';
     document.getElementById('modalPlantillaTitulo').textContent = 'Nueva plantilla';
     toggleAsuntoPlantilla();
+    _actualizarVistaPreviaPlantilla();
     document.getElementById('modalPlantilla').classList.remove('oculto');
   }
 
@@ -213,11 +214,56 @@
     document.getElementById('pltCuerpo').value = p.cuerpo || '';
     document.getElementById('modalPlantillaTitulo').textContent = 'Editar plantilla';
     toggleAsuntoPlantilla();
+    _actualizarVistaPreviaPlantilla();
     document.getElementById('modalPlantilla').classList.remove('oculto');
   }
 
   function cerrarModalPlantilla() {
     document.getElementById('modalPlantilla').classList.add('oculto');
+  }
+
+  // ── Vista previa en vivo (con datos de ejemplo, no llama al backend) ──
+
+  var PLANTILLA_DATOS_EJEMPLO = {
+    nombre: 'Juan Pérez Rodríguez',
+    cedula: '1-2345-6789',
+    puesto: 'Analista de Recursos Humanos',
+    departamento: 'Recursos Humanos',
+    correo: 'juan.perez@empresa.com',
+    telefono: '8888-8888',
+    salario: 650000,
+    fecha_ingreso: '2023-03-15'
+  };
+
+  // Réplica en el cliente de _reemplazarVariablesPlantilla (Code.gs) — solo
+  // para la vista previa instantánea del editor. El envío real siempre pasa
+  // por la función del backend con los datos verdaderos del empleado.
+  function _reemplazarVariablesPlantillaCliente(texto) {
+    if (!texto) return '';
+    var e = PLANTILLA_DATOS_EJEMPLO;
+    var mapa = {
+      nombre: e.nombre,
+      cedula: e.cedula,
+      puesto: e.puesto,
+      departamento: e.departamento,
+      correo: e.correo,
+      telefono: e.telefono,
+      salario: '₡' + Number(e.salario).toLocaleString('es-CR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
+      fecha_ingreso: e.fecha_ingreso,
+      fecha: new Date().toISOString().slice(0, 10)
+    };
+    return String(texto).replace(/\{\{\s*(\w+)\s*\}\}/g, function (m, campo) {
+      return (mapa[campo] !== undefined) ? mapa[campo] : m;
+    });
+  }
+
+  function _actualizarVistaPreviaPlantilla() {
+    var tipo = document.getElementById('pltTipo').value;
+    var asunto = document.getElementById('pltAsunto').value;
+    var cuerpo = document.getElementById('pltCuerpo').value;
+    document.getElementById('pltVistaPreviaAsuntoWrap').classList.toggle('oculto', tipo !== 'email');
+    document.getElementById('pltVistaPreviaAsunto').textContent = _reemplazarVariablesPlantillaCliente(asunto) || '(sin asunto)';
+    document.getElementById('pltVistaPreviaCuerpo').textContent = _reemplazarVariablesPlantillaCliente(cuerpo) || '(el mensaje aparecerá aquí)';
   }
 
   function _recargarPlantillas() {

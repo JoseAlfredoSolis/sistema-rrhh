@@ -816,36 +816,52 @@
 
       <!-- Modal: crear / editar plantilla -->
       <div id="modalPlantilla" class="modal oculto">
-        <div class="modal-contenido">
+        <div class="modal-contenido modal-contenido-ancho">
           <div class="modal-cabecera">
             <h2 id="modalPlantillaTitulo">Nueva plantilla</h2>
             <button class="cerrar" onclick="cerrarModalPlantilla()">&times;</button>
           </div>
           <form id="formPlantilla" onsubmit="guardarPlantillaUI(event)" novalidate>
             <input type="hidden" id="pltId">
-            <div class="campo">
-              <label for="pltNombre">Nombre *</label>
-              <input type="text" id="pltNombre" required>
-            </div>
-            <div class="campo">
-              <label for="pltTipo">Tipo *</label>
-              <select id="pltTipo" required onchange="toggleAsuntoPlantilla()">
-                <option value="email">📧 Correo</option>
-                <option value="whatsapp">💬 WhatsApp</option>
-              </select>
-            </div>
-            <div class="campo" id="pltAsuntoWrap">
-              <label for="pltAsunto">Asunto (solo correo)</label>
-              <input type="text" id="pltAsunto">
-            </div>
-            <div class="campo">
-              <label for="pltCuerpo">Cuerpo *</label>
-              <textarea id="pltCuerpo" rows="8" required></textarea>
-              <p class="config-ayuda">
-                Variables: <code>{{nombre}}</code> <code>{{puesto}}</code> <code>{{departamento}}</code>
-                <code>{{cedula}}</code> <code>{{correo}}</code> <code>{{telefono}}</code>
-                <code>{{salario}}</code> <code>{{fecha_ingreso}}</code> <code>{{fecha}}</code>
-              </p>
+            <div style="display:flex;gap:24px;flex-wrap:wrap">
+              <div style="flex:1 1 320px;min-width:280px">
+                <div class="campo">
+                  <label for="pltNombre">Nombre *</label>
+                  <input type="text" id="pltNombre" required>
+                </div>
+                <div class="campo">
+                  <label for="pltTipo">Tipo *</label>
+                  <select id="pltTipo" required onchange="toggleAsuntoPlantilla(); _actualizarVistaPreviaPlantilla()">
+                    <option value="email">📧 Correo</option>
+                    <option value="whatsapp">💬 WhatsApp</option>
+                  </select>
+                </div>
+                <div class="campo" id="pltAsuntoWrap">
+                  <label for="pltAsunto">Asunto (solo correo)</label>
+                  <input type="text" id="pltAsunto" oninput="_actualizarVistaPreviaPlantilla()">
+                </div>
+                <div class="campo">
+                  <label for="pltCuerpo">Cuerpo *</label>
+                  <textarea id="pltCuerpo" rows="10" required oninput="_actualizarVistaPreviaPlantilla()"></textarea>
+                  <p class="config-ayuda">
+                    Variables: <code>{{nombre}}</code> <code>{{puesto}}</code> <code>{{departamento}}</code>
+                    <code>{{cedula}}</code> <code>{{correo}}</code> <code>{{telefono}}</code>
+                    <code>{{salario}}</code> <code>{{fecha_ingreso}}</code> <code>{{fecha}}</code>
+                  </p>
+                </div>
+              </div>
+              <div style="flex:1 1 320px;min-width:280px">
+                <label style="font-weight:600;font-size:13px;color:var(--txt-2)">👁️ Vista previa (con datos de ejemplo)</label>
+                <p class="config-ayuda" style="margin-top:4px">
+                  Así se vería el mensaje con un empleado de ejemplo. El envío real usa los datos del empleado que elijas.
+                </p>
+                <div id="pltVistaPreviaAsuntoWrap" style="margin-bottom:10px">
+                  <div style="font-size:12px;color:var(--txt-3);margin-bottom:2px">Asunto</div>
+                  <div id="pltVistaPreviaAsunto" style="font-weight:600;padding:8px 10px;border:1px solid var(--border);border-radius:var(--r);background:var(--surface-2);min-height:20px"></div>
+                </div>
+                <div style="font-size:12px;color:var(--txt-3);margin-bottom:2px">Mensaje</div>
+                <div id="pltVistaPreviaCuerpo" style="white-space:pre-wrap;padding:10px;border:1px solid var(--border);border-radius:var(--r);background:var(--surface-2);min-height:220px;font-size:13px;overflow-wrap:anywhere"></div>
+              </div>
             </div>
             <div class="modal-pie">
               <button type="button" class="btn btn-secundario" onclick="cerrarModalPlantilla()">Cancelar</button>
