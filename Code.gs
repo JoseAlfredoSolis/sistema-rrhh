@@ -81,6 +81,7 @@ var COLS = (function () {
   return {
     EMP_ESTADO:      col('Empleados',     'estado'),
     EMP_SALARIO:     col('Empleados',     'salario'),
+    EMP_CEDULA:      col('Empleados',     'cedula'),
     EMP_ESTADO_IDX:  idx('Empleados',     'estado'),
     EMP_SALARIO_IDX: idx('Empleados',     'salario'),
     VAC_ESTADO:      col('Vacaciones',    'estado'),
@@ -454,7 +455,12 @@ function crearEmpleado(emp, token) {
     emp.telefono ? String(emp.telefono).trim() : ''
   ].concat(_camposExtraEmpleado(emp, null));
 
-  hoja.appendRow(fila);
+  var filaIndex = hoja.getLastRow() + 1;
+  // Forzar formato de texto en la cédula ANTES de escribir: si es puro numérica
+  // (sin guiones), Sheets la interpretaría como número y borraría ceros a la
+  // izquierda, rompiendo la detección de cédulas duplicadas y la visualización.
+  hoja.getRange(filaIndex, COLS.EMP_CEDULA).setNumberFormat('@');
+  hoja.getRange(filaIndex, 1, 1, fila.length).setValues([fila]);
   registrarBitacora('crear', 'Empleados', id, String(emp.nombre).trim());
   return { ok: true, mensaje: 'Empleado creado correctamente.', id: id };
 }
@@ -533,6 +539,7 @@ function actualizarEmpleado(emp, token) {
     emp.telefono ? String(emp.telefono).trim() : (String(filaActual[9] || ''))
   ].concat(_camposExtraEmpleado(emp, filaActual));
 
+  hoja.getRange(fila, COLS.EMP_CEDULA).setNumberFormat('@');
   hoja.getRange(fila, 1, 1, valores.length).setValues([valores]);
 
   if (salarioAnterior !== salarioNuevo) {

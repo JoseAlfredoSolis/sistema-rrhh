@@ -116,6 +116,9 @@
       <button class="nav-item" data-vista="errores"        data-tooltip="Errores"        onclick="mostrarVista('errores')">
         <span class="nav-icon">⚠️</span><span class="nav-label">Errores</span>
       </button>
+      <button class="nav-item" data-vista="pruebas"        data-tooltip="Pruebas"        onclick="mostrarVista('pruebas')">
+        <span class="nav-icon">🧪</span><span class="nav-label">Pruebas</span>
+      </button>
       <button class="nav-item" data-vista="configuracion"  data-tooltip="Configuración"  onclick="mostrarVista('configuracion')">
         <span class="nav-icon">⚙️</span><span class="nav-label">Configuración</span>
       </button>
@@ -681,6 +684,29 @@
         </table>
         <p id="sinErrores" class="sin-datos oculto">No hay errores registrados. 🎉</p>
       </div>
+    </section>
+
+    <!-- ============== VISTA: PRUEBAS ============== -->
+    <section id="vista-pruebas" class="vista oculto">
+      <div class="barra-acciones">
+        <h2 class="titulo-vista">Pruebas automatizadas</h2>
+        <button class="btn btn-primario" id="btnEjecutarPruebas" onclick="ejecutarPruebasUI()">▶️ Ejecutar pruebas</button>
+      </div>
+      <p class="config-ayuda">
+        Corre una suite de pruebas de regresión sobre el backend: valida cálculos
+        de liquidación, alertas, préstamos, vacaciones y permisos. Crea un
+        empleado y departamento de prueba (prefijo <code>ZZZPRUEBA_</code>) y los
+        elimina automáticamente al terminar, sin afectar tus datos reales.
+        Solo un administrador puede ejecutarla.
+      </p>
+      <p id="pruebasResumen" style="font-size:14px;margin:12px 0"></p>
+      <div class="tabla-envoltorio oculto" id="envoltorioPruebas">
+        <table class="tabla">
+          <thead><tr><th style="width:40px"></th><th>Prueba</th><th>Detalle</th><th style="width:80px">Duración</th></tr></thead>
+          <tbody id="cuerpoPruebas"></tbody>
+        </table>
+      </div>
+      <p id="sinPruebas" class="sin-datos">Pulsa "Ejecutar pruebas" para correr la suite.</p>
     </section>
 
     <!-- ============== VISTA: COMUNICACIONES ============== -->
@@ -1770,6 +1796,7 @@
   <?!= include('Js_Documentos'); ?>
   <?!= include('Js_Bitacora'); ?>
   <?!= include('Js_Errores'); ?>
+  <?!= include('Js_Pruebas'); ?>
   <?!= include('Js_Comunicaciones'); ?>
   <?!= include('Js_Prestamos'); ?>
   <?!= include('Js_HorasExtra'); ?>

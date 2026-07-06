@@ -1,0 +1,57 @@
+<script>
+  /* ============================================================
+     MÓDULO PRUEBAS AUTOMATIZADAS — v1
+     ============================================================ */
+
+  function cargarPruebas() {
+    // No ejecuta nada automáticamente: la suite crea/borra datos reales
+    // (aunque de prueba), así que solo corre cuando el usuario lo pide.
+  }
+
+  function ejecutarPruebasUI() {
+    if (!esAdmin()) { mostrarMensaje('Solo un administrador puede ejecutar las pruebas.', 'error'); return; }
+
+    var btn = document.getElementById('btnEjecutarPruebas');
+    var resumenEl = document.getElementById('pruebasResumen');
+    var cuerpo = document.getElementById('cuerpoPruebas');
+    btn.disabled = true;
+    btn.textContent = 'Ejecutando...';
+    resumenEl.textContent = '';
+    cuerpo.innerHTML = '';
+    document.getElementById('sinPruebas').classList.add('oculto');
+    document.getElementById('envoltorioPruebas').classList.add('oculto');
+
+    llamarBackend('ejecutarSuitePruebas', [], function (res) {
+      btn.disabled = false;
+      btn.textContent = '▶️ Ejecutar pruebas';
+      if (!res || res.ok === false) {
+        mostrarMensaje((res && res.mensaje) || 'No se pudo ejecutar la suite de pruebas.', 'error');
+        return;
+      }
+      _pintarResultadosPruebas(res);
+    });
+  }
+
+  function _pintarResultadosPruebas(res) {
+    var r = res.resumen;
+    var color = r.fallidas > 0 ? 'var(--err)' : 'var(--ok)';
+    document.getElementById('pruebasResumen').innerHTML =
+      '<span style="color:' + color + ';font-weight:600">' +
+      r.exitosas + ' / ' + r.total + ' pruebas exitosas' +
+      '</span> · ' + r.duracionMs + ' ms';
+
+    var cuerpo = document.getElementById('cuerpoPruebas');
+    cuerpo.innerHTML = '';
+    (res.detalles || []).forEach(function (d) {
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td style="text-align:center">' + (d.ok ? '<span style="color:var(--ok)">✅</span>' : '<span style="color:var(--err)">❌</span>') + '</td>' +
+        '<td>' + escapar(d.nombre) + '</td>' +
+        '<td style="font-size:var(--fs-xs);color:var(--err)">' + escapar(d.mensaje || '') + '</td>' +
+        '<td style="text-align:right;font-size:var(--fs-xs);color:var(--txt-3)">' + (d.ms || 0) + ' ms</td>';
+      cuerpo.appendChild(tr);
+    });
+    document.getElementById('envoltorioPruebas').classList.remove('oculto');
+    document.getElementById('sinPruebas').classList.toggle('oculto', (res.detalles || []).length > 0);
+  }
+</script>
