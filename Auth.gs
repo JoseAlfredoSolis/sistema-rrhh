@@ -73,14 +73,19 @@ var VENTANA_INTENTOS   = 900; // 15 min
  */
 var NIVEL_ROL = {
   consulta: 0,  // Solo lectura
+  empleado: 0,  // Alias de consulta (workflow)
   rrhh: 2,      // Edición (RRHH)
+  jefe_depto: 2, // Alias: mismo nivel que RRHH para aprobaciones de 1er nivel
+  jefe_rrhh: 2,  // Alias del rol PIN 'rrhh'
   admin: 5      // Control total
 };
 
 var PERMISOS_POR_ROL = {
+  consulta:   { ver_expediente: true, solicitar_vacaciones: false, ver_nomina: false },
   empleado:   { ver_expediente: true, solicitar_vacaciones: true, ver_nomina: false },
+  rrhh:       { ver_todo: true, editar_empleados: true, crear_nomina: true, aprobar_vacaciones: true },
   jefe_depto: { ver_depto: true, aprobar_vacaciones: true, ver_nomina_depto: true },
-  jefe_rrhh:  { ver_todo: true, editar_empleados: true, crear_nomina: true },
+  jefe_rrhh:  { ver_todo: true, editar_empleados: true, crear_nomina: true, aprobar_vacaciones: true },
   admin:      { acceso_total: true }
 };
 
@@ -209,6 +214,24 @@ function requiereAdmin(token) {
   return requiereAuth(token, 'admin');
 }
 
+/** Cualquier sesión válida (consulta / rrhh / admin). */
+function requiereSesion(token) {
+  var sesion = validarSesion(token);
+  if (!sesion.ok) return { ok: false, mensaje: sesion.mensaje };
+  return null;
+}
+
+/**
+ * Invalida el token en CacheService (logout real).
+ * Sin esto, un token filtrado solo caduca por TTL (8h).
+ */
+function cerrarSesion(token) {
+  if (token && String(token).trim()) {
+    CacheService.getScriptCache().remove(SESION_PREFIJO + String(token).trim());
+  }
+  return { ok: true, mensaje: 'Sesión cerrada.' };
+}
+
 function verificarPIN(pin, clienteId) {
   // PIN de arranque de un solo uso (para recuperación de acceso)
   var props = PropertiesService.getScriptProperties();
@@ -331,8 +354,16 @@ function requiereRol(token, rolRequerido) {
   var sesion = validarSesion(token);
   if (!sesion.ok) return sesion;
 
-  var nivelRequerido = NIVEL_ROL[rolRequerido] || 0;
-  var nivelUsuario = NIVEL_ROL[sesion.rol] || 0;
+  // Fail-closed: rol desconocido NO baja a 0 (antes cualquier sesión válida pasaba).
+  if (!Object.prototype.hasOwnProperty.call(NIVEL_ROL, rolRequerido)) {
+    return { ok: false, mensaje: 'Rol requerido desconocido: ' + rolRequerido };
+  }
+  if (!Object.prototype.hasOwnProperty.call(NIVEL_ROL, sesion.rol)) {
+    return { ok: false, mensaje: 'Rol de sesión no reconocido.' };
+  }
+
+  var nivelRequerido = NIVEL_ROL[rolRequerido];
+  var nivelUsuario = NIVEL_ROL[sesion.rol];
 
   if (nivelUsuario >= nivelRequerido) return { ok: true };
 

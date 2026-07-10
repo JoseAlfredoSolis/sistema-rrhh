@@ -292,7 +292,7 @@ function test_crearLiquidacion_flujoCompleto(ctx) {
 }
 
 function test_obtenerAlertas_noFalla(ctx) {
-  var alertas = obtenerAlertas();
+  var alertas = obtenerAlertas(ctx.token);
   _assert(Array.isArray(alertas), 'obtenerAlertas debería devolver un arreglo');
   alertas.forEach(function (a) {
     if (a.fecha) {
@@ -384,9 +384,8 @@ function test_buscarGlobal_bloqueaTokenInventado(ctx) {
 function test_listarEmpleadosSelect_ocultaSalarioSinSesion(ctx) {
   invalidarTodoCache(); // el empleado de prueba se creó recién; forzar lectura fresca
   var lista = listarEmpleadosSelect('');
-  var propio = lista.filter(function (e) { return String(e.id) === String(ctx.empleadoId); })[0];
-  _assert(!!propio, 'listarEmpleadosSelect debería seguir listando id/nombre sin sesión (necesario para poblar selects antes del login)');
-  _assert(!('salario' in propio), 'listarEmpleadosSelect no debería incluir el salario sin un token de sesión RRHH/Admin válido');
+  _assert(Array.isArray(lista) && lista.length === 0,
+    'listarEmpleadosSelect debería devolver vacío sin sesión válida');
 }
 
 function test_listarEmpleadosSelect_incluyeSalarioConSesion(ctx) {
