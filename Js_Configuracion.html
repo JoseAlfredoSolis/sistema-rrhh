@@ -94,9 +94,9 @@
 
   function pintarEstadoConexion(info) {
     var div = document.getElementById('estadoConexion');
-    if (info.error) {
+    if (info.ok === false || info.error) {
       div.className = 'config-estado error-conexion';
-      div.innerHTML = '❌ ' + escapar(info.error);
+      div.innerHTML = '❌ ' + escapar(info.error || info.mensaje);
       return;
     }
     var origen = info.usandoHojaLigada ? 'Hoja ligada al proyecto' : 'Hoja conectada por ID';

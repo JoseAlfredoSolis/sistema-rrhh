@@ -58,7 +58,9 @@
     _pendienteMotivo = null;
 
     if (p.accion === 'detalles') {
-      llamarBackend('calcularLiquidacion', [p.empleadoId, p.fechaSalida, motivoSalida], function(res) {
+      // Args 4-7 (null) rellenan hasta la posición de "token", que llamarBackend
+      // agrega automáticamente como último argumento de la llamada.
+      llamarBackend('calcularLiquidacion', [p.empleadoId, p.fechaSalida, motivoSalida, null, null, null, null], function(res) {
         if (!res.ok) { mostrarMensaje(res.mensaje, 'error'); return; }
         _mostrarModalDetallesLiquidacion(res);
       });

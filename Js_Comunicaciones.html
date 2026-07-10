@@ -10,6 +10,7 @@
     llenarSelectEmpleados('comEmpleado');
     cambiarCanalesComunicacion();
     llamarBackend('listarPlantillas', [null], function (lista) {
+      if (lista && lista.ok === false) { mostrarMensaje(lista.mensaje, 'error'); lista = []; }
       PLANTILLAS_CACHE = lista || [];
       _pintarPlantillas();
       _llenarSelectPlantillasEmail();
@@ -268,6 +269,7 @@
 
   function _recargarPlantillas() {
     llamarBackend('listarPlantillas', [null], function (lista) {
+      if (lista && lista.ok === false) { mostrarMensaje(lista.mensaje, 'error'); lista = []; }
       PLANTILLAS_CACHE = lista || [];
       _pintarPlantillas();
       _llenarSelectPlantillasEmail();

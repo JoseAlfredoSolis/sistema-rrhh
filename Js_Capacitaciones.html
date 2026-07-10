@@ -9,6 +9,7 @@
     llenarSelectEmpleadosFiltro('filtroEmpCap');
     var empId = (document.getElementById('filtroEmpCap') || {}).value || '';
     llamarBackend('listarCapacitaciones', [empId || null], function (lista) {
+      if (lista && lista.ok === false) { mostrarMensaje(lista.mensaje, 'error'); lista = []; }
       CAPACITACIONES = lista || [];
       _pintarCapacitaciones();
     });

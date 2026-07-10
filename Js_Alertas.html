@@ -5,6 +5,7 @@
 
   function cargarAlertas() {
     llamarBackend('obtenerConfigAlertas', [], function (cfg) {
+      if (cfg && cfg.ok === false) { mostrarMensaje(cfg.mensaje, 'error'); cfg = {}; }
       document.getElementById('alertaEmails').value              = cfg.destinatarios || '';
       document.getElementById('alertaVacActiva').checked         = !!cfg.vacacionesPendientesActiva;
       document.getElementById('alertaNomActiva').checked         = !!cfg.nominaMensualActiva;

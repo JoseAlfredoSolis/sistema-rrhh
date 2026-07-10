@@ -9,6 +9,7 @@
     llenarSelectEmpleadosFiltro('filtroEmpEva');
     var empId = (document.getElementById('filtroEmpEva') || {}).value || '';
     llamarBackend('listarEvaluaciones', [empId || null], function (lista) {
+      if (lista && lista.ok === false) { mostrarMensaje(lista.mensaje, 'error'); lista = []; }
       EVALUACIONES = lista || [];
       _pintarEvaluaciones();
     });

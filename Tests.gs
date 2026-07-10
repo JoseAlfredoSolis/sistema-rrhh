@@ -47,6 +47,8 @@ var PRUEBAS_REGISTRO = [
   { nombre: 'crearEmpleado rechaza datos incompletos',                         fn: test_crearEmpleado_datosIncompletos },
   { nombre: 'calcularLiquidacion funciona con la fecha real guardada en la hoja (regresión Date/Sheets)', fn: test_calcularLiquidacion_fechaDesdeSheet },
   { nombre: 'calcularLiquidacion rechaza fecha de salida anterior al ingreso',  fn: test_calcularLiquidacion_fechaInvalida },
+  { nombre: 'calcularLiquidacion bloquea sin sesión válida',                   fn: test_calcularLiquidacion_bloqueaSinToken },
+  { nombre: 'calcularLiquidacion aplica cesantía solo cuando el motivo es despido con responsabilidad patronal', fn: test_crearLiquidacion_respetaMotivoDespido },
   { nombre: 'crearLiquidacion guarda el monto calculado automáticamente',       fn: test_crearLiquidacion_flujoCompleto },
   { nombre: 'obtenerAlertas nunca produce fechas inválidas (regresión Date/Sheets)', fn: test_obtenerAlertas_noFalla },
   { nombre: '_reemplazarVariablesPlantilla sustituye las variables del empleado', fn: test_reemplazarVariablesPlantilla },
@@ -56,6 +58,17 @@ var PRUEBAS_REGISTRO = [
   { nombre: 'listarComunicaciones bloquea sin sesión válida',                   fn: test_listarComunicaciones_bloqueaSinToken },
   { nombre: 'listarDocumentos bloquea sin sesión válida',                       fn: test_listarDocumentos_bloqueaSinToken },
   { nombre: 'listarErrores exige rol Admin (rrhh no alcanza)',                  fn: test_listarErrores_soloAdmin },
+  { nombre: 'obtenerEmpleadoCompleto bloquea sin sesión válida',                fn: test_obtenerEmpleadoCompleto_bloqueaSinToken },
+  { nombre: 'obtenerEmpleadoCompleto funciona con sesión válida',               fn: test_obtenerEmpleadoCompleto_conSesionFunciona },
+  { nombre: 'obtenerBalanceVacaciones bloquea sin sesión válida',               fn: test_obtenerBalanceVacaciones_bloqueaSinToken },
+  { nombre: 'generarReporteNomina bloquea sin sesión válida',                   fn: test_generarReporteNomina_bloqueaSinToken },
+  { nombre: 'buscarGlobal bloquea con un token inventado (no solo vacío)',      fn: test_buscarGlobal_bloqueaTokenInventado },
+  { nombre: 'listarEmpleadosSelect oculta el salario sin sesión',               fn: test_listarEmpleadosSelect_ocultaSalarioSinSesion },
+  { nombre: 'listarEmpleadosSelect incluye el salario con sesión RRHH/Admin',   fn: test_listarEmpleadosSelect_incluyeSalarioConSesion },
+  { nombre: 'calcularCesantiaCompleta suma los días de cada año trabajado (no un único valor de tabla)', fn: test_calcularCesantiaCompleta_esAcumulativaPorAnio },
+  { nombre: 'calcularLiquidacion prorratea el aguinaldo desde diciembre, no desde la antigüedad total', fn: test_calcularLiquidacion_aguinaldoProrrateadoDesdeDiciembre },
+  { nombre: 'El bloqueo de PIN no usa la clave "anon" compartida cuando hay clienteId', fn: test_pinLockout_noUsaClaveAnonCompartida },
+  { nombre: 'El bloqueo de PIN no se comparte entre clientes distintos',              fn: test_pinLockout_clientesDistintosNoComparteBloqueo },
   { nombre: 'pagarCuotaPrestamo bloquea un préstamo ya saldado (regresión)',    fn: test_pagarCuotaPrestamo_yaSaldado },
   { nombre: 'eliminarDepartamento respeta la integridad referencial',           fn: test_eliminarDepartamento_conEmpleados },
   { nombre: 'crearVacaciones rechaza una solicitud que excede el saldo disponible', fn: test_crearVacaciones_saldoInsuficiente },
@@ -234,15 +247,35 @@ function test_crearEmpleado_datosIncompletos(ctx) {
 
 function test_calcularLiquidacion_fechaDesdeSheet(ctx) {
   var fechaSalida = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-  var res = calcularLiquidacion(ctx.empleadoId, fechaSalida, 'renuncia');
+  var res = calcularLiquidacion(ctx.empleadoId, fechaSalida, 'renuncia', null, null, null, null, ctx.token);
   _assertOk(res, 'calcularLiquidacion no debería fallar usando la fecha_ingreso tal como la devuelve la hoja');
   _assert(!isNaN(res.totalCalculado), 'totalCalculado no debería ser NaN (regresión: Date de Sheets + concatenación de string)');
   _assert(res.totalCalculado > 0, 'Con casi 2 años de antigüedad el total calculado debería ser mayor a 0');
 }
 
 function test_calcularLiquidacion_fechaInvalida(ctx) {
-  var res = calcularLiquidacion(ctx.empleadoId, '2000-01-01', 'renuncia'); // muy anterior al ingreso real
+  var res = calcularLiquidacion(ctx.empleadoId, '2000-01-01', 'renuncia', null, null, null, null, ctx.token); // muy anterior al ingreso real
   _assertFalla(res, 'Debería rechazar una fecha de salida anterior a la fecha de ingreso');
+}
+
+function test_calcularLiquidacion_bloqueaSinToken(ctx) {
+  var fechaSalida = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  var res = calcularLiquidacion(ctx.empleadoId, fechaSalida, 'renuncia', null, null, null, null, '');
+  _assertFalla(res, 'calcularLiquidacion debería bloquear sin un token de sesión válido');
+}
+
+function test_crearLiquidacion_respetaMotivoDespido(ctx) {
+  var fechaSalida = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  var renuncia = calcularLiquidacion(ctx.empleadoId, fechaSalida, 'renuncia', null, null, null, null, ctx.token);
+  _assertOk(renuncia, 'calcularLiquidacion con renuncia debería funcionar');
+  _assert(!renuncia.correspondeCesantia, 'Una renuncia no debería generar derecho a cesantía');
+
+  var despido = calcularLiquidacion(ctx.empleadoId, fechaSalida, 'despido_con_resp', null, null, null, null, ctx.token);
+  _assertOk(despido, 'calcularLiquidacion con despido_con_resp debería funcionar');
+  _assert(despido.correspondeCesantia, 'Un despido con responsabilidad patronal debería generar derecho a cesantía');
+  _assert(despido.cesantia > 0, 'La cesantía calculada para un despido con responsabilidad patronal debería ser mayor a 0');
+  _assert(despido.totalCalculado > renuncia.totalCalculado,
+    'El total de un despido con responsabilidad patronal debería ser mayor que el de una renuncia (regresión: crearLiquidacion no pasaba el motivo real)');
 }
 
 function test_crearLiquidacion_flujoCompleto(ctx) {
@@ -295,7 +328,7 @@ function test_guardarPlantilla_flujoValido(ctx) {
   _assert(!!res.id, 'guardarPlantilla debería devolver un id');
   ctx.plantillaId = res.id;
 
-  var lista = listarPlantillas('email');
+  var lista = listarPlantillas('email', ctx.token);
   var encontrada = lista.some(function (p) { return String(p.id) === String(ctx.plantillaId); });
   _assert(encontrada, 'listarPlantillas debería incluir la plantilla recién creada');
 }
@@ -320,6 +353,111 @@ function test_listarErrores_soloAdmin(ctx) {
   var tokenRrhh = crearSesion('rrhh');
   var res = listarErrores(tokenRrhh);
   _assertFalla(res, 'listarErrores debería exigir rol Admin — un token de rol "rrhh" no debería alcanzar');
+}
+
+function test_obtenerEmpleadoCompleto_bloqueaSinToken(ctx) {
+  var res = obtenerEmpleadoCompleto(ctx.empleadoId, '');
+  _assertIgual(res, null, 'obtenerEmpleadoCompleto no debería devolver datos (incluye salario) sin un token de sesión válido');
+}
+
+function test_obtenerEmpleadoCompleto_conSesionFunciona(ctx) {
+  var res = obtenerEmpleadoCompleto(ctx.empleadoId, ctx.token);
+  _assert(res && res.id === ctx.empleadoId, 'obtenerEmpleadoCompleto debería devolver los datos del empleado con una sesión válida');
+}
+
+function test_obtenerBalanceVacaciones_bloqueaSinToken(ctx) {
+  var res = obtenerBalanceVacaciones(ctx.empleadoId, '');
+  _assertFalla(res, 'obtenerBalanceVacaciones no debería exponer salario/valor de vacaciones sin un token de sesión válido');
+}
+
+function test_generarReporteNomina_bloqueaSinToken(ctx) {
+  var res = generarReporteNomina('2020-01', '');
+  _assertFalla(res, 'generarReporteNomina no debería exponer la nómina sin un token de sesión válido');
+}
+
+function test_buscarGlobal_bloqueaTokenInventado(ctx) {
+  var res = buscarGlobal(PRUEBA_PREFIJO, 'token-que-no-existe-en-cache');
+  _assert(Array.isArray(res) && res.length === 0,
+    'buscarGlobal debería devolver vacío con un token que no corresponde a ninguna sesión real (antes solo verificaba que no viniera vacío)');
+}
+
+function test_listarEmpleadosSelect_ocultaSalarioSinSesion(ctx) {
+  invalidarTodoCache(); // el empleado de prueba se creó recién; forzar lectura fresca
+  var lista = listarEmpleadosSelect('');
+  var propio = lista.filter(function (e) { return String(e.id) === String(ctx.empleadoId); })[0];
+  _assert(!!propio, 'listarEmpleadosSelect debería seguir listando id/nombre sin sesión (necesario para poblar selects antes del login)');
+  _assert(!('salario' in propio), 'listarEmpleadosSelect no debería incluir el salario sin un token de sesión RRHH/Admin válido');
+}
+
+function test_listarEmpleadosSelect_incluyeSalarioConSesion(ctx) {
+  invalidarTodoCache();
+  var lista = listarEmpleadosSelect(ctx.token);
+  var propio = lista.filter(function (e) { return String(e.id) === String(ctx.empleadoId); })[0];
+  _assert(propio && propio.salario === 550000, 'listarEmpleadosSelect debería incluir el salario con una sesión RRHH/Admin válida');
+}
+
+function test_pinLockout_noUsaClaveAnonCompartida(ctx) {
+  var clienteId = 'ZZZPRUEBAcliente' + Utilities.getUuid().replace(/-/g, '');
+  var clave = _claveIntentosPin(clienteId);
+  _assert(clave !== (CLAVE_PIN_ATTEMPTS + 'anon'),
+    'Con un clienteId válido, el bloqueo de PIN no debería caer en el bucket "anon" compartido por todos los visitantes ' +
+    '(regresión: antes, cualquier visitante sin credenciales podía bloquear el acceso de TODOS los demás fallando 5 PINs)');
+}
+
+function test_pinLockout_clientesDistintosNoComparteBloqueo(ctx) {
+  var clienteA = 'ZZZPRUEBAcliA' + Utilities.getUuid().replace(/-/g, '');
+  var clienteB = 'ZZZPRUEBAcliB' + Utilities.getUuid().replace(/-/g, '');
+  var claveA = _claveIntentosPin(clienteA);
+  var claveB = _claveIntentosPin(clienteB);
+  // Si Session.getActiveUser() no devuelve email (caso normal para un visitante
+  // anónimo de la webapp con login por PIN — el escenario que corrige este fix),
+  // cada clienteId debe generar una clave de bloqueo distinta.
+  if (claveA === (CLAVE_PIN_ATTEMPTS + 'anon') || claveB === (CLAVE_PIN_ATTEMPTS + 'anon')) {
+    _assert(false, 'No debería quedar ningún clienteId sin resolver a una clave propia (cayó en el bucket "anon" compartido)');
+  }
+  if (claveA !== claveB) {
+    // Caso esperado sin email de sesión: aislamiento por clienteId funcionando.
+    try {
+      for (var i = 0; i < MAX_INTENTOS_PIN; i++) _registrarIntentoFallido(clienteA);
+      _assert(_intentosBloqueados(clienteA), 'El cliente A debería quedar bloqueado tras agotar sus intentos');
+      _assert(!_intentosBloqueados(clienteB), 'El cliente B no debería verse afectado por los intentos fallidos del cliente A');
+    } finally {
+      _limpiarIntentosPin(clienteA);
+      _limpiarIntentosPin(clienteB);
+    }
+  }
+  // Si claveA === claveB, es porque Session.getActiveUser() devolvió un email real
+  // en este contexto de ejecución (ambos cayeron en la misma clave por email) —
+  // ese no es el escenario que este fix corrige, así que no hay nada más que probar aquí.
+}
+
+function test_calcularLiquidacion_aguinaldoProrrateadoDesdeDiciembre(ctx) {
+  // El empleado de prueba tiene ~2 años de antigüedad (fecha_ingreso en _pruebasSetup).
+  // Con fecha de salida el 15 de febrero, ya cobró el aguinaldo de diciembre y solo
+  // lleva ~2.5 meses del nuevo período (dic-nov) — el aguinaldo debe ser una fracción
+  // pequeña del salario mensual, NO un mes completo (que es lo que daba el bug: usaba
+  // la antigüedad total, topada en 12 meses, sin importar cuándo cae la salida).
+  var res = calcularLiquidacion(ctx.empleadoId, '2026-02-15', 'renuncia', null, null, null, null, ctx.token);
+  _assertOk(res, 'calcularLiquidacion debería funcionar con una fecha de salida en febrero');
+  _assert(res.aguinaldo > 0, 'Debería reconocer algún aguinaldo proporcional (empleado activo desde diciembre)');
+  _assert(res.aguinaldo < 550000 * 0.5,
+    'El aguinaldo por ~2.5 meses del período debería ser una fracción pequeña del salario mensual (550000), no cercano a un mes completo — recibido: ' + res.aguinaldo + ' (regresión del bug crítico: usaba antigüedad total en vez de meses desde diciembre)');
+}
+
+function test_calcularCesantiaCompleta_esAcumulativaPorAnio(ctx) {
+  // Menos de 3 meses: sin derecho.
+  _assertIgual(calcularCesantiaCompleta(1000, 60), 0, 'Menos de 3 meses no debería generar cesantía');
+  // Tramos especiales (Ley Protección al Trabajador): 3-6m → 7 días, 6-12m → 14 días (montos fijos).
+  _assertIgual(calcularCesantiaCompleta(1000, 120), 7000, '3 a 6 meses debería pagar 7 días fijos');
+  _assertIgual(calcularCesantiaCompleta(1000, 240), 14000, '6 a 12 meses debería pagar 14 días fijos');
+  // 5 años exactos: suma de años 1-5 = 19.5+20+20.5+21+21.24 = 102.24 días (no un único lookup).
+  _assertIgual(calcularCesantiaCompleta(1000, 1800), 102240,
+    'A 5 años la cesantía debería sumar los días de cada año (102.24 días), no un único valor de tabla (regresión del bug crítico)');
+  // 8 años exactos: tope de la tabla, suma de los 8 años = 167.74 días.
+  _assertIgual(calcularCesantiaCompleta(1000, 2880), 167740, 'A 8 años la cesantía debería alcanzar el tope de ~167.74 días');
+  // 10 años: topada en 8 años — debe dar el mismo total que exactamente 8 años, no menos.
+  _assertIgual(calcularCesantiaCompleta(1000, 3600), 167740,
+    'A 10 años la cesantía debe seguir topada en 8 años (167.74 días), nunca menos que a los 8 años exactos');
 }
 
 function test_pagarCuotaPrestamo_yaSaldado(ctx) {

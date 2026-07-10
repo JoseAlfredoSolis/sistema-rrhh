@@ -123,28 +123,45 @@ function obtenerConfigRolesInterno() {
   try { return Object.assign(def, JSON.parse(raw)); } catch (e) { return def; }
 }
 
-function _claveIntentosPin() {
+/**
+ * Clave de bloqueo por fuerza bruta. Preferimos el email de Google si está
+ * disponible (deploy con acceso restringido al dominio), pero esta es una
+ * webapp de acceso público con login por PIN, así que en el caso normal
+ * `Session.getActiveUser().getEmail()` viene vacío para TODOS los
+ * visitantes — antes de este fix, eso hacía que compartieran un único
+ * bucket 'anon': cualquier visitante sin credenciales que fallara 5 PINs
+ * bloqueaba el acceso para TODOS los demás usuarios anónimos (incluido el
+ * admin), un DoS trivial y repetible cada 15 minutos.
+ * `clienteId` es un identificador aleatorio que el navegador genera una
+ * vez por pestaña (ver Js_Comun.html) — no es una defensa perfecta (un
+ * atacante decidido puede generar uno nuevo en cada intento), pero evita
+ * que un solo visitante hostil bloquee a todos los demás.
+ */
+function _claveIntentosPin(clienteId) {
   try {
     var email = Session.getActiveUser().getEmail();
     if (email) return CLAVE_PIN_ATTEMPTS + email;
   } catch (e) {}
+  if (clienteId && /^[a-zA-Z0-9_-]{8,64}$/.test(String(clienteId))) {
+    return CLAVE_PIN_ATTEMPTS + 'c_' + String(clienteId);
+  }
   return CLAVE_PIN_ATTEMPTS + 'anon';
 }
 
-function _registrarIntentoFallido() {
+function _registrarIntentoFallido(clienteId) {
   var cache = CacheService.getScriptCache();
-  var clave = _claveIntentosPin();
+  var clave = _claveIntentosPin(clienteId);
   var n = Number(cache.get(clave) || 0) + 1;
   cache.put(clave, String(n), VENTANA_INTENTOS);
   return n;
 }
 
-function _limpiarIntentosPin() {
-  CacheService.getScriptCache().remove(_claveIntentosPin());
+function _limpiarIntentosPin(clienteId) {
+  CacheService.getScriptCache().remove(_claveIntentosPin(clienteId));
 }
 
-function _intentosBloqueados() {
-  return Number(CacheService.getScriptCache().get(_claveIntentosPin()) || 0) >= MAX_INTENTOS_PIN;
+function _intentosBloqueados(clienteId) {
+  return Number(CacheService.getScriptCache().get(_claveIntentosPin(clienteId)) || 0) >= MAX_INTENTOS_PIN;
 }
 
 function crearSesion(rol) {
@@ -192,13 +209,13 @@ function requiereAdmin(token) {
   return requiereAuth(token, 'admin');
 }
 
-function verificarPIN(pin) {
+function verificarPIN(pin, clienteId) {
   // PIN de arranque de un solo uso (para recuperación de acceso)
   var props = PropertiesService.getScriptProperties();
   var bootstrap = props.getProperty('BOOTSTRAP_PIN');
   if (bootstrap && String(pin).trim() === bootstrap) {
     props.deleteProperty('BOOTSTRAP_PIN');
-    _limpiarIntentosPin();
+    _limpiarIntentosPin(clienteId);
     return { rol: 'admin', token: crearSesion('admin') };
   }
 
@@ -217,21 +234,21 @@ function verificarPIN(pin) {
     return { rol: 'consulta', token: crearSesion('consulta'), mensaje: 'Modo solo lectura.' };
   }
 
-  if (_intentosBloqueados()) {
+  if (_intentosBloqueados(clienteId)) {
     return { rol: null, mensaje: 'Demasiados intentos fallidos. Espera 15 minutos.' };
   }
 
   var p = String(pin).trim();
   if (cfg.pinAdmin && _pinCoincide(p, cfg.pinAdmin)) {
-    _limpiarIntentosPin();
+    _limpiarIntentosPin(clienteId);
     return { rol: 'admin', token: crearSesion('admin') };
   }
   if (cfg.pinRrhh && _pinCoincide(p, cfg.pinRrhh)) {
-    _limpiarIntentosPin();
+    _limpiarIntentosPin(clienteId);
     return { rol: 'rrhh', token: crearSesion('rrhh') };
   }
 
-  var intentos = _registrarIntentoFallido();
+  var intentos = _registrarIntentoFallido(clienteId);
   var restantes = Math.max(0, MAX_INTENTOS_PIN - intentos);
   return {
     rol: null,

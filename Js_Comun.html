@@ -33,6 +33,21 @@
     } catch (e) {}
   }
 
+  // ── Identificador de cliente (para el límite de intentos de PIN) ──
+  // Un id aleatorio por pestaña, NO una credencial. Evita que el bloqueo por
+  // fuerza bruta del PIN se comparta entre todos los visitantes sin sesión
+  // (antes, cualquiera sin credenciales podía bloquear a todos los demás
+  // usuarios anónimos fallando 5 PINs, ya que compartían un único contador).
+  function _obtenerClienteId() {
+    var id = _leerStorage('session', 'rrhh-cliente-id');
+    if (!id) {
+      id = (crypto && crypto.randomUUID) ? crypto.randomUUID().replace(/-/g, '')
+        : (Date.now().toString(36) + Math.random().toString(36).slice(2)).replace(/[^a-zA-Z0-9]/g, '');
+      _guardarStorage('session', 'rrhh-cliente-id', id);
+    }
+    return id;
+  }
+
   var CARGADORES = {
     dashboard:      function () { cargarDashboard(); },
     empleados:      function () { cargarEmpleados(); },
@@ -176,6 +191,7 @@
           if (res && res.ok && res.token) {
             guardarTokenSesion(res.token);
             establecerRol(res.rol);
+            refrescarEmpleadosSelect(); // ahora con sesión real: incluye salario si el rol alcanza
           } else {
             mostrarModalPin();
           }
@@ -260,7 +276,7 @@
 
   function cerrarModalPin() {
     document.getElementById('modalPin').classList.add('oculto');
-    llamarBackend('verificarPIN', [''], function (res) {
+    llamarBackend('verificarPIN', ['', _obtenerClienteId()], function (res) {
       if (res && res.token) guardarTokenSesion(res.token);
       establecerRol((res && res.rol) ? res.rol : 'consulta');
       if (res && res.sinPin) mostrarMensaje(res.mensaje, 'error');
@@ -269,7 +285,7 @@
 
   function verificarPinUI() {
     var pin = document.getElementById('pinInput').value;
-    llamarBackend('verificarPIN', [pin], function (res) {
+    llamarBackend('verificarPIN', [pin, _obtenerClienteId()], function (res) {
       if (!res.rol) {
         document.getElementById('pinError').textContent = res.mensaje || 'PIN incorrecto.';
         return;
@@ -277,6 +293,7 @@
       document.getElementById('modalPin').classList.add('oculto');
       if (res.token) guardarTokenSesion(res.token);
       establecerRol(res.rol);
+      refrescarEmpleadosSelect(); // ahora con sesión real: incluye salario si el rol alcanza
     });
   }
 
@@ -458,7 +475,7 @@
         if (callback) callback();
       })
       .withFailureHandler(function () { if (callback) callback(); })
-      .listarEmpleadosSelect();
+      .listarEmpleadosSelect(SESSION_TOKEN || _leerStorage('session', 'rrhh-token'));
   }
 
   function llenarSelectEmpleados(idSelect) {

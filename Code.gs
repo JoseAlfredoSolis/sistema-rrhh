@@ -991,7 +991,7 @@ function crearVacaciones(v, token) {
 
   return conLock(function () {
     // Validaciones de saldo y solapamiento dentro del lock para evitar race conditions
-    var balance = obtenerBalanceVacaciones(v.empleado_id);
+    var balance = _obtenerBalanceVacacionesInterno(v.empleado_id);
     if (!balance.ok) return balance;
 
     if (dias > balance.diasDisponibles) {
@@ -1063,7 +1063,7 @@ function cambiarEstadoVacaciones(id, nuevoEstado, token) {
     // lock: sin esto, dos aprobaciones simultáneas podrían leer el mismo
     // saldo disponible y aprobar ambas, superando los días acumulados.
     if (nuevoEstado === 'aprobada') {
-      var balance = obtenerBalanceVacaciones(solicitud.empleado_id);
+      var balance = _obtenerBalanceVacacionesInterno(solicitud.empleado_id);
       if (!balance.ok) return balance;
 
       var diasSolicitud = Number(solicitud.dias) || 0;
@@ -1426,13 +1426,18 @@ function mapaEmpleados() {
 
 /**
  * Lista de empleados ACTIVOS reducida para llenar los <select>
- * de los demás módulos: [{id, nombre}, ...].
+ * de los demás módulos: [{id, nombre}, ...]. Se llama antes de que exista
+ * sesión (para poblar los selects incluso sin PIN), así que el salario solo
+ * se incluye si el token corresponde a una sesión RRHH/Admin real.
  */
-function listarEmpleadosSelect() {
+function listarEmpleadosSelect(token) {
+  var conSalario = !requiereEscritura(token);
   return leerTablaConCache(HOJAS.EMPLEADOS)
     .filter(function (e) { return estadoNormalizado(e.estado) === 'activo'; })
     .map(function (e) {
-      return { id: e.id, nombre: e.nombre, salario: Number(e.salario) || 0 };
+      var out = { id: e.id, nombre: e.nombre };
+      if (conSalario) out.salario = Number(e.salario) || 0;
+      return out;
     });
 }
 
@@ -1601,7 +1606,10 @@ function obtenerConfigCorreoInterno() {
   try { return Object.assign(def, JSON.parse(raw)); } catch (e) { return def; }
 }
 
-function obtenerConfigCorreo() {
+function obtenerConfigCorreo(token) {
+  var _authErr = requiereAdmin(token);
+  if (_authErr) return _authErr;
+
   var cfg = obtenerConfigCorreoInterno();
   cfg.apiKey = enmascararSecreto(cfg.apiKey);
   return cfg;
@@ -1629,7 +1637,7 @@ function probarConfigCorreo(token) {
   if (_authErr) return _authErr;
 
   var destino = Session.getActiveUser().getEmail();
-  if (!destino) destino = obtenerConfigAlertas().destinatarios.split(',')[0].trim();
+  if (!destino) destino = obtenerConfigAlertasInterno().destinatarios.split(',')[0].trim();
   if (!destino) return { ok: false, mensaje: 'No se pudo determinar el correo del destinatario. Configura los destinatarios en la sección Alertas.' };
 
   try {
@@ -1643,8 +1651,14 @@ function probarConfigCorreo(token) {
   }
 }
 
-/** Devuelve la configuración de alertas desde PropertiesService. */
-function obtenerConfigAlertas() {
+/**
+ * Uso interno (sin token) — llamado desde triggers programados y otros
+ * flujos del servidor (verificarAlertas, probarAlerta, probarConfigCorreo)
+ * que corren sin sesión de usuario. El wrapper público
+ * `obtenerConfigAlertas(token)` de abajo es el único punto de entrada
+ * autorizado desde el frontend.
+ */
+function obtenerConfigAlertasInterno() {
   var raw = PropertiesService.getScriptProperties().getProperty(CLAVE_CONFIG_ALERTAS);
   var def = {
     destinatarios:              '',
@@ -1656,6 +1670,13 @@ function obtenerConfigAlertas() {
   };
   if (!raw) return def;
   try { return Object.assign(def, JSON.parse(raw)); } catch (e) { return def; }
+}
+
+/** Versión pública: exige sesión de Admin porque expone los correos internos de RRHH. */
+function obtenerConfigAlertas(token) {
+  var _authErr = requiereAdmin(token);
+  if (_authErr) return _authErr;
+  return obtenerConfigAlertasInterno();
 }
 
 /** Guarda la configuración de alertas. */
@@ -1683,7 +1704,7 @@ function verificarAlertas() {
     }
   }
 
-  var cfg    = obtenerConfigAlertas();
+  var cfg    = obtenerConfigAlertasInterno();
   var emails = cfg.destinatarios.split(',').map(function (e) { return e.trim(); }).filter(Boolean);
   var waCfg  = obtenerConfigWhatsAppInterno();
   var waListo = waCfg.activo && waCfg.telefono && waCfg.apikey;
@@ -1911,7 +1932,7 @@ function probarAlerta(tipo, token) {
   var _authErr = requiereEscritura(token);
   if (_authErr) return _authErr;
 
-  var cfg    = obtenerConfigAlertas();
+  var cfg    = obtenerConfigAlertasInterno();
   var emails = cfg.destinatarios.split(',').map(function (e) { return e.trim(); }).filter(Boolean);
   if (!emails.length) return { ok: false, mensaje: 'Agrega al menos un destinatario antes de probar.' };
 
@@ -2197,7 +2218,10 @@ function _claveDuplicado(tab, fila) {
  *
  * @return {Object} información para la pantalla de Configuración.
  */
-function obtenerConfiguracion() {
+function obtenerConfiguracion(token) {
+  var _authErr = requiereAdmin(token);
+  if (_authErr) return _authErr;
+
   var idGuardado = PropertiesService.getScriptProperties().getProperty(CLAVE_ID_HOJA);
 
   var info = {
@@ -2446,7 +2470,10 @@ function registrarBitacora(accion, entidad, entidadId, resumen, cambios) {
  * @param {number} [limite] - Máximo de registros a devolver (default 100)
  * @return {Object[]} Registros de auditoría
  */
-function consultarAuditoria(entidad, entidadId, limite) {
+function consultarAuditoria(entidad, entidadId, limite, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   var registros = leerTabla(HOJAS.BITACORA) || [];
 
   if (entidad) {
@@ -2615,7 +2642,10 @@ function _reemplazarVariablesPlantilla(texto, emp) {
 }
 
 /** Lista las plantillas guardadas, opcionalmente filtradas por tipo ('email'|'whatsapp'). */
-function listarPlantillas(tipo) {
+function listarPlantillas(tipo, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   var plantillas = leerTabla(HOJAS.PLANTILLAS);
   if (tipo) plantillas = plantillas.filter(function (p) { return p.tipo === tipo; });
   return plantillas;
@@ -3019,8 +3049,11 @@ function calcularSalarioDiario(salarioBase, tipoNomina) {
 
 /**
  * Obtiene información del empleado con cálculos según periodicidad.
+ * Uso interno — expone salario exacto, por eso no se llama directo desde
+ * el cliente. El wrapper público `obtenerEmpleadoCompleto(id, token)` de
+ * abajo es el único punto de entrada autorizado desde el frontend.
  */
-function obtenerEmpleadoCompleto(empleadoId) {
+function _obtenerEmpleadoCompletoInterno(empleadoId) {
   var emp = leerTabla(HOJAS.EMPLEADOS).filter(function (e) {
     return String(e.id) === String(empleadoId);
   })[0];
@@ -3041,12 +3074,25 @@ function obtenerEmpleadoCompleto(empleadoId) {
   };
 }
 
+/** Versión pública: exige sesión de RRHH/Admin porque expone el salario exacto. */
+function obtenerEmpleadoCompleto(empleadoId, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return null;
+  return _obtenerEmpleadoCompletoInterno(empleadoId);
+}
+
 // ===================================================================
 // MÓDULO: BALANCE DE VACACIONES
 // ===================================================================
 
-function obtenerBalanceVacaciones(empleadoId) {
-  var emp = obtenerEmpleadoCompleto(empleadoId);
+/**
+ * Uso interno (sin token) — llamado desde otros flujos del servidor que ya
+ * verificaron permisos (crearVacaciones, cambiarEstadoVacaciones, etc.).
+ * El wrapper público `obtenerBalanceVacaciones(id, token)` de abajo es el
+ * único punto de entrada autorizado desde el frontend.
+ */
+function _obtenerBalanceVacacionesInterno(empleadoId) {
+  var emp = _obtenerEmpleadoCompletoInterno(empleadoId);
   if (!emp) return { ok: false, mensaje: 'Empleado no encontrado.' };
 
   var fechaIngreso  = new Date(emp.fecha_ingreso);
@@ -3076,6 +3122,13 @@ function obtenerBalanceVacaciones(empleadoId) {
     diasDisponibles:    diasDisponibles,
     valor_vacaciones:   Math.round(diasDisponibles * emp.salario_diario * 100) / 100
   };
+}
+
+/** Versión pública: exige sesión de RRHH/Admin porque expone salario y valor monetario de vacaciones. */
+function obtenerBalanceVacaciones(empleadoId, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+  return _obtenerBalanceVacacionesInterno(empleadoId);
 }
 
 
@@ -3864,7 +3917,7 @@ function obtenerDeduccionesCR(empleadoId) {
  */
 function buscarGlobal(query, token) {
   if (!query || !query.trim()) return [];
-  if (!token) return [];
+  if (requiereEscritura(token)) return [];
   var q = String(query).toLowerCase().trim();
   var resultados = [];
   var LIMITE = 50;
@@ -4333,7 +4386,7 @@ function eliminarTurno(id, token) {
 function obtenerExpediente(empleadoId) {
   var emp = leerTabla(HOJAS.EMPLEADOS).filter(function (e) { return String(e.id) === String(empleadoId); })[0];
   if (!emp) return { ok: false, mensaje: 'Empleado no encontrado.' };
-  var balance = obtenerBalanceVacaciones(empleadoId);
+  var balance = _obtenerBalanceVacacionesInterno(empleadoId);
   return {
     ok: true, empleado: emp, balance: balance,
     historialSalarios: leerTabla(HOJAS.HISTORIAL_SALARIOS).filter(function (h) { return String(h.empleado_id) === String(empleadoId); }),
@@ -4510,8 +4563,11 @@ function listarLiquidaciones(empleadoId, estado, token) {
 }
 
 /** Genera reporte HTML de liquidación laboral profesional (imprimible). */
-function generarReporteLiquidacion(empleadoId, fechaSalida, motivoSalida) {
-  var liq = calcularLiquidacion(empleadoId, fechaSalida, motivoSalida);
+function generarReporteLiquidacion(empleadoId, fechaSalida, motivoSalida, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
+  var liq = calcularLiquidacion(empleadoId, fechaSalida, motivoSalida, null, null, null, null, token);
   if (!liq.ok) return liq;
 
   var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Liquidación Laboral</title>';
@@ -4628,8 +4684,11 @@ function formatearNumero(num) {
 }
 
 /** Calcula liquidación laboral completa según estructura Costa Rica (modelo Tropicales del Valle). */
-function calcularLiquidacion(empleadoId, fechaSalida, motivoSalida, totalSalarios, promedioSalarios, tipoNomina, diasVacInput) {
-  var emp = obtenerEmpleadoCompleto(empleadoId);
+function calcularLiquidacion(empleadoId, fechaSalida, motivoSalida, totalSalarios, promedioSalarios, tipoNomina, diasVacInput, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
+  var emp = _obtenerEmpleadoCompletoInterno(empleadoId);
   if (!emp) return { ok: false, mensaje: 'Empleado no encontrado.' };
 
   var fechaSal = typeof fechaSalida === 'string' ? new Date(fechaSalida + 'T00:00:00') : fechaSalida;
@@ -4671,8 +4730,20 @@ function calcularLiquidacion(empleadoId, fechaSalida, motivoSalida, totalSalario
     // los meses trabajados — no se multiplica por meses de nuevo
     montoAguinaldo = Number(totalSalarios) / 12;
   } else {
-    // Sin salarios ingresados: proporcional por meses (máx 12)
-    var mesesAguinaldo = Math.min(mesesTotales, 12);
+    // Sin salarios ingresados: proporcional según meses transcurridos desde el
+    // 1° de diciembre del período de aguinaldo vigente (Ley de Aguinaldo,
+    // período dic-nov) — o desde la fecha de ingreso si es más reciente.
+    // ANTES: usaba mesesTotales (antigüedad COMPLETA del empleado, tope 12),
+    // así que alguien con años de antigüedad que salía a mitad de año recibía
+    // un aguinaldo completo (1 mes de salario) en vez del proporcional real
+    // de los meses trabajados en el período vigente.
+    var inicioPeriodoAguinaldo = new Date(fechaSal.getFullYear(), 11, 1); // 1 dic del año de salida
+    if (fechaSal < inicioPeriodoAguinaldo) {
+      inicioPeriodoAguinaldo.setFullYear(inicioPeriodoAguinaldo.getFullYear() - 1);
+    }
+    var inicioEfectivoAguinaldo = (fechaIng > inicioPeriodoAguinaldo) ? fechaIng : inicioPeriodoAguinaldo;
+    var mesesAguinaldo = Math.min(12, Math.max(0,
+      (fechaSal - inicioEfectivoAguinaldo) / (30.4375 * 24 * 60 * 60 * 1000)));
     montoAguinaldo = salarioMensual * (mesesAguinaldo / 12);
   }
 
@@ -4681,7 +4752,7 @@ function calcularLiquidacion(empleadoId, fechaSalida, motivoSalida, totalSalario
   var diasVacaciones = (diasVacInput !== undefined && diasVacInput !== null && diasVacInput !== '')
     ? Number(diasVacInput)
     : (function() {
-        var bal = obtenerBalanceVacaciones(empleadoId);
+        var bal = _obtenerBalanceVacacionesInterno(empleadoId);
         return (bal && bal.diasDisponibles > 0) ? bal.diasDisponibles : 5;
       })();
   var montoVacaciones = diasVacaciones * salarioDiario;
@@ -4739,49 +4810,45 @@ function calcularLiquidacion(empleadoId, fechaSalida, motivoSalida, totalSalario
 }
 
 /**
- * Calcula cesantía según tabla Excel (28 rangos, días en año 360).
- * diasTrabajados360 = mesesTotales * 30
- * Retorna monto = diasCesantia * salarioDiario
+ * Calcula el auxilio de cesantía (Art. 29 Código de Trabajo CR).
+ * diasTrabajados360 = mesesTotales * 30 (año laboral de 360 días).
+ *
+ * Metodología (verificada con fuentes legales, jul-2026): la cesantía NO es
+ * un único valor buscado por antigüedad total — se SUMAN los días que
+ * corresponden a cada año completo trabajado, con tope de 8 años:
+ *   Año 1: 19.5   Año 2: 20   Año 3: 20.5   Año 4: 21
+ *   Año 5: 21.24  Año 6: 21.5 Año 7: 22     Año 8: 22
+ * (tope ≈167.74 días). Con menos de 1 año aplican los tramos especiales de
+ * la Ley de Protección al Trabajador: 3-6 meses → 7 días, 6-12 meses → 14
+ * días (montos fijos, no per-año). Una fracción de año incompleto mayor a
+ * 6 meses cuenta como año completo adicional (al rate de ese año).
+ *
+ * ANTES: la función hacía un único lookup en una tabla de 28 rangos y
+ * devolvía solo ese valor — p.ej. a 10 años de antigüedad pagaba ~21.5 días
+ * en vez de los ~167.74 días (tope de 8 años) que corresponden legalmente.
  */
 function calcularCesantiaCompleta(salarioDiario, diasTrabajados360) {
-  var tablaCesantia = [
-    { desde: 90,    hasta: 180.99,   dias: 7     },
-    { desde: 181,   hasta: 360.99,   dias: 14    },
-    { desde: 361,   hasta: 540.99,   dias: 19.5  },
-    { desde: 541,   hasta: 720.99,   dias: 19.5  },
-    { desde: 721,   hasta: 900.99,   dias: 20    },
-    { desde: 901,   hasta: 1080.99,  dias: 20    },
-    { desde: 1081,  hasta: 1260.99,  dias: 20.5  },
-    { desde: 1261,  hasta: 1440.99,  dias: 20.5  },
-    { desde: 1441,  hasta: 1620.99,  dias: 21    },
-    { desde: 1621,  hasta: 1800.99,  dias: 21    },
-    { desde: 1801,  hasta: 1980.99,  dias: 21.24 },
-    { desde: 1981,  hasta: 2160.99,  dias: 21.24 },
-    { desde: 2161,  hasta: 2340.99,  dias: 21.5  },
-    { desde: 2341,  hasta: 2520.99,  dias: 21.5  },
-    { desde: 2521,  hasta: 2700.99,  dias: 22    },
-    { desde: 2701,  hasta: 2880.99,  dias: 22    },
-    { desde: 2881,  hasta: 3060.99,  dias: 22    },
-    { desde: 3061,  hasta: 3240.99,  dias: 22    },
-    { desde: 3241,  hasta: 3420.99,  dias: 22    },
-    { desde: 3421,  hasta: 3600.99,  dias: 22    },
-    { desde: 3601,  hasta: 3780.99,  dias: 21.5  },
-    { desde: 3781,  hasta: 3960.99,  dias: 21.5  },
-    { desde: 3961,  hasta: 4140.99,  dias: 21    },
-    { desde: 4141,  hasta: 4320.99,  dias: 21    },
-    { desde: 4321,  hasta: 4500.99,  dias: 20.5  },
-    { desde: 4501,  hasta: 4680.99,  dias: 20.5  },
-    { desde: 4681,  hasta: 4860.99,  dias: 20    },
-    { desde: 4861,  hasta: 10800.99, dias: 20    }
-  ];
-  var diasCesantia = 0;
-  for (var i = 0; i < tablaCesantia.length; i++) {
-    if (diasTrabajados360 >= tablaCesantia[i].desde && diasTrabajados360 <= tablaCesantia[i].hasta) {
-      diasCesantia = tablaCesantia[i].dias;
-      break;
-    }
+  if (diasTrabajados360 < 90) return 0; // menos de 3 meses: sin derecho a cesantía
+
+  if (diasTrabajados360 < 360) {
+    var diasParcial = (diasTrabajados360 <= 180) ? 7 : 14;
+    return diasParcial * salarioDiario;
   }
-  return diasCesantia * salarioDiario;
+
+  var TABLA_ANUAL_CESANTIA = [19.5, 20, 20.5, 21, 21.24, 21.5, 22, 22]; // años 1..8
+  var TOPE_ANIOS = TABLA_ANUAL_CESANTIA.length;
+
+  var aniosCompletos  = Math.floor(diasTrabajados360 / 360);
+  var diasResiduales  = diasTrabajados360 - (aniosCompletos * 360);
+  var aniosAContar    = (diasResiduales > 180) ? (aniosCompletos + 1) : aniosCompletos;
+  aniosAContar = Math.min(aniosAContar, TOPE_ANIOS);
+
+  var totalDiasCesantia = 0;
+  for (var i = 0; i < aniosAContar; i++) {
+    totalDiasCesantia += TABLA_ANUAL_CESANTIA[i];
+  }
+
+  return totalDiasCesantia * salarioDiario;
 }
 
 /**
@@ -4809,7 +4876,9 @@ function crearLiquidacion(datos, token) {
   var monto = Number(datos.monto);
   var calculoAuto = null;
   if (isNaN(monto) || monto === 0 || datos.calcular_automatico) {
-    calculoAuto = calcularLiquidacion(datos.empleado_id, datos.fecha_salida);
+    // El motivo debe pasarse explícitamente: sin él, calcularLiquidacion asume
+    // 'renuncia' y omite cesantía/preaviso aunque sea un despido con responsabilidad patronal.
+    calculoAuto = calcularLiquidacion(datos.empleado_id, datos.fecha_salida, datos.motivo, null, null, null, null, token);
     if (!calculoAuto.ok) return calculoAuto;
     monto = calculoAuto.totalCalculado;
   }
@@ -4995,7 +5064,10 @@ function hoy() {
  * @param {string} mes - Formato yyyy-MM
  * @return {Object} {ok, payload} o {ok: false, mensaje}
  */
-function generarPayloadContabilidad(mes) {
+function generarPayloadContabilidad(mes, token) {
+  var _authErr = requiereAdmin(token);
+  if (_authErr) return _authErr;
+
   try {
     var nominas = leerTabla(HOJAS.NOMINA).filter(function (n) {
       return String(n.mes) === mes;
@@ -5083,7 +5155,10 @@ function generarPayloadContabilidad(mes) {
  * @param {string} [autorizacion] - Bearer token si aplica
  * @return {Object} {ok, respuesta} o {ok: false, error}
  */
-function enviarPayloadContabilidad(urlWebhook, payload, autorizacion) {
+function enviarPayloadContabilidad(urlWebhook, payload, autorizacion, token) {
+  var _authErr = requiereAdmin(token);
+  if (_authErr) return _authErr;
+
   try {
     var opciones = {
       method: 'post',
@@ -5414,7 +5489,10 @@ function rechazarSolicitud(tipoSolicitud, solicitudId, razonRechazo, token) {
  * @param {string} mes - Formato yyyy-MM
  * @return {Object} {ok, html, fileName}
  */
-function generarReporteNomina(mes) {
+function generarReporteNomina(mes, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   var nominas = leerTabla(HOJAS.NOMINA).filter(function (n) {
     return String(n.mes) === mes;
   });
@@ -5478,7 +5556,10 @@ function generarReporteNomina(mes) {
  * @param {string} [nombreArchivo] - Opcional, para adjuntar
  * @return {Object} {ok, mensaje}
  */
-function enviarReportePorEmail(destinatario, asunto, htmlContent, nombreArchivo) {
+function enviarReportePorEmail(destinatario, asunto, htmlContent, nombreArchivo, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   if (!destinatario || !destinatario.includes('@')) {
     return { ok: false, mensaje: 'Email inválido: ' + destinatario };
   }
@@ -5500,7 +5581,10 @@ function enviarReportePorEmail(destinatario, asunto, htmlContent, nombreArchivo)
  * Resumen de alertas para reportar.
  * @return {string} HTML formateado
  */
-function generarReporteAlertas() {
+function generarReporteAlertas(token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   var alertas = obtenerAlertas();
   if (!alertas.length) return '<p>Sin alertas activas.</p>';
 
