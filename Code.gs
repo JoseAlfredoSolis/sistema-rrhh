@@ -396,7 +396,11 @@ function cedulaDuplicada(cedula, idExcluir) {
  * @param {boolean} soloActivos  si es true, devuelve solo los activos.
  * @return {Object[]} arreglo de empleados.
  */
-function listarEmpleados(soloActivos) {
+function listarEmpleados(soloActivos, token) {
+  var _authErr = requiereSesion(token);
+  if (_authErr) return _authErr;
+
+  var puedeVerSalario = !requiereEscritura(token);
   var empleados = leerTabla(HOJAS.EMPLEADOS);
 
   // Normalizamos la fecha a texto yyyy-mm-dd para mostrarla bien
@@ -408,7 +412,11 @@ function listarEmpleados(soloActivos) {
     emp.vencimiento_licencia = emp.vencimiento_licencia ? formatearFecha(emp.vencimiento_licencia) : '';
     emp.telefono             = emp.telefono ? String(emp.telefono) : '';
     emp.carne_ccss           = emp.carne_ccss ? String(emp.carne_ccss) : '';
-    emp.salario              = Number(emp.salario) || 0;
+    if (puedeVerSalario) {
+      emp.salario = Number(emp.salario) || 0;
+    } else {
+      delete emp.salario;
+    }
   });
 
   if (soloActivos) {
@@ -461,32 +469,36 @@ function crearEmpleado(emp, token) {
   if (error) {
     return { ok: false, mensaje: error };
   }
-  if (cedulaDuplicada(emp.cedula, null)) {
-    return { ok: false, mensaje: 'Ya existe un empleado con esa cédula.' };
-  }
 
-  var hoja = getHoja(HOJAS.EMPLEADOS);
-  var id = generarId('EMP');
+  return conLock(function () {
+    if (cedulaDuplicada(emp.cedula, null)) {
+      return { ok: false, mensaje: 'Ya existe un empleado con esa cédula.' };
+    }
 
-  // El orden DEBE coincidir con ENCABEZADOS.Empleados.
-  var fila = [
-    id,
-    String(emp.nombre).trim(),
-    String(emp.cedula).trim(),
-    emp.departamento || '',
-    emp.puesto || '',
-    formatearFecha(emp.fecha_ingreso),
-    Number(emp.salario),
-    'activo',
-    emp.fecha_nacimiento ? formatearFecha(emp.fecha_nacimiento) : '',
-    emp.telefono ? String(emp.telefono).trim() : ''
-  ].concat(_camposExtraEmpleado(emp, null));
+    var hoja = getHoja(HOJAS.EMPLEADOS);
+    var id = generarId('EMP');
 
-  var filaIndex = hoja.getLastRow() + 1;
-  _forzarTextoCamposIdEmpleado(hoja, filaIndex);
-  hoja.getRange(filaIndex, 1, 1, fila.length).setValues([fila]);
-  registrarBitacora('crear', 'Empleados', id, String(emp.nombre).trim());
-  return { ok: true, mensaje: 'Empleado creado correctamente.', id: id };
+    // El orden DEBE coincidir con ENCABEZADOS.Empleados.
+    var fila = [
+      id,
+      String(emp.nombre).trim(),
+      String(emp.cedula).trim(),
+      emp.departamento || '',
+      emp.puesto || '',
+      formatearFecha(emp.fecha_ingreso),
+      Number(emp.salario),
+      'activo',
+      emp.fecha_nacimiento ? formatearFecha(emp.fecha_nacimiento) : '',
+      emp.telefono ? String(emp.telefono).trim() : ''
+    ].concat(_camposExtraEmpleado(emp, null));
+
+    var filaIndex = hoja.getLastRow() + 1;
+    _forzarTextoCamposIdEmpleado(hoja, filaIndex);
+    hoja.getRange(filaIndex, 1, 1, fila.length).setValues([sanitizarFilaSheets(fila)]);
+    invalidarCache(HOJAS.EMPLEADOS);
+    registrarBitacora('crear', 'Empleados', id, String(emp.nombre).trim());
+    return { ok: true, mensaje: 'Empleado creado correctamente.', id: id };
+  });
 }
 
 /**
@@ -564,12 +576,14 @@ function actualizarEmpleado(emp, token) {
   ].concat(_camposExtraEmpleado(emp, filaActual));
 
   _forzarTextoCamposIdEmpleado(hoja, fila);
-  hoja.getRange(fila, 1, 1, valores.length).setValues([valores]);
+  hoja.getRange(fila, 1, 1, valores.length).setValues([sanitizarFilaSheets(valores)]);
+  invalidarCache(HOJAS.EMPLEADOS);
 
   if (salarioAnterior !== salarioNuevo) {
     var hojaHist = getHoja(HOJAS.HISTORIAL_SALARIOS);
     hojaHist.appendRow([generarId('HSA'), emp.id, salarioAnterior, salarioNuevo,
       formatearFecha(new Date()), emp.notasSalario || '']);
+    invalidarCache(HOJAS.HISTORIAL_SALARIOS);
     registrarBitacora('actualizar', 'Empleados', emp.id,
       'Salario: ' + salarioAnterior + ' → ' + salarioNuevo + ' | Usuario: ' + Session.getActiveUser().getEmail());
   } else {
@@ -598,6 +612,7 @@ function cambiarEstadoEmpleado(id, nuevoEstado, token) {
   }
   var estadoAnterior = String(hoja.getRange(fila, COLS.EMP_ESTADO).getValue() || 'activo');
   hoja.getRange(fila, COLS.EMP_ESTADO).setValue(nuevoEstado);
+  invalidarCache(HOJAS.EMPLEADOS);
   registrarBitacora('actualizar', 'Empleados', id,
     'Estado: ' + estadoAnterior + ' → ' + nuevoEstado + ' | Usuario: ' + Session.getActiveUser().getEmail());
   var accion = (nuevoEstado === 'activo') ? 'reactivado' : 'dado de baja';
@@ -610,7 +625,10 @@ function cambiarEstadoEmpleado(id, nuevoEstado, token) {
  * una lista vacía sin romper nada.
  * @return {string[]} nombres de departamentos.
  */
-function listarNombresDepartamentos() {
+function listarNombresDepartamentos(token) {
+  var _authErr = requiereSesion(token);
+  if (_authErr) return _authErr;
+
   var deptos = leerTabla(HOJAS.DEPARTAMENTOS);
   return deptos.map(function (d) { return d.nombre; })
                .filter(function (n) { return n && String(n).trim() !== ''; });
@@ -624,7 +642,10 @@ function listarNombresDepartamentos() {
 // ===================================================================
 
 /** Lista todos los departamentos. */
-function listarDepartamentos() {
+function listarDepartamentos(token) {
+  var _authErr = requiereSesion(token);
+  if (_authErr) return _authErr;
+
   return leerTabla(HOJAS.DEPARTAMENTOS);
 }
 
@@ -659,6 +680,7 @@ function crearDepartamento(d, token) {
   var hoja = getHoja(HOJAS.DEPARTAMENTOS);
   var id = generarId('DEP');
   hoja.appendRow([id, String(d.nombre).trim(), d.responsable || '']);
+  invalidarCache(HOJAS.DEPARTAMENTOS);
   return { ok: true, mensaje: 'Departamento creado correctamente.', id: id };
 }
 
@@ -677,6 +699,7 @@ function actualizarDepartamento(d, token) {
   var fila = buscarFilaPorId(hoja, d.id);
   if (fila === -1) return { ok: false, mensaje: 'No se encontró el departamento.' };
   hoja.getRange(fila, 1, 1, 3).setValues([[d.id, String(d.nombre).trim(), d.responsable || '']]);
+  invalidarCache(HOJAS.DEPARTAMENTOS);
   return { ok: true, mensaje: 'Departamento actualizado correctamente.' };
 }
 
@@ -701,6 +724,7 @@ function eliminarDepartamento(id, token) {
     return { ok: false, mensaje: 'No se puede eliminar: hay empleados en este departamento.' };
   }
   hoja.deleteRow(fila);
+  invalidarCache(HOJAS.DEPARTAMENTOS);
   return { ok: true, mensaje: 'Departamento eliminado.' };
 }
 
@@ -751,7 +775,10 @@ function esFinDeSemana(fecha) {
  * @param {string} fechaDesde - Fecha inicio filtro yyyy-MM-dd (null = todas)
  * @return {Object[]} registros con {id, empleado_id, empleado_nombre, fecha, horas, marca_especial, ...}
  */
-function listarAsistencia(empleadoId, fechaDesde) {
+function listarAsistencia(empleadoId, fechaDesde, token) {
+  var _authErr = requiereSesion(token);
+  if (_authErr) return _authErr;
+
   var registros = leerTabla(HOJAS.ASISTENCIA);
   if (empleadoId) {
     registros = registros.filter(function (r) {
@@ -890,7 +917,10 @@ function calcularDias(inicio, fin) {
 }
 
 /** Lista las solicitudes de vacaciones con el nombre del empleado y saldo disponible. */
-function listarVacaciones(empleadoId, estado) {
+function listarVacaciones(empleadoId, estado, token) {
+  var _authErr = requiereSesion(token);
+  if (_authErr) return _authErr;
+
   var todasVac = leerTabla(HOJAS.VACACIONES);
   var lista = todasVac.slice();
   if (empleadoId) lista = lista.filter(function (v) { return String(v.empleado_id) === String(empleadoId); });
@@ -932,14 +962,22 @@ function _calcularSaldosVacaciones(todasVac) {
  * Lista los subalternos de un jefe por nombre o ID.
  * Busca empleados cuyo campo jefe_inmediato coincida con el nombre del jefe.
  */
-function listarSubalternos(jefeId) {
+function listarSubalternos(jefeId, token) {
+  var _authErr = requiereSesion(token);
+  if (_authErr) return _authErr;
+
   var empleados = leerTabla(HOJAS.EMPLEADOS);
   var jefe = empleados.find(function(e) { return String(e.id) === String(jefeId); });
   if (!jefe) return [];
   var nombreJefe = String(jefe.nombre || '').trim().toLowerCase();
+  var idJefe = String(jefe.id);
+  // Preferir match por ID; aceptar nombre solo como fallback legacy
   var subalternos = empleados.filter(function(e) {
-    return String(e.estado || '').toLowerCase() === 'activo' &&
-           String(e.jefe_inmediato || '').trim().toLowerCase() === nombreJefe;
+    if (String(e.estado || '').toLowerCase() !== 'activo') return false;
+    var jefeCampo = String(e.jefe_inmediato || '').trim();
+    if (!jefeCampo) return false;
+    if (jefeCampo === idJefe) return true;
+    return jefeCampo.toLowerCase() === nombreJefe;
   });
 
   var todasVac = leerTabla(HOJAS.VACACIONES);
@@ -1023,6 +1061,7 @@ function crearVacaciones(v, token) {
     if (v.solicitado_por) notaFinal = '[Solicitado por jefe: ' + v.solicitado_por + '] ' + notaFinal;
     hoja.appendRow([id, v.empleado_id, formatearFecha(v.fecha_inicio),
                     formatearFecha(v.fecha_fin), dias, 'pendiente', notaFinal]);
+    invalidarCache(HOJAS.VACACIONES);
 
     var quien = v.solicitado_por ? v.solicitado_por + ' (jefe) para ' + v.empleado_id : v.empleado_id;
     registrarBitacora('crear', 'Vacaciones', id,
@@ -1077,6 +1116,7 @@ function cambiarEstadoVacaciones(id, nuevoEstado, token) {
     }
 
     hoja.getRange(fila, COLS.VAC_ESTADO).setValue(nuevoEstado);
+    invalidarCache(HOJAS.VACACIONES);
 
     registrarBitacora('modificar', 'Vacaciones', id,
       'Estado cambió a: ' + nuevoEstado);
@@ -1177,6 +1217,7 @@ function generarNomina(n, token) {
     var hoja = getHoja(HOJAS.NOMINA);
     var id = generarId('NOM');
     hoja.appendRow([id, n.empleado_id, n.mes, salarioBase, deducciones, neto]);
+    invalidarCache(HOJAS.NOMINA);
     try {
       _notificarWhatsAppNominaGenerada(empleado, n.mes, salarioBase, deducciones, neto);
     } catch (e) {}
@@ -1202,7 +1243,14 @@ function eliminarNomina(id, token) {
 // ===================================================================
 
 /** Genera alertas automáticas basadas en las fórmulas del Excel. */
-function obtenerAlertas() {
+function obtenerAlertas(token) {
+  var _authErr = requiereSesion(token);
+  if (_authErr) return _authErr;
+  return _obtenerAlertasInterno();
+}
+
+/** Cuerpo de alertas sin auth (uso interno / reportes ya autenticados). */
+function _obtenerAlertasInterno() {
   var hoy = new Date();
   var hace31dias = new Date(hoy.getTime() - 31 * 24 * 60 * 60 * 1000);
   var hace30dias = new Date(hoy.getTime() - 30 * 24 * 60 * 60 * 1000);
@@ -1304,7 +1352,14 @@ function obtenerAlertas() {
 }
 
 /** Devuelve cifras resumen para el panel principal. */
-function obtenerDashboard() {
+function obtenerDashboard(token) {
+  var _authErr = requiereSesion(token);
+  if (_authErr) return _authErr;
+  return _obtenerDashboardInterno();
+}
+
+/** Cuerpo del dashboard sin auth (uso interno, p.ej. WhatsApp). */
+function _obtenerDashboardInterno() {
   var empleados   = leerTablaConCache(HOJAS.EMPLEADOS);
   var activos = empleados.filter(function (e) {
     return String(e.estado).toLowerCase() === 'activo';
@@ -1343,7 +1398,7 @@ function obtenerDashboard() {
   }, 0);
 
   // Obtener alertas
-  var alertas = obtenerAlertas();
+  var alertas = _obtenerAlertasInterno();
 
   var porDepto = {};
   activos.forEach(function (e) {
@@ -1424,19 +1479,27 @@ function mapaEmpleados() {
   return mapa;
 }
 
+function _empleadoExiste(empleadoId) {
+  if (!empleadoId) return false;
+  return leerTablaConCache(HOJAS.EMPLEADOS).some(function (e) {
+    return String(e.id) === String(empleadoId);
+  });
+}
+
 /**
  * Lista de empleados ACTIVOS reducida para llenar los <select>
- * de los demás módulos: [{id, nombre}, ...]. Se llama antes de que exista
- * sesión (para poblar los selects incluso sin PIN), así que el salario solo
- * se incluye si el token corresponde a una sesión RRHH/Admin real.
+ * de los demás módulos: [{id, nombre}, ...]. Requiere sesión;
+ * el salario solo se incluye si el token es RRHH/Admin.
  */
 function listarEmpleadosSelect(token) {
-  var conSalario = !requiereEscritura(token);
+  var _authErr = requiereSesion(token);
+  if (_authErr) return [];
+  var puedeVerSalario = !requiereEscritura(token);
   return leerTablaConCache(HOJAS.EMPLEADOS)
     .filter(function (e) { return estadoNormalizado(e.estado) === 'activo'; })
     .map(function (e) {
       var out = { id: e.id, nombre: e.nombre };
-      if (conSalario) out.salario = Number(e.salario) || 0;
+      if (puedeVerSalario) out.salario = Number(e.salario) || 0;
       return out;
     });
 }
@@ -1462,7 +1525,10 @@ function listarEmpleadosSelect(token) {
  * @param {string} [fechaDesde]  yyyy-MM-dd. Límite inferior (inclusive) por fecha.
  * @param {string} [fechaHasta] yyyy-MM-dd. Límite superior (inclusive) por fecha.
  */
-function obtenerReportes(empleadoId, fechaDesde, fechaHasta) {
+function obtenerReportes(empleadoId, fechaDesde, fechaHasta, token) {
+  var _authErr = requiereSesion(token);
+  if (_authErr) return _authErr;
+
   empleadoId = empleadoId ? String(empleadoId) : '';
   var mesDesde = fechaDesde ? String(fechaDesde).slice(0, 7) : '';
   var mesHasta = fechaHasta ? String(fechaHasta).slice(0, 7) : '';
@@ -1549,7 +1615,10 @@ function obtenerReportes(empleadoId, fechaDesde, fechaHasta) {
 var CLAVE_MODULOS_DESACTIVADOS = 'MODULOS_DESACTIVADOS';
 var MODULOS_SIEMPRE_VISIBLES = ['dashboard', 'configuracion'];
 
-function obtenerModulosDesactivados() {
+function obtenerModulosDesactivados(token) {
+  var _authErr = requiereSesion(token);
+  if (_authErr) return _authErr;
+
   var raw = PropertiesService.getScriptProperties().getProperty(CLAVE_MODULOS_DESACTIVADOS);
   if (!raw) return [];
   try {
@@ -3035,16 +3104,15 @@ function listarHistorialSalario(empleadoId, token) {
  * @return {number} Salario diario
  */
 function calcularSalarioDiario(salarioBase, tipoNomina) {
+  // El campo `salario` del empleado se trata como salario MENSUAL equivalente.
+  // Para valor de vacaciones / liquidación (CT CR):
+  //   quincenal → ÷26 (días hábiles promedio del mes)
+  //   semanal / mensual / otro → ÷30 (mes comercial)
+  // Antes: semanal÷7 y quincenal÷15 inflaban el valor diario hasta ~4×.
   var salario = Number(salarioBase) || 0;
-  var tipo = String(tipoNomina).toLowerCase().trim();
-
-  if (tipo === 'semanal') {
-    return Math.round((salario / 7) * 100) / 100;
-  } else if (tipo === 'quincenal') {
-    return Math.round((salario / 15) * 100) / 100;
-  } else {
-    return Math.round((salario / 30) * 100) / 100;
-  }
+  var tipo = String(tipoNomina || '').toLowerCase().trim();
+  var divisor = (tipo === 'quincenal') ? 26 : 30;
+  return Math.round((salario / divisor) * 100) / 100;
 }
 
 /**
@@ -3136,7 +3204,10 @@ function obtenerBalanceVacaciones(empleadoId, token) {
 // MÓDULO: CAPACITACIONES
 // ===================================================================
 
-function listarCapacitaciones(empleadoId) {
+function listarCapacitaciones(empleadoId, token) {
+  var _authErr = requiereSesion(token);
+  if (_authErr) return _authErr;
+
   var lista  = leerTabla(HOJAS.CAPACITACIONES);
   var nombres = mapaEmpleados();
   if (empleadoId) {
@@ -3157,6 +3228,7 @@ function crearCapacitacion(cap, token) {
   if (_authErr) return _authErr;
 
   if (!cap || !cap.empleado_id) return { ok: false, mensaje: 'Selecciona un empleado.' };
+  if (!_empleadoExiste(cap.empleado_id)) return { ok: false, mensaje: 'El empleado no existe.' };
   if (!cap.curso || !String(cap.curso).trim()) {
     return { ok: false, mensaje: 'El nombre del curso es obligatorio.' };
   }
@@ -3165,12 +3237,13 @@ function crearCapacitacion(cap, token) {
   }
   var hoja = getHoja(HOJAS.CAPACITACIONES);
   var id   = generarId('CAP');
-  hoja.appendRow([id, cap.empleado_id, String(cap.curso).trim(),
+  hoja.appendRow(sanitizarFilaSheets([id, cap.empleado_id, String(cap.curso).trim(),
     cap.institucion || '',
     formatearFecha(cap.fecha_inicio),
     formatearFecha(cap.fecha_fin),
     cap.estado || 'en progreso',
-    cap.certificado_url || '']);
+    cap.certificado_url || '']));
+  invalidarCache(HOJAS.CAPACITACIONES);
   registrarBitacora('crear', 'Capacitaciones', id, String(cap.curso).trim());
   return { ok: true, mensaje: 'Capacitación registrada.', id: id };
 }
@@ -3190,6 +3263,7 @@ function actualizarCapacitacion(cap, token) {
     String(cap.curso).trim(), cap.institucion || '',
     formatearFecha(cap.fecha_inicio), formatearFecha(cap.fecha_fin),
     cap.estado || 'en progreso', cap.certificado_url || '']]);
+  invalidarCache(HOJAS.CAPACITACIONES);
   registrarBitacora('actualizar', 'Capacitaciones', cap.id, String(cap.curso).trim());
   return { ok: true, mensaje: 'Capacitación actualizada.' };
 }
@@ -3202,6 +3276,7 @@ function eliminarCapacitacion(id, token) {
   var fila = buscarFilaPorId(hoja, id);
   if (fila === -1) return { ok: false, mensaje: 'No se encontró la capacitación.' };
   hoja.deleteRow(fila);
+  invalidarCache(HOJAS.CAPACITACIONES);
   registrarBitacora('eliminar', 'Capacitaciones', id, '');
   return { ok: true, mensaje: 'Capacitación eliminada.' };
 }
@@ -3211,7 +3286,10 @@ function eliminarCapacitacion(id, token) {
 // MÓDULO: EVALUACIONES DE DESEMPEÑO
 // ===================================================================
 
-function listarEvaluaciones(empleadoId) {
+function listarEvaluaciones(empleadoId, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   var lista  = leerTabla(HOJAS.EVALUACIONES);
   var nombres = mapaEmpleados();
   if (empleadoId) {
@@ -3232,6 +3310,7 @@ function crearEvaluacion(ev, token) {
   if (_authErr) return _authErr;
 
   if (!ev || !ev.empleado_id) return { ok: false, mensaje: 'Selecciona un empleado.' };
+  if (!_empleadoExiste(ev.empleado_id)) return { ok: false, mensaje: 'El empleado no existe.' };
   if (!ev.periodo || !String(ev.periodo).trim()) {
     return { ok: false, mensaje: 'El período es obligatorio.' };
   }
@@ -3241,9 +3320,10 @@ function crearEvaluacion(ev, token) {
   }
   var hoja = getHoja(HOJAS.EVALUACIONES);
   var id   = generarId('EVA');
-  hoja.appendRow([id, ev.empleado_id, String(ev.periodo).trim(), cal,
+  hoja.appendRow(sanitizarFilaSheets([id, ev.empleado_id, String(ev.periodo).trim(), cal,
     ev.comentarios || '', ev.evaluador || '',
-    formatearFecha(ev.fecha || new Date())]);
+    formatearFecha(ev.fecha || new Date())]));
+  invalidarCache(HOJAS.EVALUACIONES);
   registrarBitacora('crear', 'Evaluaciones', id, 'Período: ' + ev.periodo);
   return { ok: true, mensaje: 'Evaluación registrada.', id: id };
 }
@@ -3263,6 +3343,7 @@ function actualizarEvaluacion(ev, token) {
   hoja.getRange(fila, 1, 1, 7).setValues([[ev.id, ev.empleado_id,
     String(ev.periodo).trim(), Number(ev.calificacion) || 0,
     ev.comentarios || '', ev.evaluador || '', formatearFecha(ev.fecha)]]);
+  invalidarCache(HOJAS.EVALUACIONES);
   registrarBitacora('actualizar', 'Evaluaciones', ev.id, 'Período: ' + ev.periodo);
   return { ok: true, mensaje: 'Evaluación actualizada.' };
 }
@@ -3275,6 +3356,7 @@ function eliminarEvaluacion(id, token) {
   var fila = buscarFilaPorId(hoja, id);
   if (fila === -1) return { ok: false, mensaje: 'No se encontró la evaluación.' };
   hoja.deleteRow(fila);
+  invalidarCache(HOJAS.EVALUACIONES);
   registrarBitacora('eliminar', 'Evaluaciones', id, '');
   return { ok: true, mensaje: 'Evaluación eliminada.' };
 }
@@ -3316,22 +3398,24 @@ function crearCarpetaEmpleado(empleadoId, token) {
   var _authErr = requiereEscritura(token);
   if (_authErr) return _authErr;
 
-  try {
-    var emp = leerTabla(HOJAS.EMPLEADOS).filter(function (e) {
-      return String(e.id) === String(empleadoId);
-    })[0];
-    if (!emp) return { ok: false, mensaje: 'Empleado no encontrado.' };
-    var raiz     = _getCarpetaRaizDocs();
-    var carpeta  = _buscarCarpetaEmpleado(raiz, empleadoId);
-    if (!carpeta) {
-      var nombre = 'EMP_' + empleadoId + '_' + String(emp.nombre).replace(/\s+/g, '_');
-      carpeta = raiz.createFolder(nombre);
+  return conLock(function () {
+    try {
+      var emp = leerTabla(HOJAS.EMPLEADOS).filter(function (e) {
+        return String(e.id) === String(empleadoId);
+      })[0];
+      if (!emp) return { ok: false, mensaje: 'Empleado no encontrado.' };
+      var raiz     = _getCarpetaRaizDocs();
+      var carpeta  = _buscarCarpetaEmpleado(raiz, empleadoId);
+      if (!carpeta) {
+        var nombre = 'EMP_' + empleadoId + '_' + String(emp.nombre).replace(/\s+/g, '_');
+        carpeta = raiz.createFolder(nombre);
+      }
+      return { ok: true, carpetaUrl: carpeta.getUrl(),
+        mensaje: 'Carpeta de documentos lista para ' + emp.nombre };
+    } catch (e) {
+      return { ok: false, mensaje: e.message };
     }
-    return { ok: true, carpetaUrl: carpeta.getUrl(),
-      mensaje: 'Carpeta de documentos lista para ' + emp.nombre };
-  } catch (e) {
-    return { ok: false, mensaje: e.message };
-  }
+  });
 }
 
 /**
@@ -3427,14 +3511,17 @@ function _limpiarBackupAntiguos(diasRetener) {
     var fechaLimite = new Date();
     fechaLimite.setDate(fechaLimite.getDate() - diasRetener);
 
-    var carpetaRaiz = DriveApp.getRootFolder();
-    // getFilesByName no acepta regex — iterar todos los archivos y filtrar por nombre
-    var todosArchivos = carpetaRaiz.getFiles();
+    // Buscar en la carpeta padre de la hoja (no en toda la raíz de Drive)
+    var libro = getLibro();
+    var padres = DriveApp.getFileById(libro.getId()).getParents();
+    var carpeta = padres.hasNext() ? padres.next() : DriveApp.getRootFolder();
+    var archivos = carpeta.getFiles();
     var eliminados = 0;
+    var prefijo = '[BACKUP';
 
-    while (todosArchivos.hasNext()) {
-      var file = todosArchivos.next();
-      if (file.getName().indexOf('[BACKUP') === 0 && file.getLastUpdated() < fechaLimite) {
+    while (archivos.hasNext()) {
+      var file = archivos.next();
+      if (file.getName().indexOf(prefijo) === 0 && file.getLastUpdated() < fechaLimite) {
         file.setTrashed(true);
         eliminados++;
       }
@@ -3509,7 +3596,10 @@ function obtenerConfigWhatsAppInterno() {
   try { return Object.assign(def, JSON.parse(raw)); } catch (e) { return def; }
 }
 
-function obtenerConfigWhatsApp() {
+function obtenerConfigWhatsApp(token) {
+  var _authErr = requiereSesion(token);
+  if (_authErr) return _authErr;
+
   var cfg = obtenerConfigWhatsAppInterno();
   cfg.apikey = enmascararSecreto(cfg.apikey);
   return cfg;
@@ -3620,7 +3710,7 @@ function _textoNominaMensual() {
 }
 
 function _textoResumenSemanal() {
-  var dash = obtenerDashboard();
+  var dash = _obtenerDashboardInterno();
   return '📊 *Resumen semanal RRHH*\n' +
     '• Empleados activos: ' + dash.empleadosActivos + '\n' +
     '• Inactivos: ' + dash.empleadosInactivos + '\n' +
@@ -3810,7 +3900,10 @@ function _cuerpoProximosCumpleanios() {
 // CONTADOR DE ALERTAS (para badge en sidebar)
 // ===================================================================
 
-function obtenerContadorAlertas() {
+function obtenerContadorAlertas(token) {
+  var _authErr = requiereSesion(token);
+  if (_authErr) return _authErr;
+
   var vacPend = leerTabla(HOJAS.VACACIONES).filter(function (v) {
     return String(v.estado).toLowerCase() === 'pendiente';
   }).length;
@@ -3897,7 +3990,10 @@ function calcularDeduccionesCR(salario) {
   return { salario: sal, ccss: ccss, renta: renta, total: total, neto: neto };
 }
 
-function obtenerDeduccionesCR(empleadoId) {
+function obtenerDeduccionesCR(empleadoId, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   var filas = leerTabla(HOJAS.EMPLEADOS);
   var emp   = filas.filter(function (e) { return String(e.id) === String(empleadoId); })[0];
   if (!emp) return { ok: false, mensaje: 'Empleado no encontrado.' };
@@ -3917,7 +4013,8 @@ function obtenerDeduccionesCR(empleadoId) {
  */
 function buscarGlobal(query, token) {
   if (!query || !query.trim()) return [];
-  if (requiereEscritura(token)) return [];
+  var _authErr = requiereSesion(token);
+  if (_authErr) return [];
   var q = String(query).toLowerCase().trim();
   var resultados = [];
   var LIMITE = 50;
@@ -3935,6 +4032,7 @@ function buscarGlobal(query, token) {
 
   leerTabla(HOJAS.EMPLEADOS).forEach(function (e) {
     if (resultados.length < LIMITE) {
+      if (String(e.estado || '').toLowerCase() !== 'activo') return;
       if (String(e.nombre||'').toLowerCase().indexOf(q) !== -1 ||
           String(e.cedula||'').toLowerCase().indexOf(q) !== -1) {
         agregar('Empleado', e.id, e.nombre, e.departamento||'', 'empleados');
@@ -4009,7 +4107,10 @@ function buscarGlobal(query, token) {
 // MÓDULO: CALENDARIO DE EVENTOS
 // ===================================================================
 
-function listarEventosCalendario(mes, anio) {
+function listarEventosCalendario(mes, anio, token) {
+  var _authErr = requiereSesion(token);
+  if (_authErr) return _authErr;
+
   var m = parseInt(mes, 10);
   var y = parseInt(anio, 10);
   var eventos = [];
@@ -4064,7 +4165,10 @@ function listarEventosCalendario(mes, anio) {
 // MÓDULO: ORGANIGRAMA
 // ===================================================================
 
-function listarOrganigrama() {
+function listarOrganigrama(token) {
+  var _authErr = requiereSesion(token);
+  if (_authErr) return _authErr;
+
   var deptos = leerTabla(HOJAS.DEPARTAMENTOS);
   var empls  = leerTabla(HOJAS.EMPLEADOS).filter(function (e) {
     return String(e.estado||'').toLowerCase() === 'activo';
@@ -4083,7 +4187,10 @@ function listarOrganigrama() {
 // MÓDULO: RESUMEN DE ASISTENCIA
 // ===================================================================
 
-function listarResumenAsistencia(mes) {
+function listarResumenAsistencia(mes, token) {
+  var _authErr = requiereSesion(token);
+  if (_authErr) return _authErr;
+
   var registros = leerTabla(HOJAS.ASISTENCIA);
   if (mes) {
     registros = registros.filter(function (r) { return mesDeFecha(r.fecha) === mes; });
@@ -4131,6 +4238,7 @@ function crearPrestamo(datos, token) {
     var hoja = getHoja(HOJAS.PRESTAMOS);
     var id = generarId('PRE');
     hoja.appendRow([id, datos.empleado_id, monto, cuotas, cuota, 0, 'activo', datos.fecha || hoy(), datos.notas || '']);
+    invalidarCache(HOJAS.PRESTAMOS);
     registrarBitacora('crear', 'Prestamo', id, 'Prestamo de ' + monto);
     return { ok: true, mensaje: 'Préstamo registrado.' };
   });
@@ -4149,8 +4257,22 @@ function actualizarPrestamo(datos, token) {
   var rows = hoja.getDataRange().getValues();
   for (var i = 1; i < rows.length; i++) {
     if (String(rows[i][0]) === String(datos.id)) {
+      // Conservar historial de pagos: el formulario cliente no envía
+      // cuotas_pagadas/estado — antes se reseteaban a 0/'activo'.
+      var cuotasPagadas = (datos.cuotas_pagadas !== undefined && datos.cuotas_pagadas !== null && datos.cuotas_pagadas !== '')
+        ? Number(datos.cuotas_pagadas) : (Number(rows[i][5]) || 0);
+      var estadoActual = (datos.estado && String(datos.estado).trim())
+        ? String(datos.estado).trim() : String(rows[i][6] || 'activo');
+      if (cuotasPagadas >= cuotas) estadoActual = 'saldado';
       var cuota = Math.round(monto / cuotas);
-      hoja.getRange(i+1, 1, 1, 9).setValues([[datos.id, datos.empleado_id, monto, cuotas, cuota, datos.cuotas_pagadas||0, datos.estado||'activo', datos.fecha||hoy(), datos.notas||'']]);
+      hoja.getRange(i+1, 1, 1, 9).setValues([[
+        datos.id, datos.empleado_id, monto, cuotas, cuota,
+        cuotasPagadas, estadoActual,
+        datos.fecha || rows[i][7] || hoy(),
+        (datos.notas !== undefined ? datos.notas : rows[i][8]) || ''
+      ]]);
+      invalidarCache(HOJAS.PRESTAMOS);
+      registrarBitacora('actualizar', 'Prestamo', datos.id, 'Monto ' + monto + ' | Pagadas ' + cuotasPagadas);
       return { ok: true, mensaje: 'Préstamo actualizado.' };
     }
   }
@@ -4194,7 +4316,10 @@ function eliminarPrestamo(id, token) {
 // MÓDULO: HORAS EXTRA
 // ===================================================================
 
-function listarHorasExtra(empleadoId) {
+function listarHorasExtra(empleadoId, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   var rows = leerTabla(HOJAS.HORAS_EXTRA);
   var empls = leerTabla(HOJAS.EMPLEADOS);
   if (empleadoId) rows = rows.filter(function (r) { return String(r.empleado_id) === String(empleadoId); });
@@ -4259,6 +4384,7 @@ function crearHoraExtra(datos, token) {
   }
   var id = generarId('HEX');
   hoja.appendRow([id, datos.empleado_id, datos.fecha||hoy(), datos.horas, tipo, datos.aprobado||'pendiente', monto, datos.notas||'']);
+  invalidarCache(HOJAS.HORAS_EXTRA);
   registrarBitacora('crear', 'HoraExtra', id, datos.horas + ' hrs ' + tipo);
   return { ok: true, mensaje: 'Horas extra registradas.' };
 }
@@ -4267,11 +4393,42 @@ function actualizarHoraExtra(datos, token) {
   var _authErr = requiereEscritura(token);
   if (_authErr) return _authErr;
 
+  if (!datos || !datos.id) return { ok: false, mensaje: 'Falta el identificador.' };
+  var horasNum = Number(datos.horas);
+  if (isNaN(horasNum) || horasNum <= 0) {
+    return { ok: false, mensaje: 'Las horas deben ser un número mayor a 0.' };
+  }
+  var tiposValidos = ['normal', 'diurno', 'nocturno', 'domingo', 'feriado'];
+  var tipo = String(datos.tipo || 'normal').toLowerCase();
+  if (tiposValidos.indexOf(tipo) === -1) {
+    return { ok: false, mensaje: 'Tipo de hora extra no válido. Use: ' + tiposValidos.join(', ') };
+  }
+
   var hoja = getHoja(HOJAS.HORAS_EXTRA);
   var rows = hoja.getDataRange().getValues();
+  var horasExtra = leerTabla(HOJAS.HORAS_EXTRA);
   for (var i = 1; i < rows.length; i++) {
     if (String(rows[i][0]) === String(datos.id)) {
-      hoja.getRange(i+1, 1, 1, 8).setValues([[datos.id, datos.empleado_id, datos.fecha||hoy(), datos.horas, datos.tipo||'normal', datos.aprobado||'pendiente', datos.monto||0, datos.notas||'']]);
+      var empleadoId = datos.empleado_id || rows[i][1];
+      var fecha = datos.fecha ? new Date(datos.fecha) : new Date(rows[i][2] || Date.now());
+      var mesAno = fecha.getFullYear() + '-' + String(fecha.getMonth() + 1).padStart(2, '0');
+      var horasDelMes = horasExtra.filter(function (h) {
+        if (String(h.id) === String(datos.id)) return false; // excluir el registro que se edita
+        var hFecha = new Date(h.fecha);
+        var hMesAno = hFecha.getFullYear() + '-' + String(hFecha.getMonth() + 1).padStart(2, '0');
+        return String(h.empleado_id) === String(empleadoId) && hMesAno === mesAno;
+      }).reduce(function (sum, h) { return sum + (Number(h.horas) || 0); }, 0);
+      if (horasDelMes + horasNum > 240) {
+        return { ok: false, mensaje: 'Límite mensual alcanzado. Ya tiene ' + horasDelMes + 'h este mes (máximo 240h).' };
+      }
+      hoja.getRange(i+1, 1, 1, 8).setValues([[
+        datos.id, empleadoId, datos.fecha || hoy(), horasNum, tipo,
+        datos.aprobado || rows[i][5] || 'pendiente',
+        Number(datos.monto) || Number(rows[i][6]) || 0,
+        (datos.notas !== undefined ? datos.notas : rows[i][7]) || ''
+      ]]);
+      invalidarCache(HOJAS.HORAS_EXTRA);
+      registrarBitacora('actualizar', 'HoraExtra', datos.id, horasNum + ' hrs ' + tipo);
       return { ok: true, mensaje: 'Actualizado.' };
     }
   }
@@ -4290,7 +4447,10 @@ function eliminarHoraExtra(id, token) {
 // MÓDULO: ACTIVOS ASIGNADOS
 // ===================================================================
 
-function listarActivos(empleadoId, estado) {
+function listarActivos(empleadoId, estado, token) {
+  var _authErr = requiereSesion(token);
+  if (_authErr) return _authErr;
+
   var rows = leerTabla(HOJAS.ACTIVOS);
   if (empleadoId) rows = rows.filter(function (r) { return String(r.empleado_id) === String(empleadoId); });
   if (estado) rows = rows.filter(function (r) { return String(r.estado).toLowerCase() === String(estado).toLowerCase(); });
@@ -4302,13 +4462,25 @@ function crearActivo(datos, token) {
   if (_authErr) return _authErr;
 
   if (!datos || !datos.empleado_id) return { ok: false, mensaje: 'Selecciona un empleado.' };
+  if (!_empleadoExiste(datos.empleado_id)) return { ok: false, mensaje: 'El empleado no existe.' };
   if (!datos.nombre || !String(datos.nombre).trim()) {
     return { ok: false, mensaje: 'El nombre del activo es obligatorio.' };
+  }
+  var serial = String(datos.serial || '').trim();
+  if (serial) {
+    var yaAsignado = leerTabla(HOJAS.ACTIVOS).some(function (a) {
+      return String(a.serial || '').trim().toLowerCase() === serial.toLowerCase() &&
+             String(a.estado || '').toLowerCase() === 'asignado';
+    });
+    if (yaAsignado) {
+      return { ok: false, mensaje: 'Ese serial ya está asignado a otro empleado.' };
+    }
   }
 
   var hoja = getHoja(HOJAS.ACTIVOS);
   var id   = generarId('ACT');
-  hoja.appendRow([id, datos.empleado_id, datos.nombre, datos.categoria||'', datos.serial||'', datos.fecha_entrega||hoy(), datos.fecha_devolucion||'', datos.estado||'asignado', datos.notas||'']);
+  hoja.appendRow(sanitizarFilaSheets([id, datos.empleado_id, datos.nombre, datos.categoria||'', serial, datos.fecha_entrega||hoy(), datos.fecha_devolucion||'', datos.estado||'asignado', datos.notas||'']));
+  invalidarCache(HOJAS.ACTIVOS);
   registrarBitacora('crear', 'Activo', id, datos.nombre + ' asignado');
   return { ok: true, mensaje: 'Activo registrado.' };
 }
@@ -4322,6 +4494,7 @@ function actualizarActivo(datos, token) {
   for (var i = 1; i < rows.length; i++) {
     if (String(rows[i][0]) === String(datos.id)) {
       hoja.getRange(i+1, 1, 1, 9).setValues([[datos.id, datos.empleado_id, datos.nombre, datos.categoria||'', datos.serial||'', datos.fecha_entrega||hoy(), datos.fecha_devolucion||'', datos.estado||'asignado', datos.notas||'']]);
+      invalidarCache(HOJAS.ACTIVOS);
       return { ok: true, mensaje: 'Activo actualizado.' };
     }
   }
@@ -4340,7 +4513,10 @@ function eliminarActivo(id, token) {
 // MÓDULO: TURNOS
 // ===================================================================
 
-function listarTurnos(semana) {
+function listarTurnos(semana, token) {
+  var _authErr = requiereSesion(token);
+  if (_authErr) return _authErr;
+
   var rows  = leerTabla(HOJAS.TURNOS);
   var empls = leerTabla(HOJAS.EMPLEADOS);
   if (semana) rows = rows.filter(function (r) { return String(r.semana) === String(semana); });
@@ -4383,7 +4559,10 @@ function eliminarTurno(id, token) {
 // MÓDULO: EXPEDIENTE COMPLETO
 // ===================================================================
 
-function obtenerExpediente(empleadoId) {
+function obtenerExpediente(empleadoId, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
   var emp = leerTabla(HOJAS.EMPLEADOS).filter(function (e) { return String(e.id) === String(empleadoId); })[0];
   if (!emp) return { ok: false, mensaje: 'Empleado no encontrado.' };
   var balance = _obtenerBalanceVacacionesInterno(empleadoId);
@@ -4415,7 +4594,10 @@ function obtenerExpediente(empleadoId) {
  * @param {string} [fechaDesde] yyyy-MM-dd. Filtra por fecha_desde >= este valor.
  * @param {string} [fechaHasta] yyyy-MM-dd. Filtra por fecha_desde <= este valor.
  */
-function listarIncapacidades(empleadoId, entidad, fechaDesde, fechaHasta) {
+function listarIncapacidades(empleadoId, entidad, fechaDesde, fechaHasta, token) {
+  var _authErr = requiereSesion(token);
+  if (_authErr) return _authErr;
+
   var rows  = leerTabla(HOJAS.INCAPACIDADES);
   var empls = leerTabla(HOJAS.EMPLEADOS);
   if (empleadoId) rows = rows.filter(function (r) { return String(r.empleado_id) === String(empleadoId); });
@@ -4454,6 +4636,7 @@ function crearIncapacidad(datos, token) {
   hoja.appendRow([id, datos.empleado_id, formatearFecha(datos.fecha_desde),
     formatearFecha(datos.fecha_hasta), dias, entidad,
     datos.especialidad || '', datos.notas || '']);
+  invalidarCache(HOJAS.INCAPACIDADES);
   registrarBitacora('crear', 'Incapacidad', id, dias + ' días (' + entidad + ')');
   return { ok: true, mensaje: 'Incapacidad registrada (' + dias + ' días).' };
 }
@@ -4492,7 +4675,10 @@ function eliminarIncapacidad(id, token) {
 // Estructura: id | fecha | nombre | tipo ('obligatorio' | 'no obligatorio')
 // ===================================================================
 
-function listarFeriados(anio) {
+function listarFeriados(anio, token) {
+  var _authErr = requiereSesion(token);
+  if (_authErr) return _authErr;
+
   var rows = leerTabla(HOJAS.FERIADOS);
   rows.forEach(function (r) { r.fecha = formatearFecha(r.fecha); });
   if (anio) rows = rows.filter(function (r) { return String(r.fecha).slice(0, 4) === String(anio); });
@@ -4604,8 +4790,8 @@ function generarReporteLiquidacion(empleadoId, fechaSalida, motivoSalida, token)
   // Datos del trabajador
   html += '<div class="datos-trabajador">';
   html += '<table>';
-  html += '<tr><td><strong>Nombre del Trabajador:</strong></td><td>' + liq.empleado + '</td><td style="text-align:right"><strong>Identificación nº</strong></td><td style="text-align:right">' + liq.identificacion + '</td></tr>';
-  html += '<tr><td><strong>Digite la fecha inicio:</strong></td><td>' + liq.fechaIngreso + '</td><td style="text-align:right"><strong>Digite la fecha salida:</strong></td><td style="text-align:right">' + liq.fechaSalida + '</td></tr>';
+  html += '<tr><td><strong>Nombre del Trabajador:</strong></td><td>' + escaparHtmlEmail(liq.empleado) + '</td><td style="text-align:right"><strong>Identificación nº</strong></td><td style="text-align:right">' + escaparHtmlEmail(liq.identificacion) + '</td></tr>';
+  html += '<tr><td><strong>Digite la fecha inicio:</strong></td><td>' + escaparHtmlEmail(liq.fechaIngreso) + '</td><td style="text-align:right"><strong>Digite la fecha salida:</strong></td><td style="text-align:right">' + escaparHtmlEmail(liq.fechaSalida) + '</td></tr>';
   html += '<tr><td><strong>Meses Laborados:</strong></td><td>' + liq.mesesLaborados + ',' + String(liq.diasAdicionales).padStart(2,'0') + '</td><td style="text-align:right"><strong>Tipo de nómina:</strong></td><td style="text-align:right">' + (liq.tipoNomina === 'Semanal' ? 'X' : ' ') + ' Semanal | ' + (liq.tipoNomina === 'Quincenal' ? 'X' : ' ') + ' Quincenal</td></tr>';
   html += '</table>';
   html += '</div>';
@@ -4632,7 +4818,7 @@ function generarReporteLiquidacion(empleadoId, fechaSalida, motivoSalida, token)
   html += '<table>';
   html += '<tr><td class="label">Salario Promedio Mensual:</td><td class="valor">₡' + formatearNumero(liq.salarioMensual) + '</td></tr>';
   html += '<tr><td class="label">Salario por Día:</td><td class="valor">₡' + formatearNumero(liq.salarioDiario) + '</td></tr>';
-  html += '<tr><td class="label">Días a Recibir Vacaciones:</td><td class="valor">5,00</td></tr>';
+  html += '<tr><td class="label">Días a Recibir Vacaciones:</td><td class="valor">' + Number(liq.diasVacaciones || 0).toFixed(2).replace('.', ',') + '</td></tr>';
   html += '<tr><td class="label">Total Por Vacaciones:</td><td class="valor total-seccion">₡' + formatearNumero(liq.vacaciones) + '</td></tr>';
   html += '</table>';
   html += '</div>';
@@ -4753,7 +4939,10 @@ function calcularLiquidacion(empleadoId, fechaSalida, motivoSalida, totalSalario
     ? Number(diasVacInput)
     : (function() {
         var bal = _obtenerBalanceVacacionesInterno(empleadoId);
-        return (bal && bal.diasDisponibles > 0) ? bal.diasDisponibles : 5;
+        // Balance 0 es legítimo (ya usó todos los días) — NO sustituir por 5.
+        // Solo usar fallback 5 si no hay datos de balance (empleado sin fecha ingreso, etc.).
+        if (bal && bal.ok) return Math.max(0, Number(bal.diasDisponibles) || 0);
+        return 5;
       })();
   var montoVacaciones = diasVacaciones * salarioDiario;
 
@@ -4893,6 +5082,7 @@ function crearLiquidacion(datos, token) {
   hoja.appendRow([id, datos.empleado_id, formatearFecha(datos.fecha_salida),
     datos.motivo || '', formatearFecha(datos.fecha_calculo || hoy()), monto,
     datos.estado || 'pendiente', notasCompletas]);
+  invalidarCache(HOJAS.LIQUIDACIONES);
 
   registrarBitacora('crear', 'Liquidacion', id, 'Liquidación de ' + monto + ' para ' + datos.empleado_id);
 
@@ -5350,7 +5540,10 @@ var VALIDADORES = {
  * @param {string} [estado] - Filtrar por estado (opcional)
  * @return {Object[]}
  */
-function listarPermisos(empleadoId, estado) {
+function listarPermisos(empleadoId, estado, token) {
+  var _authErr = requiereSesion(token);
+  if (_authErr) return _authErr;
+
   var permisos = leerTablaConCache(HOJAS.PERMISOS) || [];
   if (empleadoId) permisos = permisos.filter(function (p) { return String(p.empleado_id) === String(empleadoId); });
   if (estado) permisos = permisos.filter(function (p) { return String(p.estado).toLowerCase() === String(estado).toLowerCase(); });
@@ -5423,14 +5616,31 @@ function aprobarSolicitud(tipoSolicitud, solicitudId, nuevoEstado, token, notas)
   var sesion = validarSesion(token);
   if (!sesion.ok) return sesion;
 
-  var rol = sesion.rol || 'empleado';
+  var rol = sesion.rol || 'consulta';
+  // Mapear roles PIN al vocabulario del workflow
+  var esRrhh = (rol === 'rrhh' || rol === 'jefe_rrhh');
+  var esAdmin = (rol === 'admin');
+  var esJefe = (rol === 'jefe_depto' || esRrhh || esAdmin);
 
-  // Validar que el usuario tenga permiso para aprobar en este nivel
-  if (nuevoEstado === ESTADOS_APROBACION.APROBADO_JEFE && rol !== 'jefe_depto' && rol !== 'jefe_rrhh' && rol !== 'admin') {
+  if (nuevoEstado === ESTADOS_APROBACION.APROBADO_JEFE && !esJefe) {
     return { ok: false, mensaje: 'Solo jefe de departamento o superior puede aprobar en primer nivel' };
   }
-  if (nuevoEstado === ESTADOS_APROBACION.APROBADO_RRHH && rol !== 'jefe_rrhh' && rol !== 'admin') {
-    return { ok: false, mensaje: 'Solo jefe de RRHH o admin puede aprobar en segundo nivel' };
+  if (nuevoEstado === ESTADOS_APROBACION.APROBADO_RRHH && !esRrhh && !esAdmin) {
+    return { ok: false, mensaje: 'Solo RRHH o admin puede aprobar en segundo nivel' };
+  }
+
+  // Estados finales compatibles con obtenerBalanceVacaciones / cambiarEstadoVacaciones
+  var estadoAGuardar = nuevoEstado;
+  if (nuevoEstado === ESTADOS_APROBACION.APROBADO_RRHH ||
+      (nuevoEstado === ESTADOS_APROBACION.APROBADO_JEFE && tipoSolicitud === 'vacacion' && (esRrhh || esAdmin))) {
+    // Aprobación final de vacaciones → 'aprobada' (reconocida por el balance)
+    if (tipoSolicitud === 'vacacion' && (nuevoEstado === ESTADOS_APROBACION.APROBADO_RRHH || esRrhh || esAdmin)) {
+      estadoAGuardar = 'aprobada';
+    }
+  }
+  if (nuevoEstado === ESTADOS_APROBACION.RECHAZADO_JEFE ||
+      nuevoEstado === ESTADOS_APROBACION.RECHAZADO_RRHH) {
+    if (tipoSolicitud === 'vacacion') estadoAGuardar = 'rechazada';
   }
 
   try {
@@ -5442,19 +5652,37 @@ function aprobarSolicitud(tipoSolicitud, solicitudId, nuevoEstado, token, notas)
     var nombreHoja = hojaMap[tipoSolicitud];
     if (!nombreHoja) return { ok: false, mensaje: 'Tipo de solicitud no válido' };
 
-    var hoja = getHoja(nombreHoja);
-    var fila = buscarFilaPorId(hoja, solicitudId);
-    if (fila === -1) return { ok: false, mensaje: 'Solicitud no encontrada' };
+    return conLock(function () {
+      var hoja = getHoja(nombreHoja);
+      var fila = buscarFilaPorId(hoja, solicitudId);
+      if (fila === -1) return { ok: false, mensaje: 'Solicitud no encontrada' };
 
-    // Actualizar estado
-    var colEstado = tipoSolicitud === 'permiso' ? COLS.PRM_ESTADO : COLS.VAC_ESTADO;
-    hoja.getRange(fila, colEstado).setValue(nuevoEstado);
+      if (tipoSolicitud === 'vacacion' && estadoAGuardar === 'aprobada') {
+        var datosVac = leerTabla(HOJAS.VACACIONES);
+        var solicitud = datosVac.filter(function (s) { return String(s.id) === String(solicitudId); })[0];
+        if (solicitud) {
+          var balance = _obtenerBalanceVacacionesInterno(solicitud.empleado_id);
+          if (!balance.ok) return balance;
+          var diasSolicitud = Number(solicitud.dias) || 0;
+          if (diasSolicitud > balance.diasDisponibles) {
+            return {
+              ok: false,
+              mensaje: 'No se puede aprobar. Disponibles: ' + balance.diasDisponibles +
+                       ', solicita: ' + diasSolicitud
+            };
+          }
+        }
+      }
 
-    // Registrar auditoría
-    registrarBitacora('aprobar', tipoSolicitud.toUpperCase(), solicitudId,
-      'Estado: ' + nuevoEstado + ' | Por: ' + rol + ' | Notas: ' + (notas || '—'));
+      var colEstado = tipoSolicitud === 'permiso' ? COLS.PRM_ESTADO : COLS.VAC_ESTADO;
+      hoja.getRange(fila, colEstado).setValue(estadoAGuardar);
+      invalidarCache(nombreHoja);
 
-    return { ok: true, mensaje: 'Solicitud aprobada: ' + nuevoEstado };
+      registrarBitacora('aprobar', tipoSolicitud.toUpperCase(), solicitudId,
+        'Estado: ' + estadoAGuardar + ' | Por: ' + rol + ' | Notas: ' + (notas || '—'));
+
+      return { ok: true, mensaje: 'Solicitud actualizada: ' + estadoAGuardar };
+    });
   } catch (e) {
     return { ok: false, mensaje: 'Error: ' + e.message };
   }
@@ -5472,8 +5700,8 @@ function rechazarSolicitud(tipoSolicitud, solicitudId, razonRechazo, token) {
   var sesion = validarSesion(token);
   if (!sesion.ok) return sesion;
 
-  var rol = sesion.rol || 'empleado';
-  var estadoRechazo = rol === 'jefe_rrhh' || rol === 'admin' ?
+  var rol = sesion.rol || 'consulta';
+  var estadoRechazo = (rol === 'jefe_rrhh' || rol === 'rrhh' || rol === 'admin') ?
     ESTADOS_APROBACION.RECHAZADO_RRHH : ESTADOS_APROBACION.RECHAZADO_JEFE;
 
   return aprobarSolicitud(tipoSolicitud, solicitudId, estadoRechazo, token, 'Rechazado: ' + razonRechazo);
@@ -5521,7 +5749,7 @@ function generarReporteNomina(mes, token) {
     totalNeto += neto;
 
     tablaNominas += '<tr>' +
-      '<td style="border:1px solid #ccc;padding:4px">' + (emp.nombre || '?') + '</td>' +
+      '<td style="border:1px solid #ccc;padding:4px">' + escaparHtmlEmail(emp.nombre || '?') + '</td>' +
       '<td style="border:1px solid #ccc;padding:4px;text-align:right">₡' + Math.round(bruto).toLocaleString() + '</td>' +
       '<td style="border:1px solid #ccc;padding:4px;text-align:right">₡' + Math.round(ded).toLocaleString() + '</td>' +
       '<td style="border:1px solid #ccc;padding:4px;text-align:right">₡' + Math.round(neto).toLocaleString() + '</td></tr>';
@@ -5560,18 +5788,31 @@ function enviarReportePorEmail(destinatario, asunto, htmlContent, nombreArchivo,
   var _authErr = requiereEscritura(token);
   if (_authErr) return _authErr;
 
-  if (!destinatario || !destinatario.includes('@')) {
-    return { ok: false, mensaje: 'Email inválido: ' + destinatario };
+  var email = String(destinatario || '').trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { ok: false, mensaje: 'Email inválido.' };
+  }
+  // Restringir a destinatarios de alertas configurados (evita phishing/spam arbitrario)
+  var cfg = obtenerConfigAlertasInterno();
+  var permitidos = String(cfg.destinatarios || '')
+    .split(/[,;\s]+/)
+    .map(function (e) { return e.trim().toLowerCase(); })
+    .filter(Boolean);
+  if (permitidos.length && permitidos.indexOf(email) === -1) {
+    return {
+      ok: false,
+      mensaje: 'Destinatario no autorizado. Agrégalo en Configuración → Alertas (destinatarios).'
+    };
   }
 
   try {
-    GmailApp.sendEmail(destinatario, asunto, htmlContent, {
-      htmlBody: htmlContent,
+    GmailApp.sendEmail(email, String(asunto || 'Reporte RRHH').slice(0, 200), 'Ver versión HTML.', {
+      htmlBody: String(htmlContent || ''),
       name: 'Sistema RRHH'
     });
 
-    registrarBitacora('enviar', 'Reporte', destinatario, 'Reporte enviado: ' + asunto);
-    return { ok: true, mensaje: 'Reporte enviado a ' + destinatario };
+    registrarBitacora('enviar', 'Reporte', email, 'Reporte enviado: ' + String(asunto || '').slice(0, 80));
+    return { ok: true, mensaje: 'Reporte enviado a ' + email };
   } catch (e) {
     return { ok: false, mensaje: 'Error al enviar: ' + e.message };
   }
@@ -5585,7 +5826,7 @@ function generarReporteAlertas(token) {
   var _authErr = requiereEscritura(token);
   if (_authErr) return _authErr;
 
-  var alertas = obtenerAlertas();
+  var alertas = _obtenerAlertasInterno();
   if (!alertas.length) return '<p>Sin alertas activas.</p>';
 
   var html = '<h3>Alertas Activas</h3><table style="width:100%;border-collapse:collapse;font-size:10px">' +

@@ -156,7 +156,7 @@
 
   /** Oculta del menú los data-vista incluidos en `lista` (nombres de vista). */
   function aplicarModulosDesactivados(lista) {
-    lista = lista || [];
+    if (!Array.isArray(lista)) lista = [];
     document.querySelectorAll('.nav-item[data-vista]').forEach(function (btn) {
       var vista = btn.getAttribute('data-vista');
       btn.classList.toggle('oculto', lista.indexOf(vista) !== -1);
@@ -192,6 +192,7 @@
             guardarTokenSesion(res.token);
             establecerRol(res.rol);
             refrescarEmpleadosSelect(); // ahora con sesión real: incluye salario si el rol alcanza
+            llamarBackend('obtenerModulosDesactivados', [], function (lista) { aplicarModulosDesactivados(lista); });
           } else {
             mostrarModalPin();
           }
@@ -262,7 +263,7 @@
         }
       })
       .withFailureHandler(function () {})
-      .obtenerContadorAlertas();
+      .obtenerContadorAlertas(SESSION_TOKEN || _leerStorage('session', 'rrhh-token'));
   }
 
   // ── Roles / PIN ───────────────────────────────────────────
@@ -294,6 +295,8 @@
       if (res.token) guardarTokenSesion(res.token);
       establecerRol(res.rol);
       refrescarEmpleadosSelect(); // ahora con sesión real: incluye salario si el rol alcanza
+      llamarBackend('obtenerModulosDesactivados', [], function (lista) { aplicarModulosDesactivados(lista); });
+      actualizarBadge();
     });
   }
 
@@ -325,9 +328,16 @@
     };
     badge.onclick = function () {
       confirmarAccion('¿Cambiar de usuario? Se cerrará la sesión actual.', function () {
+        var tok = SESSION_TOKEN || _leerStorage('session', 'rrhh-token');
         document.getElementById('pinInput').value = '';
         document.getElementById('pinError').textContent = '';
         guardarTokenSesion('');
+        if (tok) {
+          google.script.run
+            .withSuccessHandler(function () {})
+            .withFailureHandler(function () {})
+            .cerrarSesion(tok);
+        }
         mostrarModalPin();
       }, 'Cambiar usuario');
     };
