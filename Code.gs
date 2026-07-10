@@ -4462,13 +4462,24 @@ function crearActivo(datos, token) {
   if (_authErr) return _authErr;
 
   if (!datos || !datos.empleado_id) return { ok: false, mensaje: 'Selecciona un empleado.' };
+  if (!_empleadoExiste(datos.empleado_id)) return { ok: false, mensaje: 'El empleado no existe.' };
   if (!datos.nombre || !String(datos.nombre).trim()) {
     return { ok: false, mensaje: 'El nombre del activo es obligatorio.' };
+  }
+  var serial = String(datos.serial || '').trim();
+  if (serial) {
+    var yaAsignado = leerTabla(HOJAS.ACTIVOS).some(function (a) {
+      return String(a.serial || '').trim().toLowerCase() === serial.toLowerCase() &&
+             String(a.estado || '').toLowerCase() === 'asignado';
+    });
+    if (yaAsignado) {
+      return { ok: false, mensaje: 'Ese serial ya está asignado a otro empleado.' };
+    }
   }
 
   var hoja = getHoja(HOJAS.ACTIVOS);
   var id   = generarId('ACT');
-  hoja.appendRow([id, datos.empleado_id, datos.nombre, datos.categoria||'', datos.serial||'', datos.fecha_entrega||hoy(), datos.fecha_devolucion||'', datos.estado||'asignado', datos.notas||'']);
+  hoja.appendRow(sanitizarFilaSheets([id, datos.empleado_id, datos.nombre, datos.categoria||'', serial, datos.fecha_entrega||hoy(), datos.fecha_devolucion||'', datos.estado||'asignado', datos.notas||'']));
   invalidarCache(HOJAS.ACTIVOS);
   registrarBitacora('crear', 'Activo', id, datos.nombre + ' asignado');
   return { ok: true, mensaje: 'Activo registrado.' };
