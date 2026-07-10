@@ -469,33 +469,36 @@ function crearEmpleado(emp, token) {
   if (error) {
     return { ok: false, mensaje: error };
   }
-  if (cedulaDuplicada(emp.cedula, null)) {
-    return { ok: false, mensaje: 'Ya existe un empleado con esa cédula.' };
-  }
 
-  var hoja = getHoja(HOJAS.EMPLEADOS);
-  var id = generarId('EMP');
+  return conLock(function () {
+    if (cedulaDuplicada(emp.cedula, null)) {
+      return { ok: false, mensaje: 'Ya existe un empleado con esa cédula.' };
+    }
 
-  // El orden DEBE coincidir con ENCABEZADOS.Empleados.
-  var fila = [
-    id,
-    String(emp.nombre).trim(),
-    String(emp.cedula).trim(),
-    emp.departamento || '',
-    emp.puesto || '',
-    formatearFecha(emp.fecha_ingreso),
-    Number(emp.salario),
-    'activo',
-    emp.fecha_nacimiento ? formatearFecha(emp.fecha_nacimiento) : '',
-    emp.telefono ? String(emp.telefono).trim() : ''
-  ].concat(_camposExtraEmpleado(emp, null));
+    var hoja = getHoja(HOJAS.EMPLEADOS);
+    var id = generarId('EMP');
 
-  var filaIndex = hoja.getLastRow() + 1;
-  _forzarTextoCamposIdEmpleado(hoja, filaIndex);
-  hoja.getRange(filaIndex, 1, 1, fila.length).setValues([sanitizarFilaSheets(fila)]);
-  invalidarCache(HOJAS.EMPLEADOS);
-  registrarBitacora('crear', 'Empleados', id, String(emp.nombre).trim());
-  return { ok: true, mensaje: 'Empleado creado correctamente.', id: id };
+    // El orden DEBE coincidir con ENCABEZADOS.Empleados.
+    var fila = [
+      id,
+      String(emp.nombre).trim(),
+      String(emp.cedula).trim(),
+      emp.departamento || '',
+      emp.puesto || '',
+      formatearFecha(emp.fecha_ingreso),
+      Number(emp.salario),
+      'activo',
+      emp.fecha_nacimiento ? formatearFecha(emp.fecha_nacimiento) : '',
+      emp.telefono ? String(emp.telefono).trim() : ''
+    ].concat(_camposExtraEmpleado(emp, null));
+
+    var filaIndex = hoja.getLastRow() + 1;
+    _forzarTextoCamposIdEmpleado(hoja, filaIndex);
+    hoja.getRange(filaIndex, 1, 1, fila.length).setValues([sanitizarFilaSheets(fila)]);
+    invalidarCache(HOJAS.EMPLEADOS);
+    registrarBitacora('crear', 'Empleados', id, String(emp.nombre).trim());
+    return { ok: true, mensaje: 'Empleado creado correctamente.', id: id };
+  });
 }
 
 /**
@@ -967,9 +970,14 @@ function listarSubalternos(jefeId, token) {
   var jefe = empleados.find(function(e) { return String(e.id) === String(jefeId); });
   if (!jefe) return [];
   var nombreJefe = String(jefe.nombre || '').trim().toLowerCase();
+  var idJefe = String(jefe.id);
+  // Preferir match por ID; aceptar nombre solo como fallback legacy
   var subalternos = empleados.filter(function(e) {
-    return String(e.estado || '').toLowerCase() === 'activo' &&
-           String(e.jefe_inmediato || '').trim().toLowerCase() === nombreJefe;
+    if (String(e.estado || '').toLowerCase() !== 'activo') return false;
+    var jefeCampo = String(e.jefe_inmediato || '').trim();
+    if (!jefeCampo) return false;
+    if (jefeCampo === idJefe) return true;
+    return jefeCampo.toLowerCase() === nombreJefe;
   });
 
   var todasVac = leerTabla(HOJAS.VACACIONES);
@@ -1469,6 +1477,13 @@ function mapaEmpleados() {
     mapa[e.id] = e.nombre;
   });
   return mapa;
+}
+
+function _empleadoExiste(empleadoId) {
+  if (!empleadoId) return false;
+  return leerTablaConCache(HOJAS.EMPLEADOS).some(function (e) {
+    return String(e.id) === String(empleadoId);
+  });
 }
 
 /**
@@ -3213,6 +3228,7 @@ function crearCapacitacion(cap, token) {
   if (_authErr) return _authErr;
 
   if (!cap || !cap.empleado_id) return { ok: false, mensaje: 'Selecciona un empleado.' };
+  if (!_empleadoExiste(cap.empleado_id)) return { ok: false, mensaje: 'El empleado no existe.' };
   if (!cap.curso || !String(cap.curso).trim()) {
     return { ok: false, mensaje: 'El nombre del curso es obligatorio.' };
   }
@@ -3221,12 +3237,12 @@ function crearCapacitacion(cap, token) {
   }
   var hoja = getHoja(HOJAS.CAPACITACIONES);
   var id   = generarId('CAP');
-  hoja.appendRow([id, cap.empleado_id, String(cap.curso).trim(),
+  hoja.appendRow(sanitizarFilaSheets([id, cap.empleado_id, String(cap.curso).trim(),
     cap.institucion || '',
     formatearFecha(cap.fecha_inicio),
     formatearFecha(cap.fecha_fin),
     cap.estado || 'en progreso',
-    cap.certificado_url || '']);
+    cap.certificado_url || '']));
   invalidarCache(HOJAS.CAPACITACIONES);
   registrarBitacora('crear', 'Capacitaciones', id, String(cap.curso).trim());
   return { ok: true, mensaje: 'Capacitación registrada.', id: id };
@@ -3294,6 +3310,7 @@ function crearEvaluacion(ev, token) {
   if (_authErr) return _authErr;
 
   if (!ev || !ev.empleado_id) return { ok: false, mensaje: 'Selecciona un empleado.' };
+  if (!_empleadoExiste(ev.empleado_id)) return { ok: false, mensaje: 'El empleado no existe.' };
   if (!ev.periodo || !String(ev.periodo).trim()) {
     return { ok: false, mensaje: 'El período es obligatorio.' };
   }
@@ -3303,9 +3320,9 @@ function crearEvaluacion(ev, token) {
   }
   var hoja = getHoja(HOJAS.EVALUACIONES);
   var id   = generarId('EVA');
-  hoja.appendRow([id, ev.empleado_id, String(ev.periodo).trim(), cal,
+  hoja.appendRow(sanitizarFilaSheets([id, ev.empleado_id, String(ev.periodo).trim(), cal,
     ev.comentarios || '', ev.evaluador || '',
-    formatearFecha(ev.fecha || new Date())]);
+    formatearFecha(ev.fecha || new Date())]));
   invalidarCache(HOJAS.EVALUACIONES);
   registrarBitacora('crear', 'Evaluaciones', id, 'Período: ' + ev.periodo);
   return { ok: true, mensaje: 'Evaluación registrada.', id: id };
@@ -3381,22 +3398,24 @@ function crearCarpetaEmpleado(empleadoId, token) {
   var _authErr = requiereEscritura(token);
   if (_authErr) return _authErr;
 
-  try {
-    var emp = leerTabla(HOJAS.EMPLEADOS).filter(function (e) {
-      return String(e.id) === String(empleadoId);
-    })[0];
-    if (!emp) return { ok: false, mensaje: 'Empleado no encontrado.' };
-    var raiz     = _getCarpetaRaizDocs();
-    var carpeta  = _buscarCarpetaEmpleado(raiz, empleadoId);
-    if (!carpeta) {
-      var nombre = 'EMP_' + empleadoId + '_' + String(emp.nombre).replace(/\s+/g, '_');
-      carpeta = raiz.createFolder(nombre);
+  return conLock(function () {
+    try {
+      var emp = leerTabla(HOJAS.EMPLEADOS).filter(function (e) {
+        return String(e.id) === String(empleadoId);
+      })[0];
+      if (!emp) return { ok: false, mensaje: 'Empleado no encontrado.' };
+      var raiz     = _getCarpetaRaizDocs();
+      var carpeta  = _buscarCarpetaEmpleado(raiz, empleadoId);
+      if (!carpeta) {
+        var nombre = 'EMP_' + empleadoId + '_' + String(emp.nombre).replace(/\s+/g, '_');
+        carpeta = raiz.createFolder(nombre);
+      }
+      return { ok: true, carpetaUrl: carpeta.getUrl(),
+        mensaje: 'Carpeta de documentos lista para ' + emp.nombre };
+    } catch (e) {
+      return { ok: false, mensaje: e.message };
     }
-    return { ok: true, carpetaUrl: carpeta.getUrl(),
-      mensaje: 'Carpeta de documentos lista para ' + emp.nombre };
-  } catch (e) {
-    return { ok: false, mensaje: e.message };
-  }
+  });
 }
 
 /**
@@ -3492,14 +3511,17 @@ function _limpiarBackupAntiguos(diasRetener) {
     var fechaLimite = new Date();
     fechaLimite.setDate(fechaLimite.getDate() - diasRetener);
 
-    var carpetaRaiz = DriveApp.getRootFolder();
-    // getFilesByName no acepta regex — iterar todos los archivos y filtrar por nombre
-    var todosArchivos = carpetaRaiz.getFiles();
+    // Buscar en la carpeta padre de la hoja (no en toda la raíz de Drive)
+    var libro = getLibro();
+    var padres = DriveApp.getFileById(libro.getId()).getParents();
+    var carpeta = padres.hasNext() ? padres.next() : DriveApp.getRootFolder();
+    var archivos = carpeta.getFiles();
     var eliminados = 0;
+    var prefijo = '[BACKUP';
 
-    while (todosArchivos.hasNext()) {
-      var file = todosArchivos.next();
-      if (file.getName().indexOf('[BACKUP') === 0 && file.getLastUpdated() < fechaLimite) {
+    while (archivos.hasNext()) {
+      var file = archivos.next();
+      if (file.getName().indexOf(prefijo) === 0 && file.getLastUpdated() < fechaLimite) {
         file.setTrashed(true);
         eliminados++;
       }
@@ -4235,9 +4257,22 @@ function actualizarPrestamo(datos, token) {
   var rows = hoja.getDataRange().getValues();
   for (var i = 1; i < rows.length; i++) {
     if (String(rows[i][0]) === String(datos.id)) {
+      // Conservar historial de pagos: el formulario cliente no envía
+      // cuotas_pagadas/estado — antes se reseteaban a 0/'activo'.
+      var cuotasPagadas = (datos.cuotas_pagadas !== undefined && datos.cuotas_pagadas !== null && datos.cuotas_pagadas !== '')
+        ? Number(datos.cuotas_pagadas) : (Number(rows[i][5]) || 0);
+      var estadoActual = (datos.estado && String(datos.estado).trim())
+        ? String(datos.estado).trim() : String(rows[i][6] || 'activo');
+      if (cuotasPagadas >= cuotas) estadoActual = 'saldado';
       var cuota = Math.round(monto / cuotas);
-      hoja.getRange(i+1, 1, 1, 9).setValues([[datos.id, datos.empleado_id, monto, cuotas, cuota, datos.cuotas_pagadas||0, datos.estado||'activo', datos.fecha||hoy(), datos.notas||'']]);
+      hoja.getRange(i+1, 1, 1, 9).setValues([[
+        datos.id, datos.empleado_id, monto, cuotas, cuota,
+        cuotasPagadas, estadoActual,
+        datos.fecha || rows[i][7] || hoy(),
+        (datos.notas !== undefined ? datos.notas : rows[i][8]) || ''
+      ]]);
       invalidarCache(HOJAS.PRESTAMOS);
+      registrarBitacora('actualizar', 'Prestamo', datos.id, 'Monto ' + monto + ' | Pagadas ' + cuotasPagadas);
       return { ok: true, mensaje: 'Préstamo actualizado.' };
     }
   }
@@ -4358,12 +4393,42 @@ function actualizarHoraExtra(datos, token) {
   var _authErr = requiereEscritura(token);
   if (_authErr) return _authErr;
 
+  if (!datos || !datos.id) return { ok: false, mensaje: 'Falta el identificador.' };
+  var horasNum = Number(datos.horas);
+  if (isNaN(horasNum) || horasNum <= 0) {
+    return { ok: false, mensaje: 'Las horas deben ser un número mayor a 0.' };
+  }
+  var tiposValidos = ['normal', 'diurno', 'nocturno', 'domingo', 'feriado'];
+  var tipo = String(datos.tipo || 'normal').toLowerCase();
+  if (tiposValidos.indexOf(tipo) === -1) {
+    return { ok: false, mensaje: 'Tipo de hora extra no válido. Use: ' + tiposValidos.join(', ') };
+  }
+
   var hoja = getHoja(HOJAS.HORAS_EXTRA);
   var rows = hoja.getDataRange().getValues();
+  var horasExtra = leerTabla(HOJAS.HORAS_EXTRA);
   for (var i = 1; i < rows.length; i++) {
     if (String(rows[i][0]) === String(datos.id)) {
-      hoja.getRange(i+1, 1, 1, 8).setValues([[datos.id, datos.empleado_id, datos.fecha||hoy(), datos.horas, datos.tipo||'normal', datos.aprobado||'pendiente', datos.monto||0, datos.notas||'']]);
+      var empleadoId = datos.empleado_id || rows[i][1];
+      var fecha = datos.fecha ? new Date(datos.fecha) : new Date(rows[i][2] || Date.now());
+      var mesAno = fecha.getFullYear() + '-' + String(fecha.getMonth() + 1).padStart(2, '0');
+      var horasDelMes = horasExtra.filter(function (h) {
+        if (String(h.id) === String(datos.id)) return false; // excluir el registro que se edita
+        var hFecha = new Date(h.fecha);
+        var hMesAno = hFecha.getFullYear() + '-' + String(hFecha.getMonth() + 1).padStart(2, '0');
+        return String(h.empleado_id) === String(empleadoId) && hMesAno === mesAno;
+      }).reduce(function (sum, h) { return sum + (Number(h.horas) || 0); }, 0);
+      if (horasDelMes + horasNum > 240) {
+        return { ok: false, mensaje: 'Límite mensual alcanzado. Ya tiene ' + horasDelMes + 'h este mes (máximo 240h).' };
+      }
+      hoja.getRange(i+1, 1, 1, 8).setValues([[
+        datos.id, empleadoId, datos.fecha || hoy(), horasNum, tipo,
+        datos.aprobado || rows[i][5] || 'pendiente',
+        Number(datos.monto) || Number(rows[i][6]) || 0,
+        (datos.notas !== undefined ? datos.notas : rows[i][7]) || ''
+      ]]);
       invalidarCache(HOJAS.HORAS_EXTRA);
+      registrarBitacora('actualizar', 'HoraExtra', datos.id, horasNum + ' hrs ' + tipo);
       return { ok: true, mensaje: 'Actualizado.' };
     }
   }
@@ -4863,7 +4928,10 @@ function calcularLiquidacion(empleadoId, fechaSalida, motivoSalida, totalSalario
     ? Number(diasVacInput)
     : (function() {
         var bal = _obtenerBalanceVacacionesInterno(empleadoId);
-        return (bal && bal.diasDisponibles > 0) ? bal.diasDisponibles : 5;
+        // Balance 0 es legítimo (ya usó todos los días) — NO sustituir por 5.
+        // Solo usar fallback 5 si no hay datos de balance (empleado sin fecha ingreso, etc.).
+        if (bal && bal.ok) return Math.max(0, Number(bal.diasDisponibles) || 0);
+        return 5;
       })();
   var montoVacaciones = diasVacaciones * salarioDiario;
 
@@ -5537,14 +5605,31 @@ function aprobarSolicitud(tipoSolicitud, solicitudId, nuevoEstado, token, notas)
   var sesion = validarSesion(token);
   if (!sesion.ok) return sesion;
 
-  var rol = sesion.rol || 'empleado';
+  var rol = sesion.rol || 'consulta';
+  // Mapear roles PIN al vocabulario del workflow
+  var esRrhh = (rol === 'rrhh' || rol === 'jefe_rrhh');
+  var esAdmin = (rol === 'admin');
+  var esJefe = (rol === 'jefe_depto' || esRrhh || esAdmin);
 
-  // Validar que el usuario tenga permiso para aprobar en este nivel
-  if (nuevoEstado === ESTADOS_APROBACION.APROBADO_JEFE && rol !== 'jefe_depto' && rol !== 'jefe_rrhh' && rol !== 'admin') {
+  if (nuevoEstado === ESTADOS_APROBACION.APROBADO_JEFE && !esJefe) {
     return { ok: false, mensaje: 'Solo jefe de departamento o superior puede aprobar en primer nivel' };
   }
-  if (nuevoEstado === ESTADOS_APROBACION.APROBADO_RRHH && rol !== 'jefe_rrhh' && rol !== 'admin') {
-    return { ok: false, mensaje: 'Solo jefe de RRHH o admin puede aprobar en segundo nivel' };
+  if (nuevoEstado === ESTADOS_APROBACION.APROBADO_RRHH && !esRrhh && !esAdmin) {
+    return { ok: false, mensaje: 'Solo RRHH o admin puede aprobar en segundo nivel' };
+  }
+
+  // Estados finales compatibles con obtenerBalanceVacaciones / cambiarEstadoVacaciones
+  var estadoAGuardar = nuevoEstado;
+  if (nuevoEstado === ESTADOS_APROBACION.APROBADO_RRHH ||
+      (nuevoEstado === ESTADOS_APROBACION.APROBADO_JEFE && tipoSolicitud === 'vacacion' && (esRrhh || esAdmin))) {
+    // Aprobación final de vacaciones → 'aprobada' (reconocida por el balance)
+    if (tipoSolicitud === 'vacacion' && (nuevoEstado === ESTADOS_APROBACION.APROBADO_RRHH || esRrhh || esAdmin)) {
+      estadoAGuardar = 'aprobada';
+    }
+  }
+  if (nuevoEstado === ESTADOS_APROBACION.RECHAZADO_JEFE ||
+      nuevoEstado === ESTADOS_APROBACION.RECHAZADO_RRHH) {
+    if (tipoSolicitud === 'vacacion') estadoAGuardar = 'rechazada';
   }
 
   try {
@@ -5556,19 +5641,37 @@ function aprobarSolicitud(tipoSolicitud, solicitudId, nuevoEstado, token, notas)
     var nombreHoja = hojaMap[tipoSolicitud];
     if (!nombreHoja) return { ok: false, mensaje: 'Tipo de solicitud no válido' };
 
-    var hoja = getHoja(nombreHoja);
-    var fila = buscarFilaPorId(hoja, solicitudId);
-    if (fila === -1) return { ok: false, mensaje: 'Solicitud no encontrada' };
+    return conLock(function () {
+      var hoja = getHoja(nombreHoja);
+      var fila = buscarFilaPorId(hoja, solicitudId);
+      if (fila === -1) return { ok: false, mensaje: 'Solicitud no encontrada' };
 
-    // Actualizar estado
-    var colEstado = tipoSolicitud === 'permiso' ? COLS.PRM_ESTADO : COLS.VAC_ESTADO;
-    hoja.getRange(fila, colEstado).setValue(nuevoEstado);
+      if (tipoSolicitud === 'vacacion' && estadoAGuardar === 'aprobada') {
+        var datosVac = leerTabla(HOJAS.VACACIONES);
+        var solicitud = datosVac.filter(function (s) { return String(s.id) === String(solicitudId); })[0];
+        if (solicitud) {
+          var balance = _obtenerBalanceVacacionesInterno(solicitud.empleado_id);
+          if (!balance.ok) return balance;
+          var diasSolicitud = Number(solicitud.dias) || 0;
+          if (diasSolicitud > balance.diasDisponibles) {
+            return {
+              ok: false,
+              mensaje: 'No se puede aprobar. Disponibles: ' + balance.diasDisponibles +
+                       ', solicita: ' + diasSolicitud
+            };
+          }
+        }
+      }
 
-    // Registrar auditoría
-    registrarBitacora('aprobar', tipoSolicitud.toUpperCase(), solicitudId,
-      'Estado: ' + nuevoEstado + ' | Por: ' + rol + ' | Notas: ' + (notas || '—'));
+      var colEstado = tipoSolicitud === 'permiso' ? COLS.PRM_ESTADO : COLS.VAC_ESTADO;
+      hoja.getRange(fila, colEstado).setValue(estadoAGuardar);
+      invalidarCache(nombreHoja);
 
-    return { ok: true, mensaje: 'Solicitud aprobada: ' + nuevoEstado };
+      registrarBitacora('aprobar', tipoSolicitud.toUpperCase(), solicitudId,
+        'Estado: ' + estadoAGuardar + ' | Por: ' + rol + ' | Notas: ' + (notas || '—'));
+
+      return { ok: true, mensaje: 'Solicitud actualizada: ' + estadoAGuardar };
+    });
   } catch (e) {
     return { ok: false, mensaje: 'Error: ' + e.message };
   }
@@ -5586,8 +5689,8 @@ function rechazarSolicitud(tipoSolicitud, solicitudId, razonRechazo, token) {
   var sesion = validarSesion(token);
   if (!sesion.ok) return sesion;
 
-  var rol = sesion.rol || 'empleado';
-  var estadoRechazo = rol === 'jefe_rrhh' || rol === 'admin' ?
+  var rol = sesion.rol || 'consulta';
+  var estadoRechazo = (rol === 'jefe_rrhh' || rol === 'rrhh' || rol === 'admin') ?
     ESTADOS_APROBACION.RECHAZADO_RRHH : ESTADOS_APROBACION.RECHAZADO_JEFE;
 
   return aprobarSolicitud(tipoSolicitud, solicitudId, estadoRechazo, token, 'Rechazado: ' + razonRechazo);
@@ -5635,7 +5738,7 @@ function generarReporteNomina(mes, token) {
     totalNeto += neto;
 
     tablaNominas += '<tr>' +
-      '<td style="border:1px solid #ccc;padding:4px">' + (emp.nombre || '?') + '</td>' +
+      '<td style="border:1px solid #ccc;padding:4px">' + escaparHtmlEmail(emp.nombre || '?') + '</td>' +
       '<td style="border:1px solid #ccc;padding:4px;text-align:right">₡' + Math.round(bruto).toLocaleString() + '</td>' +
       '<td style="border:1px solid #ccc;padding:4px;text-align:right">₡' + Math.round(ded).toLocaleString() + '</td>' +
       '<td style="border:1px solid #ccc;padding:4px;text-align:right">₡' + Math.round(neto).toLocaleString() + '</td></tr>';
@@ -5674,18 +5777,31 @@ function enviarReportePorEmail(destinatario, asunto, htmlContent, nombreArchivo,
   var _authErr = requiereEscritura(token);
   if (_authErr) return _authErr;
 
-  if (!destinatario || !destinatario.includes('@')) {
-    return { ok: false, mensaje: 'Email inválido: ' + destinatario };
+  var email = String(destinatario || '').trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { ok: false, mensaje: 'Email inválido.' };
+  }
+  // Restringir a destinatarios de alertas configurados (evita phishing/spam arbitrario)
+  var cfg = obtenerConfigAlertasInterno();
+  var permitidos = String(cfg.destinatarios || '')
+    .split(/[,;\s]+/)
+    .map(function (e) { return e.trim().toLowerCase(); })
+    .filter(Boolean);
+  if (permitidos.length && permitidos.indexOf(email) === -1) {
+    return {
+      ok: false,
+      mensaje: 'Destinatario no autorizado. Agrégalo en Configuración → Alertas (destinatarios).'
+    };
   }
 
   try {
-    GmailApp.sendEmail(destinatario, asunto, htmlContent, {
-      htmlBody: htmlContent,
+    GmailApp.sendEmail(email, String(asunto || 'Reporte RRHH').slice(0, 200), 'Ver versión HTML.', {
+      htmlBody: String(htmlContent || ''),
       name: 'Sistema RRHH'
     });
 
-    registrarBitacora('enviar', 'Reporte', destinatario, 'Reporte enviado: ' + asunto);
-    return { ok: true, mensaje: 'Reporte enviado a ' + destinatario };
+    registrarBitacora('enviar', 'Reporte', email, 'Reporte enviado: ' + String(asunto || '').slice(0, 80));
+    return { ok: true, mensaje: 'Reporte enviado a ' + email };
   } catch (e) {
     return { ok: false, mensaje: 'Error al enviar: ' + e.message };
   }
