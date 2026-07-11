@@ -86,7 +86,8 @@ var PRUEBAS_REGISTRO = [
   { nombre: 'sanitizarFilaSheets aplica la neutralización a toda la fila',   fn: test_sanitizarFilaSheets },
   { nombre: 'estadoNormalizado recorta espacios y normaliza mayúsculas',    fn: test_estadoNormalizado },
   { nombre: 'mesDeFecha extrae yyyy-MM tanto de Date como de string',       fn: test_mesDeFecha },
-  { nombre: 'crearLiquidacion guarda exactamente el monto que calculó calcularLiquidacion', fn: test_crearLiquidacion_montoCoincideConCalculo }
+  { nombre: 'crearLiquidacion guarda exactamente el monto que calculó calcularLiquidacion', fn: test_crearLiquidacion_montoCoincideConCalculo },
+  { nombre: 'paquete de plantillas minimalistas tiene datos válidos',                     fn: test_paquetePlantillasMinimalistas_esValido }
 ];
 
 // ===================================================================
@@ -535,6 +536,34 @@ function test_paquetePlantillasProfesionales_esValido(ctx) {
   });
   Object.keys(nombres).forEach(function (clave) {
     _assertIgual(nombres[clave], 1, 'No debería haber nombre+tipo repetido en el paquete (' + clave + ')');
+  });
+}
+
+function test_paquetePlantillasMinimalistas_esValido(ctx) {
+  var paquete = _paquetePlantillasMinimalistas();
+  _assert(Array.isArray(paquete) && paquete.length > 0, 'El paquete de plantillas minimalistas no debería estar vacío');
+  var nombres = {};
+  paquete.forEach(function (p) {
+    _assert(!!p.nombre, 'Cada plantilla del paquete debe tener nombre');
+    _assert(p.tipo === 'email' || p.tipo === 'whatsapp', 'Cada plantilla del paquete debe ser tipo email o whatsapp (' + p.nombre + ')');
+    _assert(!!p.cuerpo && p.cuerpo.trim().length > 0, 'Cada plantilla del paquete debe tener cuerpo (' + p.nombre + ')');
+    if (p.tipo === 'email') {
+      _assert(!!p.asunto, 'Toda plantilla de email del paquete debe tener asunto (' + p.nombre + ')');
+    }
+    nombres[p.nombre + '|' + p.tipo] = (nombres[p.nombre + '|' + p.tipo] || 0) + 1;
+  });
+  Object.keys(nombres).forEach(function (clave) {
+    _assertIgual(nombres[clave], 1, 'No debería haber nombre+tipo repetido en el paquete (' + clave + ')');
+  });
+
+  // No debería colisionar en nombre+tipo con el paquete "profesional" — son
+  // dos paquetes alternativos, deben poder coexistir sin pisarse.
+  var otroPaquete = _paquetePlantillasProfesionales();
+  var clavesOtro = {};
+  otroPaquete.forEach(function (p) { clavesOtro[p.nombre + '|' + p.tipo] = true; });
+  paquete.forEach(function (p) {
+    _assert(!clavesOtro[p.nombre + '|' + p.tipo],
+      'La plantilla minimalista "' + p.nombre + '" (' + p.tipo + ') colisiona en nombre+tipo con el paquete profesional');
   });
 }
 

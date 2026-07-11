@@ -324,6 +324,20 @@
     );
   }
 
+  function cargarPlantillasMinimalistasUI() {
+    if (!puedeEditar()) { mostrarMensaje('Sin permisos.', 'error'); return; }
+    confirmarAccion(
+      'Esto agrega un paquete de plantillas minimalistas (sin emojis, tono formal) en correo y WhatsApp, para los mismos escenarios que el paquete profesional. Si ya existen no se duplican. ¿Continuar?',
+      function () {
+        llamarBackend('crearPlantillasMinimalistas', [], function (res) {
+          mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+          if (res.ok) _recargarPlantillas();
+        });
+      },
+      'Cargar plantillas'
+    );
+  }
+
   // Nota: la API Key de CallMeBot se configura en Alertas → Notificaciones
   // por WhatsApp (módulo compartido, ver Js_Alertas.html). No se duplica aquí.
 </script>

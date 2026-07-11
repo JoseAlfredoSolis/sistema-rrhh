@@ -3025,6 +3025,131 @@ function crearPlantillasProfesionales(token) {
   };
 }
 
+/**
+ * Crea un segundo paquete de plantillas, en un tono minimalista (sin
+ * emojis, frases cortas, formato limpio) como alternativa al paquete
+ * "profesional" (que usa emojis y un tono más cálido/casual). Mismo
+ * criterio de idempotencia por nombre+tipo — se puede pulsar varias veces
+ * sin duplicar.
+ * @param {string} token
+ * @return {Object} {ok, mensaje, creadas}
+ */
+function crearPlantillasMinimalistas(token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
+  var existentes = leerTabla(HOJAS.PLANTILLAS);
+  var yaExiste = {};
+  existentes.forEach(function (p) { yaExiste[p.nombre + '|' + p.tipo] = true; });
+
+  var paquete = _paquetePlantillasMinimalistas();
+  var hoja = getHoja(HOJAS.PLANTILLAS);
+  var creadas = 0;
+  paquete.forEach(function (p) {
+    if (yaExiste[p.nombre + '|' + p.tipo]) return;
+    hoja.appendRow(sanitizarFilaSheets([generarId('PLT'), p.nombre, p.tipo, p.asunto || '', p.cuerpo]));
+    creadas++;
+  });
+
+  return {
+    ok: true,
+    mensaje: creadas > 0
+      ? 'Se agregaron ' + creadas + ' plantillas minimalistas nuevas.'
+      : 'Las plantillas minimalistas ya estaban creadas — no se agregó nada.',
+    creadas: creadas
+  };
+}
+
+/**
+ * Paquete de plantillas minimalistas (correo + WhatsApp): mismos escenarios
+ * que _paquetePlantillasProfesionales, pero sin emojis, frases cortas y
+ * formato limpio — para empresas que prefieren un tono más formal/sobrio.
+ */
+function _paquetePlantillasMinimalistas() {
+  return [
+    { nombre: 'Bienvenida a la empresa (minimalista)', tipo: 'email',
+      asunto: 'Bienvenida — {{nombre}}',
+      cuerpo: 'Estimado(a) {{nombre}},\n\n' +
+        'Le damos la bienvenida a la empresa en el puesto de {{puesto}}, departamento de {{departamento}}.\n\n' +
+        'En los próximos días recibirá la información de inducción y acceso a las herramientas de trabajo.\n\n' +
+        'Recursos Humanos' },
+    { nombre: 'Bienvenida a la empresa (minimalista)', tipo: 'whatsapp',
+      cuerpo: 'Hola {{nombre}}. Le damos la bienvenida al equipo como {{puesto}}. Cualquier consulta, escríbanos por este medio.' },
+
+    { nombre: 'Vacaciones aprobadas (minimalista)', tipo: 'email',
+      asunto: 'Vacaciones aprobadas',
+      cuerpo: 'Estimado(a) {{nombre}},\n\n' +
+        'Su solicitud de vacaciones fue aprobada. Puede consultar el detalle de fechas en el sistema.\n\n' +
+        'Recursos Humanos' },
+    { nombre: 'Vacaciones aprobadas (minimalista)', tipo: 'whatsapp',
+      cuerpo: 'Hola {{nombre}}. Su solicitud de vacaciones fue aprobada. Detalle disponible en el sistema.' },
+
+    { nombre: 'Vacaciones no aprobadas (minimalista)', tipo: 'email',
+      asunto: 'Sobre su solicitud de vacaciones',
+      cuerpo: 'Estimado(a) {{nombre}},\n\n' +
+        'Su solicitud de vacaciones no pudo aprobarse en las fechas indicadas. Le invitamos a coordinar otra fecha con su jefatura o con Recursos Humanos.\n\n' +
+        'Recursos Humanos' },
+    { nombre: 'Vacaciones no aprobadas (minimalista)', tipo: 'whatsapp',
+      cuerpo: 'Hola {{nombre}}. Su solicitud de vacaciones no pudo aprobarse en esas fechas. Coordinemos una alternativa.' },
+
+    { nombre: 'Documento próximo a vencer (minimalista)', tipo: 'email',
+      asunto: 'Documento próximo a vencer',
+      cuerpo: 'Estimado(a) {{nombre}},\n\n' +
+        'Uno de sus documentos personales está próximo a vencer. Le solicitamos actualizar la información con Recursos Humanos.\n\n' +
+        'Recursos Humanos' },
+    { nombre: 'Documento próximo a vencer (minimalista)', tipo: 'whatsapp',
+      cuerpo: 'Hola {{nombre}}. Tiene un documento próximo a vencer. Por favor acérquese a RRHH para actualizarlo.' },
+
+    { nombre: 'Pago de planilla realizado (minimalista)', tipo: 'email',
+      asunto: 'Pago de planilla procesado',
+      cuerpo: 'Estimado(a) {{nombre}},\n\n' +
+        'Su pago de planilla fue procesado. Puede consultar el detalle del comprobante con Recursos Humanos.\n\n' +
+        'Recursos Humanos' },
+    { nombre: 'Pago de planilla realizado (minimalista)', tipo: 'whatsapp',
+      cuerpo: 'Hola {{nombre}}. Su pago de planilla ya fue procesado.' },
+
+    { nombre: 'Recordatorio de evaluación de desempeño (minimalista)', tipo: 'email',
+      asunto: 'Evaluación de desempeño próxima',
+      cuerpo: 'Estimado(a) {{nombre}},\n\n' +
+        'Le recordamos que su evaluación de desempeño se realizará próximamente.\n\n' +
+        'Recursos Humanos' },
+    { nombre: 'Recordatorio de evaluación de desempeño (minimalista)', tipo: 'whatsapp',
+      cuerpo: 'Hola {{nombre}}. Le recordamos que su evaluación de desempeño se realizará próximamente.' },
+
+    { nombre: 'Notificación de ajuste salarial (minimalista)', tipo: 'email',
+      asunto: 'Ajuste salarial',
+      cuerpo: 'Estimado(a) {{nombre}},\n\n' +
+        'Se aplicó un ajuste a su salario, efectivo a partir de esta fecha. El detalle estará reflejado en su próximo comprobante de pago.\n\n' +
+        'Recursos Humanos' },
+    { nombre: 'Notificación de ajuste salarial (minimalista)', tipo: 'whatsapp',
+      cuerpo: 'Hola {{nombre}}. Se aplicó un ajuste a su salario, visible en su próximo comprobante de pago.' },
+
+    { nombre: 'Feliz cumpleaños (minimalista)', tipo: 'email',
+      asunto: 'Feliz cumpleaños',
+      cuerpo: 'Estimado(a) {{nombre}},\n\n' +
+        'Le deseamos un feliz cumpleaños de parte de todo el equipo.\n\n' +
+        'Recursos Humanos' },
+    { nombre: 'Feliz cumpleaños (minimalista)', tipo: 'whatsapp',
+      cuerpo: 'Feliz cumpleaños, {{nombre}}. Un saludo de parte de todo el equipo.' },
+
+    { nombre: 'Aniversario laboral (minimalista)', tipo: 'email',
+      asunto: 'Aniversario laboral',
+      cuerpo: 'Estimado(a) {{nombre}},\n\n' +
+        'Hoy se cumple un año más desde su ingreso como {{puesto}}. Gracias por su dedicación durante este tiempo.\n\n' +
+        'Recursos Humanos' },
+    { nombre: 'Aniversario laboral (minimalista)', tipo: 'whatsapp',
+      cuerpo: 'Hola {{nombre}}. Hoy celebramos su aniversario laboral. Gracias por su compromiso.' },
+
+    { nombre: 'Comunicado general (minimalista)', tipo: 'email',
+      asunto: 'Comunicado',
+      cuerpo: 'Estimado(a) {{nombre}},\n\n' +
+        'Le compartimos la siguiente información: [detalle del comunicado].\n\n' +
+        'Recursos Humanos' },
+    { nombre: 'Comunicado general (minimalista)', tipo: 'whatsapp',
+      cuerpo: 'Hola {{nombre}}. Le compartimos un comunicado: [detalle del comunicado].' }
+  ];
+}
+
 /** Paquete de plantillas profesionales (correo + WhatsApp) para escenarios comunes de RRHH. */
 function _paquetePlantillasProfesionales() {
   return [
