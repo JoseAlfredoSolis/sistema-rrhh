@@ -89,7 +89,8 @@ var PRUEBAS_REGISTRO = [
   { nombre: 'crearLiquidacion guarda exactamente el monto que calculó calcularLiquidacion', fn: test_crearLiquidacion_montoCoincideConCalculo },
   { nombre: 'paquete de plantillas minimalistas tiene datos válidos',                     fn: test_paquetePlantillasMinimalistas_esValido },
   { nombre: '_enviarOutlook valida campos requeridos antes de llamar a Microsoft Graph', fn: test_enviarOutlook_validaCamposRequeridos },
-  { nombre: 'reenviarComunicacion solo permite reintentar registros con estado error', fn: test_reenviarComunicacion_soloPermiteRegistrosFallidos }
+  { nombre: 'reenviarComunicacion solo permite reintentar registros con estado error', fn: test_reenviarComunicacion_soloPermiteRegistrosFallidos },
+  { nombre: '_normalizarTelefonoWhatsApp antepone +506 a números nacionales de 8 dígitos', fn: test_normalizarTelefonoWhatsApp_anteponeCodigoPaisCR }
 ];
 
 // ===================================================================
@@ -607,6 +608,17 @@ function test_reenviarComunicacion_soloPermiteRegistrosFallidos(ctx) {
   } finally {
     eliminarFila(HOJAS.COMUNICACIONES, idExitosa, 'Comunicacion');
   }
+}
+
+function test_normalizarTelefonoWhatsApp_anteponeCodigoPaisCR(ctx) {
+  _assertIgual(_normalizarTelefonoWhatsApp('85979267'), '+50685979267',
+    'Un número nacional de 8 dígitos sin código de país debería recibir +506 automáticamente ' +
+    '(regresión: antes se enviaba como "+85979267", un país inválido, y CallMeBot lo rechazaba)');
+  _assertIgual(_normalizarTelefonoWhatsApp('+50685979267'), '+50685979267',
+    'Un número que ya trae código de país no debería alterarse');
+  _assertIgual(_normalizarTelefonoWhatsApp('+1 555-123-4567'), '+15551234567',
+    'Un número internacional con otro código de país no debería tratarse como nacional de CR');
+  _assertIgual(_normalizarTelefonoWhatsApp(''), '', 'Un valor vacío debería devolver string vacío');
 }
 
 function test_enviarComunicacionAmbos_exigeAlMenosUnMedio(ctx) {

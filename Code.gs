@@ -3947,10 +3947,20 @@ function guardarConfigWhatsApp(cfg, token) {
   return { ok: true, mensaje: 'Configuración de WhatsApp guardada.' };
 }
 
+/**
+ * Normaliza un teléfono a formato internacional E.164 (+<código país><número>).
+ * Si el valor no trae código de país y tiene exactamente 8 dígitos (formato
+ * nacional de Costa Rica, donde opera este sistema), se le antepone el
+ * código +506 automáticamente — sin esto, un número como "85979267" se
+ * enviaba como "+85979267" (país inválido) en vez de "+50685979267".
+ */
 function _normalizarTelefonoWhatsApp(telefono) {
   var t = String(telefono || '').trim().replace(/[\s\-()]/g, '');
   if (!t) return '';
-  if (t.charAt(0) !== '+') t = '+' + t.replace(/^\+/, '');
+  if (t.charAt(0) !== '+') {
+    if (/^\d{8}$/.test(t)) t = '506' + t;
+    t = '+' + t.replace(/^\+/, '');
+  }
   return t;
 }
 
