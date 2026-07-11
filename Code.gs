@@ -3972,9 +3972,9 @@ function _enviarWhatsApp(mensaje, cfg, opciones) {
   if (!cfg || !cfg.telefono || !cfg.apikey) {
     return { ok: false, mensaje: 'WhatsApp no configurado (teléfono o API Key faltante).' };
   }
-  if (cfg.apikey.length < 10) {
-    return { ok: false, mensaje: 'API Key de CallMeBot inválida o incompleta.' };
-  }
+  // Nota: las API Keys de CallMeBot son números cortos (normalmente 6-7
+  // dígitos) — no hay un largo mínimo fijo que validar aquí. La respuesta
+  // real de la API (más abajo) ya detecta si la key es inválida.
   if (!opciones.forzar && !cfg.activo) {
     return { ok: false, mensaje: 'Las notificaciones WhatsApp están desactivadas.' };
   }
