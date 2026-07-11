@@ -166,61 +166,27 @@
     document.body.appendChild(modal);
   }
 
-  function abrirFormLiquidacion() {
-    if (!puedeEditar()) { mostrarMensaje('Sin permisos.', 'error'); return; }
-    document.getElementById('formLiquidacion').reset();
-    document.getElementById('liqId').value = '';
-    document.getElementById('liqFechaCalculo').value = new Date().toISOString().slice(0,10);
-    document.getElementById('modalLiqTitulo').textContent = 'Nueva liquidación';
-    document.getElementById('liqInactivarWrap').style.display = '';
-    llenarSelectEmpleados('liqEmpleado');
-    document.getElementById('modalLiquidacion').classList.remove('oculto');
+  // Convierte el motivo guardado (que puede venir con formato antiguo del
+  // modal manual, ej. "Despido con responsabilidad", o con el código de la
+  // calculadora, ej. "despido_con_resp") al valor que entiende <select
+  // id="calcMotivo">. Si no se puede mapear con confianza (ej. "Fin de
+  // contrato", "Mutuo acuerdo"), devuelve '' para que el usuario elija a
+  // conciencia — el motivo determina si corresponde cesantía/preaviso, así
+  // que no conviene adivinar.
+  function _mapearMotivoACalculadora(motivo) {
+    var m = String(motivo || '').toLowerCase();
+    if (m.indexOf('despido') !== -1) {
+      return m.indexOf('sin') !== -1 ? 'despido_sin_resp' : 'despido_con_resp';
+    }
+    if (m.indexOf('renuncia') !== -1) return 'renuncia';
+    return '';
   }
 
   function editarLiquidacion(id) {
     if (!puedeEditar()) { mostrarMensaje('Sin permisos.', 'error'); return; }
     var liq = LIQUIDACIONES.filter(function(l) { return String(l.id) === String(id); })[0];
     if (!liq) return;
-    llenarSelectEmpleados('liqEmpleado');
-    document.getElementById('liqId').value = liq.id;
-    document.getElementById('liqEmpleado').value = liq.empleado_id;
-    document.getElementById('liqFechaSalida').value = liq.fecha_salida;
-    document.getElementById('liqMotivo').value = liq.motivo || 'Renuncia';
-    document.getElementById('liqFechaCalculo').value = liq.fecha_calculo || '';
-    document.getElementById('liqMonto').value = liq.monto;
-    document.getElementById('liqEstado').value = liq.estado || 'pendiente';
-    document.getElementById('liqNotas').value = liq.notas || '';
-    document.getElementById('liqInactivar').checked = false;
-    document.getElementById('liqInactivarWrap').style.display = 'none';
-    document.getElementById('modalLiqTitulo').textContent = 'Editar liquidación';
-    document.getElementById('modalLiquidacion').classList.remove('oculto');
-  }
-
-  function cerrarModalLiquidacion() { document.getElementById('modalLiquidacion').classList.add('oculto'); }
-
-  function guardarLiquidacion(e) {
-    e.preventDefault();
-    var datos = {
-      id: document.getElementById('liqId').value,
-      empleado_id: document.getElementById('liqEmpleado').value,
-      fecha_salida: document.getElementById('liqFechaSalida').value,
-      motivo: document.getElementById('liqMotivo').value,
-      fecha_calculo: document.getElementById('liqFechaCalculo').value,
-      monto: document.getElementById('liqMonto').value,
-      estado: document.getElementById('liqEstado').value,
-      notas: document.getElementById('liqNotas').value,
-      inactivar: document.getElementById('liqInactivar').checked
-    };
-    if (!datos.empleado_id) { mostrarMensaje('Selecciona un empleado.', 'error'); return; }
-    var fn = datos.id ? 'actualizarLiquidacion' : 'crearLiquidacion';
-    llamarBackend(fn, [datos], function(res) {
-      if (res.ok) {
-        cerrarModalLiquidacion();
-        mostrarMensaje(res.mensaje,'exito');
-        cargarLiquidaciones();
-        if (datos.inactivar) refrescarEmpleadosSelect();
-      } else mostrarMensaje(res.mensaje,'error');
-    });
+    _abrirCalculadoraLiquidacion(liq);
   }
 
   function pagarLiquidacion(id) {
@@ -245,25 +211,61 @@
   // ====== CALCULADORA DE LIQUIDACIÓN ======
 
   var CALCULO_ACTUAL = null;
+  var EDITANDO_LIQ = null; // liquidación completa que se está editando, o null si es "Nueva"
 
+  /** Entrada pública para "Nueva liquidación" (sin datos previos). */
   function abrirCalculadoraLiquidacion() {
-    if (!puedeEditar()) { mostrarMensaje('Sin permisos.', 'error'); return; }
-    llenarSelectEmpleados('calcEmpleado');
-    document.getElementById('calcEmpleado').value = '';
-    document.getElementById('calcFechaInicio').value = '';
-    document.getElementById('calcFechaSalida').value = '';
-    document.getElementById('calcMotivo').value = '';
-    document.getElementById('calcEstado').value = 'pendiente';
+    _abrirCalculadoraLiquidacion(null);
+  }
 
-    // Limpiar campos de salarios
+  /**
+   * Abre la calculadora, en modo creación (liqExistente=null) o edición
+   * (liqExistente = registro de LIQUIDACIONES). En edición no se puede
+   * reconstruir con certeza el desglose de salarios mensuales que se usó
+   * originalmente (no se guarda), así que esos campos quedan vacíos y el
+   * usuario puede: (a) recalcular con datos nuevos y guardar el monto
+   * recalculado, o (b) solo editar empleado/fechas/motivo/estado/notas y
+   * guardar sin tocar el monto ya guardado (botón "Guardar cambios sin
+   * recalcular").
+   */
+  function _abrirCalculadoraLiquidacion(liqExistente) {
+    if (!puedeEditar()) { mostrarMensaje('Sin permisos.', 'error'); return; }
+    EDITANDO_LIQ = liqExistente || null;
+    CALCULO_ACTUAL = null;
+
+    llenarSelectEmpleados('calcEmpleado');
+    document.getElementById('calcEmpleado').value = EDITANDO_LIQ ? EDITANDO_LIQ.empleado_id : '';
+    document.getElementById('calcFechaInicio').value = EDITANDO_LIQ ? (EDITANDO_LIQ.fecha_ingreso || '') : '';
+    document.getElementById('calcFechaSalida').value = EDITANDO_LIQ ? (EDITANDO_LIQ.fecha_salida || '') : '';
+    document.getElementById('calcMotivo').value = EDITANDO_LIQ ? _mapearMotivoACalculadora(EDITANDO_LIQ.motivo) : '';
+    document.getElementById('calcEstado').value = EDITANDO_LIQ ? (EDITANDO_LIQ.estado || 'pendiente') : 'pendiente';
+    document.getElementById('calcNotas').value = EDITANDO_LIQ ? (EDITANDO_LIQ.notas || '') : '';
+    document.getElementById('calcDiasVac').value = 5;
+
+    // Limpiar campos de salarios (no se guardan, no se pueden reconstruir al editar)
     ['Diciembre', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo',
      'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre'].forEach(function(mes) {
       document.getElementById('sal' + mes).value = '';
     });
 
+    calcularMesesLaborados();
     recalcularAguinaldo(); // Mostrar 0 inicialmente
     document.getElementById('calcResultado').classList.add('oculto');
     document.getElementById('btnGuardarLiqCalc').classList.add('oculto');
+
+    var aviso = document.getElementById('calcEditandoAviso');
+    var btnSinRecalcular = document.getElementById('btnGuardarLiqSinRecalcular');
+    if (EDITANDO_LIQ) {
+      aviso.textContent = 'Editando liquidación existente. Monto actualmente guardado: ' +
+        formatoDinero(EDITANDO_LIQ.monto) + '. Los salarios mensuales no se guardaron en su momento — ' +
+        'si recalculás sin completarlos, el aguinaldo dará distinto al original.';
+      aviso.classList.remove('oculto');
+      btnSinRecalcular.classList.remove('oculto');
+    } else {
+      aviso.classList.add('oculto');
+      btnSinRecalcular.classList.add('oculto');
+    }
+
     mostrarVista('calculadora-liquidacion');
   }
 
@@ -301,6 +303,7 @@
   function cerrarCalculadoraLiquidacion() {
     mostrarVista('liquidaciones');
     CALCULO_ACTUAL = null;
+    EDITANDO_LIQ = null;
   }
 
   function autocompletarCalculadora() {
@@ -385,7 +388,6 @@
       CALCULO_ACTUAL = res;
       _mostrarResultadoCalculadora(res);
       document.getElementById('btnGuardarLiqCalc').classList.remove('oculto');
-      guardarCalculoLiquidacion();
     });
   }
 
@@ -451,7 +453,11 @@
   function guardarCalculoLiquidacion() {
     if (!CALCULO_ACTUAL) { mostrarMensaje('Primero realiza un cálculo.', 'error'); return; }
 
+    var notas = document.getElementById('calcNotas').value.trim() ||
+      ('Cálculo automático - ' + CALCULO_ACTUAL.motivoSalida);
+
     var datos = {
+      id: EDITANDO_LIQ ? EDITANDO_LIQ.id : undefined,
       empleado_id: document.getElementById('calcEmpleado').value,
       fecha_salida: document.getElementById('calcFechaSalida').value,
       motivo: document.getElementById('calcMotivo').value,
@@ -459,27 +465,54 @@
       monto: CALCULO_ACTUAL.totalNeto,
       estado: document.getElementById('calcEstado').value,
       tipoNomina: (document.querySelector('input[name="calcTipoNomina"]:checked') || {}).value || 'Semanal',
-      notas: 'Cálculo automático - ' + CALCULO_ACTUAL.motivoSalida
+      notas: notas
     };
 
-    _ejecutarGuardadoLiquidacion(datos);
+    _ejecutarGuardadoLiquidacion(datos, 'btnGuardarLiqCalc', '💾 Guardar Liquidación');
   }
 
-  function _ejecutarGuardadoLiquidacion(datos) {
-    var btn = document.getElementById('btnGuardarLiqCalc');
+  /** Guarda solo empleado/fechas/motivo/estado/notas, SIN tocar el monto ya guardado (solo en edición). */
+  function guardarLiquidacionSinRecalcular() {
+    if (!EDITANDO_LIQ) return;
+
+    var empleadoId = document.getElementById('calcEmpleado').value;
+    var fechaSalida = document.getElementById('calcFechaSalida').value;
+    var motivo = document.getElementById('calcMotivo').value;
+    if (!empleadoId || !fechaSalida || !motivo) {
+      mostrarMensaje('Completa empleado, fecha de salida y motivo antes de guardar.', 'error');
+      return;
+    }
+
+    var datos = {
+      id: EDITANDO_LIQ.id,
+      empleado_id: empleadoId,
+      fecha_salida: fechaSalida,
+      motivo: motivo,
+      fecha_calculo: EDITANDO_LIQ.fecha_calculo || new Date().toISOString().slice(0,10),
+      monto: EDITANDO_LIQ.monto,
+      estado: document.getElementById('calcEstado').value,
+      notas: document.getElementById('calcNotas').value.trim()
+    };
+
+    _ejecutarGuardadoLiquidacion(datos, 'btnGuardarLiqSinRecalcular', '💾 Guardar cambios sin recalcular');
+  }
+
+  function _ejecutarGuardadoLiquidacion(datos, idBoton, textoBoton) {
+    var btn = document.getElementById(idBoton);
     var errDiv = document.getElementById('calcErrorGuardado');
     if (errDiv) { errDiv.textContent = ''; errDiv.style.display = 'none'; }
     if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
 
     if (!SESSION_TOKEN) {
-      if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar Liquidación'; }
+      if (btn) { btn.disabled = false; btn.textContent = textoBoton; }
       if (errDiv) { errDiv.textContent = '⚠️ Sin sesión activa. Ingresa tu PIN primero y vuelve a hacer clic en Guardar.'; errDiv.style.display = 'block'; }
       mostrarMensaje('Sin sesión activa. Ingresa tu PIN.', 'error');
       return;
     }
 
-    llamarBackend('crearLiquidacion', [datos], function(res) {
-      if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar Liquidación'; }
+    var fn = datos.id ? 'actualizarLiquidacion' : 'crearLiquidacion';
+    llamarBackend(fn, [datos], function(res) {
+      if (btn) { btn.disabled = false; btn.textContent = textoBoton; }
       if (!res || !res.ok) {
         var msg = (res && res.mensaje) || 'Error desconocido';
         if (errDiv) { errDiv.textContent = '❌ ' + msg; errDiv.style.display = 'block'; }

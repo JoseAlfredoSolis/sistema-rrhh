@@ -1267,7 +1267,9 @@
             </div>
             <div class="campo"><label>Días de vacaciones</label><input type="number" id="calcDiasVac" min="0" max="30" step="0.5" value="5" placeholder="5"><small style="color:var(--txt-3)">Días pendientes a liquidar (por defecto 5)</small></div>
             <div class="campo"><label>Estado *</label><select id="calcEstado" required><option value="pendiente">Pendiente</option><option value="pagada">Pagada</option></select></div>
+            <div class="campo" style="grid-column:1/-1"><label>Notas</label><input type="text" id="calcNotas" maxlength="200" placeholder="Recontratable, etc."></div>
           </div>
+          <p id="calcEditandoAviso" class="oculto" style="margin:10px 0 0;font-size:12px;color:var(--txt-2)"></p>
         </div>
 
         <!-- Sección 2: Salarios mensuales -->
@@ -1302,6 +1304,7 @@
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
           <button type="submit" class="btn btn-primario" id="btnCalcular">🧮 Calcular Liquidación</button>
           <button type="button" id="btnGuardarLiqCalc" class="btn btn-primario oculto" onclick="guardarCalculoLiquidacion()" style="background:var(--ok)">💾 Guardar Liquidación</button>
+          <button type="button" id="btnGuardarLiqSinRecalcular" class="btn btn-secundario oculto" onclick="guardarLiquidacionSinRecalcular()">💾 Guardar cambios sin recalcular</button>
         </div>
       </form>
 
@@ -1770,33 +1773,6 @@
     </div>
   </div>
 
-  <!-- Modal Liquidación -->
-  <div id="modalLiquidacion" class="modal oculto">
-    <div class="modal-contenido">
-      <div class="modal-cabecera"><h2 id="modalLiqTitulo">Nueva liquidación</h2><button class="cerrar" onclick="cerrarModalLiquidacion()">&times;</button></div>
-      <form id="formLiquidacion" onsubmit="guardarLiquidacion(event)">
-        <input type="hidden" id="liqId">
-        <div class="campo"><label>Empleado *</label><select id="liqEmpleado" required></select></div>
-        <div class="campo"><label>Fecha de salida *</label><input type="date" id="liqFechaSalida" required></div>
-        <div class="campo"><label>Motivo</label>
-          <select id="liqMotivo">
-            <option value="Renuncia">Renuncia</option>
-            <option value="Despido con responsabilidad">Despido con responsabilidad patronal</option>
-            <option value="Despido sin responsabilidad">Despido sin responsabilidad patronal</option>
-            <option value="Fin de contrato">Fin de contrato</option>
-            <option value="Abandono de trabajo">Abandono de trabajo</option>
-            <option value="Mutuo acuerdo">Mutuo acuerdo</option>
-          </select>
-        </div>
-        <div class="campo"><label>Fecha de cálculo</label><input type="date" id="liqFechaCalculo"></div>
-        <div class="campo"><label>Monto (₡) *</label><input type="number" id="liqMonto" required min="0" step="0.01" placeholder="0.00"></div>
-        <div class="campo"><label>Estado</label><select id="liqEstado"><option value="pendiente">Pendiente</option><option value="pagada">Pagada</option></select></div>
-        <div class="campo"><label>Notas</label><input type="text" id="liqNotas" maxlength="100" placeholder="Recontratable, etc."></div>
-        <div class="campo" id="liqInactivarWrap"><label style="display:flex;align-items:center;gap:8px;font-weight:400"><input type="checkbox" id="liqInactivar" style="width:auto"> Marcar empleado como inactivo al guardar</label></div>
-        <div class="modal-pie"><button type="button" class="btn btn-secundario" onclick="cerrarModalLiquidacion()">Cancelar</button><button type="submit" class="btn btn-primario" id="btnGuardarLiq">Guardar</button></div>
-      </form>
-    </div>
-  </div>
 
   <!-- Modal genérico de confirmación (reemplaza confirm() nativo, bloqueado en GAS iframes) -->
   <div id="modalConfirmar" class="modal oculto" role="alertdialog" aria-modal="true" aria-labelledby="modalConfirmarTitulo">
