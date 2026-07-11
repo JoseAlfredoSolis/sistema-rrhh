@@ -575,7 +575,9 @@
         mostrarMensaje('Error: ' + msg, 'error');
         if (fn !== 'registrarErrorSistema') {
           var contexto = _FUNCIONES_SENSIBLES[fn] ? '(argumentos omitidos por seguridad)' : JSON.stringify(args.slice(0, -1)).slice(0, 500);
-          google.script.run.registrarErrorSistema(fn, msg, contexto, SESSION_TOKEN || '');
+          google.script.run
+            .withFailureHandler(function () { /* best-effort: si falla el logging, no hay más acción posible */ })
+            .registrarErrorSistema(fn, msg, contexto, SESSION_TOKEN || '');
         }
       });
     runner[fn].apply(runner, args);

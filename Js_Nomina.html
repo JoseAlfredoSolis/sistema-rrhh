@@ -32,6 +32,7 @@
 
   function abrirFormNomina() {
     if (!puedeEditar()) { mostrarMensaje('Sin permisos para generar nómina.', 'error'); return; }
+    _cargarParametrosDeduccionesCR();
     document.getElementById('formNomina').reset();
     document.getElementById('errNomDed').textContent = '';
     document.getElementById('nomSalarioBase').value = '';
@@ -63,16 +64,23 @@
     if (dedInput && !dedInput.value) dedInput.value = d.total;
   }
 
-  // Preview local (sin latencia). Mantener sincronizado con calcularDeduccionesCR() en Code.gs.
+  // Preview local instantáneo (sin latencia por tecla), pero los tramos
+  // vienen del backend (fuente única de verdad en Code.gs) en vez de estar
+  // hardcodeados aquí — ver obtenerParametrosDeduccionesCR().
+  var _PARAMS_DED_CR = null;
+  function _cargarParametrosDeduccionesCR() {
+    if (_PARAMS_DED_CR) return;
+    llamarBackend('obtenerParametrosDeduccionesCR', [], function (res) {
+      if (res && res.ok) _PARAMS_DED_CR = res;
+    });
+  }
   function _calcDed(sal) {
     sal = Number(sal)||0;
-    var ccss = Math.round(sal*0.1067);
-    var renta = 0;
-    if      (sal<=929000)  renta=0;
-    else if (sal<=1364000) renta=Math.round((sal-929000)*0.10);
-    else if (sal<=2388000) renta=Math.round(43500+(sal-1364000)*0.15);
-    else if (sal<=4775000) renta=Math.round(197100+(sal-2388000)*0.20);
-    else                   renta=Math.round(674500+(sal-4775000)*0.25);
+    if (!_PARAMS_DED_CR) return { ccss:0, renta:0, total:0, neto:sal };
+    var ccss = Math.round(sal * _PARAMS_DED_CR.ccssPct);
+    var tramo = _PARAMS_DED_CR.tramos.filter(function(t){ return sal <= t.hasta; })[0]
+      || _PARAMS_DED_CR.tramos[_PARAMS_DED_CR.tramos.length - 1];
+    var renta = Math.max(0, Math.round(tramo.base + (sal - tramo.desde) * tramo.pct));
     return { ccss:ccss, renta:renta, total:ccss+renta, neto:sal-ccss-renta };
   }
 

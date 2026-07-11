@@ -78,7 +78,15 @@ var PRUEBAS_REGISTRO = [
   { nombre: 'listarHistorialSalario bloquea sin sesión válida',                fn: test_listarHistorialSalario_bloqueaSinToken },
   { nombre: 'listarBitacora bloquea sin sesión válida',                        fn: test_listarBitacora_bloqueaSinToken },
   { nombre: 'paquete de plantillas profesionales tiene datos válidos',        fn: test_paquetePlantillasProfesionales_esValido },
-  { nombre: 'enviarComunicacionAmbos exige al menos un medio',                fn: test_enviarComunicacionAmbos_exigeAlMenosUnMedio }
+  { nombre: 'enviarComunicacionAmbos exige al menos un medio',                fn: test_enviarComunicacionAmbos_exigeAlMenosUnMedio },
+  { nombre: 'hashPin es determinista y distingue PINs distintos',            fn: test_hashPin_esDeterminista },
+  { nombre: '_pinCoincide compara contra el hash, nunca contra texto plano', fn: test_pinCoincide_comparaHashes },
+  { nombre: 'escaparHtmlEmail neutraliza caracteres peligrosos de HTML',     fn: test_escaparHtmlEmail },
+  { nombre: 'sanitizarCeldaSheets neutraliza valores que Sheets interpretaría como fórmula', fn: test_sanitizarCeldaSheets },
+  { nombre: 'sanitizarFilaSheets aplica la neutralización a toda la fila',   fn: test_sanitizarFilaSheets },
+  { nombre: 'estadoNormalizado recorta espacios y normaliza mayúsculas',    fn: test_estadoNormalizado },
+  { nombre: 'mesDeFecha extrae yyyy-MM tanto de Date como de string',       fn: test_mesDeFecha },
+  { nombre: 'crearLiquidacion guarda exactamente el monto que calculó calcularLiquidacion', fn: test_crearLiquidacion_montoCoincideConCalculo }
 ];
 
 // ===================================================================
@@ -533,4 +541,85 @@ function test_paquetePlantillasProfesionales_esValido(ctx) {
 function test_enviarComunicacionAmbos_exigeAlMenosUnMedio(ctx) {
   var res = enviarComunicacionAmbos({ empleado_id: ctx.empleadoId, email: false, whatsapp: false }, ctx.token);
   _assertFalla(res, 'enviarComunicacionAmbos debería exigir al menos un medio (correo o WhatsApp)');
+}
+
+function test_hashPin_esDeterminista(ctx) {
+  var h1 = hashPin('1234');
+  var h2 = hashPin('1234');
+  _assertIgual(h1, h2, 'El mismo PIN debería producir siempre el mismo hash (mismo salt de script)');
+  _assert(hashPin('9999') !== h1, 'PINs distintos deberían producir hashes distintos');
+  _assert(!!h1 && h1.length > 0, 'hashPin no debería devolver un valor vacío');
+}
+
+function test_pinCoincide_comparaHashes(ctx) {
+  var hashAlmacenado = hashPin('4321');
+  _assert(_pinCoincide('4321', hashAlmacenado), 'Debería coincidir cuando el PIN corresponde al hash almacenado');
+  _assert(!_pinCoincide('0000', hashAlmacenado), 'No debería coincidir con un PIN distinto');
+  _assert(!_pinCoincide('4321', ''), 'Sin nada almacenado, nunca debería coincidir (evita comparar contra vacío)');
+}
+
+function test_escaparHtmlEmail(ctx) {
+  var resultado = escaparHtmlEmail('<img src=x onerror="robar()"> & "comillas"');
+  _assert(resultado.indexOf('<img') === -1, 'No debería quedar una etiqueta <img> sin escapar');
+  _assert(resultado.indexOf('&lt;img') !== -1, 'El "<" debería escaparse a &lt;');
+  _assert(resultado.indexOf('&amp;') !== -1, 'El "&" debería escaparse a &amp;');
+  _assert(resultado.indexOf('&quot;') !== -1, 'Las comillas dobles deberían escaparse a &quot;');
+  _assertIgual(escaparHtmlEmail(null), '', 'null debería devolver string vacío, no "null"');
+}
+
+function test_sanitizarCeldaSheets(ctx) {
+  _assertIgual(sanitizarCeldaSheets('=IMPORTXML("http://x")'), "'=IMPORTXML(\"http://x\")",
+    'Un valor que empieza con "=" debería prefijarse con apóstrofe para no ejecutarse como fórmula');
+  _assertIgual(sanitizarCeldaSheets('+1234'), "'+1234", 'Un valor que empieza con "+" también debe neutralizarse');
+  _assertIgual(sanitizarCeldaSheets('@SUM(1,2)'), "'@SUM(1,2)", 'Un valor que empieza con "@" también debe neutralizarse');
+  _assertIgual(sanitizarCeldaSheets('Juan Pérez'), 'Juan Pérez', 'Un texto normal no debería alterarse');
+  _assertIgual(sanitizarCeldaSheets(123), 123, 'Un número no debería convertirse a string ni alterarse');
+  _assertIgual(sanitizarCeldaSheets(null), '', 'null debería normalizarse a string vacío');
+}
+
+function test_sanitizarFilaSheets(ctx) {
+  var fila = sanitizarFilaSheets(['id1', '=HACKED()', 'texto normal', 42]);
+  _assertIgual(fila[0], 'id1', 'El primer valor no debería alterarse');
+  _assertIgual(fila[1], "'=HACKED()", 'El valor con fórmula debería neutralizarse');
+  _assertIgual(fila[2], 'texto normal', 'El texto normal no debería alterarse');
+  _assertIgual(fila[3], 42, 'El número no debería alterarse');
+}
+
+function test_estadoNormalizado(ctx) {
+  _assertIgual(estadoNormalizado('  Aprobada  '), 'aprobada', 'Debería recortar espacios y pasar a minúsculas');
+  _assertIgual(estadoNormalizado(null), '', 'null debería normalizarse a string vacío');
+  _assertIgual(estadoNormalizado(undefined), '', 'undefined debería normalizarse a string vacío');
+}
+
+function test_mesDeFecha(ctx) {
+  _assertIgual(mesDeFecha(new Date(2026, 2, 15)), '2026-03', 'Debería extraer yyyy-MM de un objeto Date');
+  _assertIgual(mesDeFecha('2026-07-01'), '2026-07', 'Debería extraer yyyy-MM de un string ISO');
+  _assertIgual(mesDeFecha(''), '', 'Un valor vacío debería devolver string vacío en vez de fallar');
+}
+
+function test_crearLiquidacion_montoCoincideConCalculo(ctx) {
+  var fechaSalida = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  var calculo = calcularLiquidacion(ctx.empleadoId, fechaSalida, 'despido_con_resp', null, null, null, null, ctx.token);
+  _assertOk(calculo, 'calcularLiquidacion debería completarse para preparar el valor esperado');
+
+  var res = crearLiquidacion({
+    empleado_id: ctx.empleadoId,
+    fecha_salida: fechaSalida,
+    motivo: 'despido_con_resp',
+    calcular_automatico: true
+  }, ctx.token);
+  _assertOk(res, 'crearLiquidacion debería guardar correctamente con cálculo automático');
+
+  // No usa ctx.liquidacionId (ya lo ocupa test_crearLiquidacion_flujoCompleto) para
+  // no pisarlo y dejar esa otra liquidación de prueba huérfana — se limpia aquí mismo.
+  try {
+    var guardadas = listarLiquidaciones(ctx.empleadoId, null, ctx.token);
+    var guardada = guardadas.filter(function (l) { return String(l.id) === String(res.id); })[0];
+    _assert(!!guardada, 'La liquidación recién creada debería aparecer en listarLiquidaciones');
+    _assertIgual(Number(guardada.monto), Number(calculo.totalCalculado),
+      'El monto guardado debería coincidir exactamente con lo que calculó calcularLiquidacion ' +
+      '(regresión: antes solo se verificaba ok:true y !!id, sin comprobar el monto real)');
+  } finally {
+    eliminarFila(HOJAS.LIQUIDACIONES, res.id, 'Liquidacion');
+  }
 }

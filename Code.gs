@@ -59,7 +59,7 @@ var ENCABEZADOS = {
   HistorialSalarios: ['id', 'empleado_id', 'salario_anterior', 'salario_nuevo', 'fecha', 'notas'],
   Capacitaciones:    ['id', 'empleado_id', 'curso', 'institucion', 'fecha_inicio', 'fecha_fin', 'estado', 'certificado_url'],
   Evaluaciones:      ['id', 'empleado_id', 'periodo', 'calificacion', 'comentarios', 'evaluador', 'fecha'],
-  Bitacora:          ['id', 'fecha', 'usuario', 'accion', 'entidad', 'entidad_id', 'resumen'],
+  Bitacora:          ['id', 'fecha', 'usuario', 'accion', 'entidad', 'entidad_id', 'resumen', 'jsonCambios'],
   Prestamos:         ['id', 'empleado_id', 'monto', 'cuotas', 'cuota_mensual', 'cuotas_pagadas', 'estado', 'fecha', 'notas'],
   HorasExtra:        ['id', 'empleado_id', 'fecha', 'horas', 'tipo', 'aprobado', 'monto', 'notas'],
   Activos:           ['id', 'empleado_id', 'nombre', 'categoria', 'serial', 'fecha_entrega', 'fecha_devolucion', 'estado', 'notas'],
@@ -545,51 +545,57 @@ function actualizarEmpleado(emp, token) {
   if (error) {
     return { ok: false, mensaje: error };
   }
-  if (cedulaDuplicada(emp.cedula, emp.id)) {
-    return { ok: false, mensaje: 'Ya existe otro empleado con esa cédula.' };
-  }
 
-  var hoja = getHoja(HOJAS.EMPLEADOS);
-  var fila = buscarFilaPorId(hoja, emp.id);
-  if (fila === -1) {
-    return { ok: false, mensaje: 'No se encontró el empleado a actualizar.' };
-  }
+  // El chequeo de cédula duplicada y la escritura deben quedar dentro del
+  // mismo lock: si no, dos ediciones concurrentes con la misma cédula nueva
+  // podrían pasar ambas la validación antes de que cualquiera escriba.
+  return conLock(function () {
+    if (cedulaDuplicada(emp.cedula, emp.id)) {
+      return { ok: false, mensaje: 'Ya existe otro empleado con esa cédula.' };
+    }
 
-  var numCols = ENCABEZADOS.Empleados.length;
-  var filaActual = hoja.getRange(fila, 1, 1, numCols).getValues()[0];
+    var hoja = getHoja(HOJAS.EMPLEADOS);
+    var fila = buscarFilaPorId(hoja, emp.id);
+    if (fila === -1) {
+      return { ok: false, mensaje: 'No se encontró el empleado a actualizar.' };
+    }
 
-  var estadoActual    = filaActual[COLS.EMP_ESTADO_IDX]  || 'activo';
-  var salarioAnterior = Number(filaActual[COLS.EMP_SALARIO_IDX]) || 0;
-  var salarioNuevo    = Number(emp.salario);
+    var numCols = ENCABEZADOS.Empleados.length;
+    var filaActual = hoja.getRange(fila, 1, 1, numCols).getValues()[0];
 
-  var valores = [
-    emp.id,
-    String(emp.nombre).trim(),
-    String(emp.cedula).trim(),
-    emp.departamento || '',
-    emp.puesto || '',
-    formatearFecha(emp.fecha_ingreso),
-    salarioNuevo,
-    estadoActual,
-    emp.fecha_nacimiento ? formatearFecha(emp.fecha_nacimiento) : (String(filaActual[8] || '')),
-    emp.telefono ? String(emp.telefono).trim() : (String(filaActual[9] || ''))
-  ].concat(_camposExtraEmpleado(emp, filaActual));
+    var estadoActual    = filaActual[COLS.EMP_ESTADO_IDX]  || 'activo';
+    var salarioAnterior = Number(filaActual[COLS.EMP_SALARIO_IDX]) || 0;
+    var salarioNuevo    = Number(emp.salario);
 
-  _forzarTextoCamposIdEmpleado(hoja, fila);
-  hoja.getRange(fila, 1, 1, valores.length).setValues([sanitizarFilaSheets(valores)]);
-  invalidarCache(HOJAS.EMPLEADOS);
+    var valores = [
+      emp.id,
+      String(emp.nombre).trim(),
+      String(emp.cedula).trim(),
+      emp.departamento || '',
+      emp.puesto || '',
+      formatearFecha(emp.fecha_ingreso),
+      salarioNuevo,
+      estadoActual,
+      emp.fecha_nacimiento ? formatearFecha(emp.fecha_nacimiento) : (String(filaActual[8] || '')),
+      emp.telefono ? String(emp.telefono).trim() : (String(filaActual[9] || ''))
+    ].concat(_camposExtraEmpleado(emp, filaActual));
 
-  if (salarioAnterior !== salarioNuevo) {
-    var hojaHist = getHoja(HOJAS.HISTORIAL_SALARIOS);
-    hojaHist.appendRow([generarId('HSA'), emp.id, salarioAnterior, salarioNuevo,
-      formatearFecha(new Date()), emp.notasSalario || '']);
-    invalidarCache(HOJAS.HISTORIAL_SALARIOS);
-    registrarBitacora('actualizar', 'Empleados', emp.id,
-      'Salario: ' + salarioAnterior + ' → ' + salarioNuevo + ' | Usuario: ' + Session.getActiveUser().getEmail());
-  } else {
-    registrarBitacora('actualizar', 'Empleados', emp.id, String(emp.nombre).trim());
-  }
-  return { ok: true, mensaje: 'Empleado actualizado correctamente.' };
+    _forzarTextoCamposIdEmpleado(hoja, fila);
+    hoja.getRange(fila, 1, 1, valores.length).setValues([sanitizarFilaSheets(valores)]);
+    invalidarCache(HOJAS.EMPLEADOS);
+
+    if (salarioAnterior !== salarioNuevo) {
+      var hojaHist = getHoja(HOJAS.HISTORIAL_SALARIOS);
+      hojaHist.appendRow(sanitizarFilaSheets([generarId('HSA'), emp.id, salarioAnterior, salarioNuevo,
+        formatearFecha(new Date()), emp.notasSalario || '']));
+      invalidarCache(HOJAS.HISTORIAL_SALARIOS);
+      registrarBitacora('actualizar', 'Empleados', emp.id,
+        'Salario: ' + salarioAnterior + ' → ' + salarioNuevo + ' | Usuario: ' + Session.getActiveUser().getEmail());
+    } else {
+      registrarBitacora('actualizar', 'Empleados', emp.id, String(emp.nombre).trim());
+    }
+    return { ok: true, mensaje: 'Empleado actualizado correctamente.' };
+  });
 }
 
 /**
@@ -674,14 +680,20 @@ function crearDepartamento(d, token) {
 
   var error = validarDepartamento(d);
   if (error) return { ok: false, mensaje: error };
-  if (departamentoDuplicado(d.nombre, null)) {
-    return { ok: false, mensaje: 'Ya existe un departamento con ese nombre.' };
-  }
-  var hoja = getHoja(HOJAS.DEPARTAMENTOS);
-  var id = generarId('DEP');
-  hoja.appendRow([id, String(d.nombre).trim(), d.responsable || '']);
-  invalidarCache(HOJAS.DEPARTAMENTOS);
-  return { ok: true, mensaje: 'Departamento creado correctamente.', id: id };
+
+  // Chequeo de nombre duplicado + escritura dentro del mismo lock: sin esto,
+  // dos altas concurrentes con el mismo nombre podrían pasar ambas la
+  // validación antes de que cualquiera escriba.
+  return conLock(function () {
+    if (departamentoDuplicado(d.nombre, null)) {
+      return { ok: false, mensaje: 'Ya existe un departamento con ese nombre.' };
+    }
+    var hoja = getHoja(HOJAS.DEPARTAMENTOS);
+    var id = generarId('DEP');
+    hoja.appendRow(sanitizarFilaSheets([id, String(d.nombre).trim(), d.responsable || '']));
+    invalidarCache(HOJAS.DEPARTAMENTOS);
+    return { ok: true, mensaje: 'Departamento creado correctamente.', id: id };
+  });
 }
 
 /** Actualiza un departamento. */
@@ -692,15 +704,18 @@ function actualizarDepartamento(d, token) {
   if (!d || !d.id) return { ok: false, mensaje: 'Falta el identificador.' };
   var error = validarDepartamento(d);
   if (error) return { ok: false, mensaje: error };
-  if (departamentoDuplicado(d.nombre, d.id)) {
-    return { ok: false, mensaje: 'Ya existe otro departamento con ese nombre.' };
-  }
-  var hoja = getHoja(HOJAS.DEPARTAMENTOS);
-  var fila = buscarFilaPorId(hoja, d.id);
-  if (fila === -1) return { ok: false, mensaje: 'No se encontró el departamento.' };
-  hoja.getRange(fila, 1, 1, 3).setValues([[d.id, String(d.nombre).trim(), d.responsable || '']]);
-  invalidarCache(HOJAS.DEPARTAMENTOS);
-  return { ok: true, mensaje: 'Departamento actualizado correctamente.' };
+
+  return conLock(function () {
+    if (departamentoDuplicado(d.nombre, d.id)) {
+      return { ok: false, mensaje: 'Ya existe otro departamento con ese nombre.' };
+    }
+    var hoja = getHoja(HOJAS.DEPARTAMENTOS);
+    var fila = buscarFilaPorId(hoja, d.id);
+    if (fila === -1) return { ok: false, mensaje: 'No se encontró el departamento.' };
+    hoja.getRange(fila, 1, 1, 3).setValues([sanitizarFilaSheets([d.id, String(d.nombre).trim(), d.responsable || ''])]);
+    invalidarCache(HOJAS.DEPARTAMENTOS);
+    return { ok: true, mensaje: 'Departamento actualizado correctamente.' };
+  });
 }
 
 /**
@@ -1059,8 +1074,8 @@ function crearVacaciones(v, token) {
     var id = generarId('VAC');
     var notaFinal = v.notas || '';
     if (v.solicitado_por) notaFinal = '[Solicitado por jefe: ' + v.solicitado_por + '] ' + notaFinal;
-    hoja.appendRow([id, v.empleado_id, formatearFecha(v.fecha_inicio),
-                    formatearFecha(v.fecha_fin), dias, 'pendiente', notaFinal]);
+    hoja.appendRow(sanitizarFilaSheets([id, v.empleado_id, formatearFecha(v.fecha_inicio),
+                    formatearFecha(v.fecha_fin), dias, 'pendiente', notaFinal]));
     invalidarCache(HOJAS.VACACIONES);
 
     var quien = v.solicitado_por ? v.solicitado_por + ' (jefe) para ' + v.empleado_id : v.empleado_id;
@@ -1112,6 +1127,23 @@ function cambiarEstadoVacaciones(id, nuevoEstado, token) {
           mensaje: 'No se puede aprobar. El empleado tiene ' + balance.diasDisponibles +
                    ' días disponibles, pero solicita ' + diasSolicitud + ' días.'
         };
+      }
+
+      // Revalidar solapamiento con otras vacaciones ya aprobadas: al crear
+      // se validó contra el estado de ese momento, pero pudo aprobarse otra
+      // solicitud en fechas cruzadas mientras esta seguía pendiente.
+      var inicioSol = new Date(solicitud.fecha_inicio);
+      var finSol = new Date(solicitud.fecha_fin);
+      var solapada = datos.some(function (otra) {
+        if (String(otra.id) === String(id)) return false;
+        if (String(otra.empleado_id) !== String(solicitud.empleado_id)) return false;
+        if (String(otra.estado).toLowerCase() !== 'aprobada') return false;
+        var otroInicio = new Date(otra.fecha_inicio);
+        var otroFin = new Date(otra.fecha_fin);
+        return !(finSol < otroInicio || inicioSol > otroFin);
+      });
+      if (solapada) {
+        return { ok: false, mensaje: 'Conflicto: Ya hay otras vacaciones aprobadas en esas fechas.' };
       }
     }
 
@@ -1252,7 +1284,6 @@ function obtenerAlertas(token) {
 /** Cuerpo de alertas sin auth (uso interno / reportes ya autenticados). */
 function _obtenerAlertasInterno() {
   var hoy = new Date();
-  var hace31dias = new Date(hoy.getTime() - 31 * 24 * 60 * 60 * 1000);
   var hace30dias = new Date(hoy.getTime() - 30 * 24 * 60 * 60 * 1000);
   var hace90dias = new Date(hoy.getTime() - 90 * 24 * 60 * 60 * 1000);
 
@@ -1263,7 +1294,7 @@ function _obtenerAlertasInterno() {
     // Alerta: Cédula próxima a vencer (< 31 días)
     if (emp.vencimiento_cedula) {
       var fechaCed = new Date(formatearFecha(emp.vencimiento_cedula) + 'T00:00:00');
-      if (fechaCed >= hace31dias && fechaCed <= hoy) {
+      if (fechaCed <= hoy) {
         alertas.push({
           tipo: 'cedula_vencida',
           empleado: emp.nombre,
@@ -1287,7 +1318,7 @@ function _obtenerAlertasInterno() {
     // Alerta: Licencia próxima a vencer
     if (emp.vencimiento_licencia) {
       var fechaLic = new Date(formatearFecha(emp.vencimiento_licencia) + 'T00:00:00');
-      if (fechaLic >= hace31dias && fechaLic <= hoy) {
+      if (fechaLic <= hoy) {
         alertas.push({
           tipo: 'licencia_vencida',
           empleado: emp.nombre,
@@ -1908,7 +1939,7 @@ function _plantillaCorreo(cuerpoHtml) {
   var cfg = obtenerConfigCorreoInterno();
   return '<div style="font-family:-apple-system,Arial,sans-serif;max-width:620px;margin:0 auto">' +
     '<div style="background:#2563eb;color:#fff;padding:16px 20px;border-radius:8px 8px 0 0">' +
-      '<h2 style="margin:0;font-size:18px">' + (cfg.fromNombre || 'Sistema RRHH') + '</h2>' +
+      '<h2 style="margin:0;font-size:18px">' + escaparHtmlEmail(cfg.fromNombre || 'Sistema RRHH') + '</h2>' +
     '</div>' +
     '<div style="padding:20px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px">' +
       cuerpoHtml +
@@ -2126,12 +2157,12 @@ function importarDatos(entidad, filas, token) {
         if (error) { errores.push({ fila: numFila, motivo: error }); return; }
         if (cedulasExistentes[emp.cedula]) { omitidos++; return; }
 
-        hoja.appendRow([generarId('EMP'), emp.nombre, emp.cedula,
+        hoja.appendRow(sanitizarFilaSheets([generarId('EMP'), emp.nombre, emp.cedula,
           emp.departamento, emp.puesto, formatearFecha(emp.fecha_ingreso),
           Number(emp.salario) || 0, emp.estado,
           fila.fecha_nacimiento ? formatearFecha(String(fila.fecha_nacimiento)) : '',
           String(fila.telefono || '').trim()
-        ].concat(_camposExtraEmpleado(fila, null)));
+        ].concat(_camposExtraEmpleado(fila, null))));
         cedulasExistentes[emp.cedula] = true;
         creados++;
 
@@ -2143,7 +2174,7 @@ function importarDatos(entidad, filas, token) {
         if (!dep.nombre) { errores.push({ fila: numFila, motivo: 'Nombre vacío.' }); return; }
         var claveDepto = dep.nombre.toLowerCase();
         if (deptosExistentes[claveDepto]) { omitidos++; return; }
-        hoja.appendRow([generarId('DEP'), dep.nombre, dep.responsable]);
+        hoja.appendRow(sanitizarFilaSheets([generarId('DEP'), dep.nombre, dep.responsable]));
         deptosExistentes[claveDepto] = true;
         creados++;
       }
@@ -2228,28 +2259,36 @@ function cargarBaseCompleta(datos, modo, token) {
     }
 
     var omitidos = 0;
+    var invalidas = 0;
     var nuevas = [];
     filas.forEach(function (f) {
+      var errorValidacion = _validarFilaImportacion(tab, f);
+      if (errorValidacion) { invalidas++; return; }
+
       var clave = _claveDuplicado(tab, f);
       if (clave && existentes[clave]) { omitidos++; return; }
       if (clave) existentes[clave] = true;
-      nuevas.push(encabezados.map(function (campo) {
+      nuevas.push(sanitizarFilaSheets(encabezados.map(function (campo) {
         if (campo === 'id' && !f.id) return generarId(PREFIJOS_ID[tab] || 'ID');
         var v = f[campo];
         return (v === undefined || v === null) ? '' : v;
-      }));
+      })));
     });
 
     if (nuevas.length) {
       hoja.getRange(hoja.getLastRow() + 1, 1, nuevas.length, encabezados.length).setValues(nuevas);
     }
-    resumen.push({ pestana: tab, creados: nuevas.length, omitidos: omitidos });
+    resumen.push({ pestana: tab, creados: nuevas.length, omitidos: omitidos, invalidas: invalidas });
   });
 
   if (!resumen.length) {
     return { ok: false, mensaje: 'El archivo no contiene pestañas con datos reconocibles.' };
   }
-  var totales = resumen.map(function (r) { return r.pestana + ': ' + r.creados; }).join(', ');
+  var totales = resumen.map(function (r) {
+    return r.pestana + ': ' + r.creados +
+      (r.omitidos ? ' (' + r.omitidos + ' duplicados omitidos)' : '') +
+      (r.invalidas ? ' (' + r.invalidas + ' inválidas omitidas)' : '');
+  }).join(', ');
   registrarBitacora('importar', 'BaseCompleta', '',
     (reemplazar ? 'Reemplazo' : 'Carga') + ' desde Excel → ' + totales);
   return { ok: true, resumen: resumen, mensaje: 'Carga completada. ' + totales + '.' };
@@ -2267,7 +2306,39 @@ function _claveDuplicado(tab, fila) {
   if (tab === 'Vacaciones')    return [fila.empleado_id, formatearFecha(fila.fecha_inicio), formatearFecha(fila.fecha_fin)].join('|');
   if (tab === 'Incapacidades') return [fila.empleado_id, formatearFecha(fila.fecha_desde), formatearFecha(fila.fecha_hasta)].join('|');
   if (tab === 'Liquidaciones') return [fila.empleado_id, formatearFecha(fila.fecha_salida)].join('|');
+  if (tab === 'Nomina')        return [fila.empleado_id, fila.mes].join('|');
   if (fila && fila.id)         return 'id:' + fila.id;
+  return '';
+}
+
+/**
+ * Validación básica por pestaña para la carga masiva de Excel
+ * (cargarBaseCompleta). A diferencia de importarDatos (que reusa las reglas
+ * de negocio completas de crearEmpleado/crearDepartamento), esta carga
+ * puede traer datos históricos de años distintos donde no siempre aplican
+ * todas las reglas de negocio vigentes (ej. salario mínimo actual) — así
+ * que aquí solo se valida que los campos obligatorios básicos estén
+ * presentes y con el tipo correcto, no las reglas de negocio completas.
+ * @return {string} mensaje de error, o '' si la fila es válida.
+ */
+function _validarFilaImportacion(tab, f) {
+  if (!f || typeof f !== 'object') return 'Fila vacía.';
+
+  if (tab === 'Empleados') {
+    if (!String(f.nombre || '').trim()) return 'Nombre vacío.';
+    if (!String(f.cedula || '').trim()) return 'Cédula vacía.';
+    if (f.salario !== undefined && f.salario !== '' && isNaN(Number(f.salario))) return 'Salario no numérico.';
+  } else if (tab === 'Departamentos') {
+    if (!String(f.nombre || '').trim()) return 'Nombre vacío.';
+  } else if (tab === 'Asistencia' || tab === 'Vacaciones' || tab === 'Incapacidades' ||
+             tab === 'Nomina' || tab === 'Liquidaciones' || tab === 'HorasExtra' ||
+             tab === 'Prestamos' || tab === 'Activos' || tab === 'Capacitaciones' ||
+             tab === 'Evaluaciones' || tab === 'Permisos') {
+    if (!String(f.empleado_id || '').trim()) return 'Falta empleado_id.';
+  } else if (tab === 'Feriados') {
+    if (!f.fecha || isNaN(new Date(f.fecha).getTime())) return 'Fecha inválida.';
+  }
+
   return '';
 }
 
@@ -2519,7 +2590,7 @@ function registrarBitacora(accion, entidad, entidadId, resumen, cambios) {
     }
 
     // Agregar: id, timestamp, usuario, acción, entidad, entidadId, resumen, jsonCambios
-    hoja.appendRow([
+    hoja.appendRow(sanitizarFilaSheets([
       generarId('BIT'),
       new Date(),
       usuario,
@@ -2528,7 +2599,7 @@ function registrarBitacora(accion, entidad, entidadId, resumen, cambios) {
       entidadId || '',
       detalles,
       jsonCambios  // Nueva columna para auditoría estructurada
-    ]);
+    ]));
   } catch (e) { /* no interrumpir operaciones por fallo de bitácora */ }
 }
 
@@ -2612,14 +2683,14 @@ function registrarErrorSistema(origen, mensaje, contexto, token) {
       try { usuario = Session.getActiveUser().getEmail(); } catch (e) {}
     }
     var hoja = getHoja(HOJAS.ERRORES);
-    hoja.appendRow([
+    hoja.appendRow(sanitizarFilaSheets([
       generarId('ERR'),
       new Date(),
       String(origen || '').slice(0, 200),
       String(mensaje || '').slice(0, 1000),
       usuario || '',
       String(contexto || '').slice(0, 1000)
-    ]);
+    ]));
     return { ok: true };
   } catch (e) {
     return { ok: false };
@@ -2691,7 +2762,15 @@ function _formatoMonedaCRC(monto) {
  * Variables soportadas: nombre, cedula, puesto, departamento, correo,
  * telefono, salario, fecha_ingreso, fecha (fecha actual).
  */
-function _reemplazarVariablesPlantilla(texto, emp) {
+/**
+ * Sustituye variables {{campo}} de una plantilla con datos del empleado.
+ * @param {string} texto
+ * @param {Object} emp
+ * @param {boolean} [escaparHtml] - true para destinos HTML (correo); false
+ *   (default) para texto plano (WhatsApp), donde escapar corrompería el
+ *   mensaje mostrando entidades literales como "&amp;".
+ */
+function _reemplazarVariablesPlantilla(texto, emp, escaparHtml) {
   if (!texto) return '';
   emp = emp || {};
   var mapa = {
@@ -2706,7 +2785,8 @@ function _reemplazarVariablesPlantilla(texto, emp) {
     fecha:         formatearFecha(new Date())
   };
   return String(texto).replace(/\{\{\s*(\w+)\s*\}\}/g, function (m, campo) {
-    return (mapa[campo] !== undefined) ? mapa[campo] : m;
+    if (mapa[campo] === undefined) return m;
+    return escaparHtml ? escaparHtmlEmail(mapa[campo]) : mapa[campo];
   });
 }
 
@@ -2736,14 +2816,14 @@ function guardarPlantilla(datos, token) {
   if (datos.id) {
     var fila = buscarFilaPorId(hoja, datos.id);
     if (fila === -1) return { ok: false, mensaje: 'Plantilla no encontrada.' };
-    hoja.getRange(fila, 1, 1, ENCABEZADOS.Plantillas.length).setValues([[
+    hoja.getRange(fila, 1, 1, ENCABEZADOS.Plantillas.length).setValues([sanitizarFilaSheets([
       datos.id, datos.nombre, datos.tipo, datos.asunto || '', datos.cuerpo || ''
-    ]]);
+    ])]);
     return { ok: true, mensaje: 'Plantilla actualizada.', id: datos.id };
   }
 
   var id = generarId('PLT');
-  hoja.appendRow([id, datos.nombre, datos.tipo, datos.asunto || '', datos.cuerpo || '']);
+  hoja.appendRow(sanitizarFilaSheets([id, datos.nombre, datos.tipo, datos.asunto || '', datos.cuerpo || '']));
   return { ok: true, mensaje: 'Plantilla creada.', id: id };
 }
 
@@ -2775,10 +2855,10 @@ function _registrarComunicacion(tipo, empleadoId, destinatario, asunto, cuerpo, 
       if (sesion.ok) usuario = sesion.rol;
     } catch (e) {}
     var hoja = getHoja(HOJAS.COMUNICACIONES);
-    hoja.appendRow([
+    hoja.appendRow(sanitizarFilaSheets([
       generarId('COM'), new Date(), tipo, empleadoId || '', destinatario || '',
       asunto || '', String(cuerpo || '').slice(0, 3000), estado, String(detalle || '').slice(0, 500), usuario
-    ]);
+    ]));
   } catch (e) { /* no bloquear el envío si falla el registro */ }
 }
 
@@ -2811,8 +2891,10 @@ function enviarCorreoPlantilla(datos, token) {
     cuerpoBase = plantilla.cuerpo;
   }
 
-  var asunto = _reemplazarVariablesPlantilla(asuntoBase, emp);
-  var cuerpo = _reemplazarVariablesPlantilla(cuerpoBase, emp);
+  // El asunto va como header de texto plano (no se renderiza como HTML) — no se escapa.
+  var asunto = _reemplazarVariablesPlantilla(asuntoBase, emp, false);
+  // El cuerpo sí se inserta en un HTML (_plantillaCorreo) y se manda como htmlBody.
+  var cuerpo = _reemplazarVariablesPlantilla(cuerpoBase, emp, true);
 
   try {
     _enviarCorreo([destinatario], asunto, cuerpo.replace(/\n/g, '<br>'));
@@ -3259,10 +3341,10 @@ function actualizarCapacitacion(cap, token) {
   var hoja = getHoja(HOJAS.CAPACITACIONES);
   var fila = buscarFilaPorId(hoja, cap.id);
   if (fila === -1) return { ok: false, mensaje: 'No se encontró la capacitación.' };
-  hoja.getRange(fila, 1, 1, 8).setValues([[cap.id, cap.empleado_id,
+  hoja.getRange(fila, 1, 1, 8).setValues([sanitizarFilaSheets([cap.id, cap.empleado_id,
     String(cap.curso).trim(), cap.institucion || '',
     formatearFecha(cap.fecha_inicio), formatearFecha(cap.fecha_fin),
-    cap.estado || 'en progreso', cap.certificado_url || '']]);
+    cap.estado || 'en progreso', cap.certificado_url || ''])]);
   invalidarCache(HOJAS.CAPACITACIONES);
   registrarBitacora('actualizar', 'Capacitaciones', cap.id, String(cap.curso).trim());
   return { ok: true, mensaje: 'Capacitación actualizada.' };
@@ -3340,9 +3422,9 @@ function actualizarEvaluacion(ev, token) {
   var hoja = getHoja(HOJAS.EVALUACIONES);
   var fila = buscarFilaPorId(hoja, ev.id);
   if (fila === -1) return { ok: false, mensaje: 'No se encontró la evaluación.' };
-  hoja.getRange(fila, 1, 1, 7).setValues([[ev.id, ev.empleado_id,
+  hoja.getRange(fila, 1, 1, 7).setValues([sanitizarFilaSheets([ev.id, ev.empleado_id,
     String(ev.periodo).trim(), Number(ev.calificacion) || 0,
-    ev.comentarios || '', ev.evaluador || '', formatearFecha(ev.fecha)]]);
+    ev.comentarios || '', ev.evaluador || '', formatearFecha(ev.fecha)])]);
   invalidarCache(HOJAS.EVALUACIONES);
   registrarBitacora('actualizar', 'Evaluaciones', ev.id, 'Período: ' + ev.periodo);
   return { ok: true, mensaje: 'Evaluación actualizada.' };
@@ -3762,7 +3844,11 @@ function _enviarAlertasWhatsApp(cfgAlertas, waCfg) {
     if (tCump && _enviarWhatsApp(tCump, waCfg).ok) enviados++;
   }
 
-  if (!enviados) {
+  // Fallback: si no se envió nada arriba, mandar un resumen semanal para que
+  // el admin siempre reciba algo — pero SOLO si esa alerta específica está
+  // habilitada. Antes se enviaba incondicionalmente, ignorando que el admin
+  // pudo haber desactivado el resumen semanal explícitamente.
+  if (!enviados && waCfg.alertaResumen && cfgAlertas.resumenSemanalActivo) {
     _enviarWhatsApp(_textoResumenSemanal(), waCfg);
   }
 }
@@ -3976,15 +4062,35 @@ function migrarColumnas(hoja, columnasEsperadas) {
  * Al actualizar: MODIFICAR AMBAS UBICACIONES.
  * TODO: Centralizar en una sola fuente de verdad.
  */
+/**
+ * Tabla de deducciones CR (CCSS + tramos de renta) — fuente única de verdad.
+ * El frontend (Js_Nomina.html, Js_Expediente.html) la obtiene UNA vez al
+ * cargar el módulo vía obtenerParametrosDeduccionesCR() y la cachea
+ * client-side, en vez de tener su propia copia hardcodeada (que se
+ * desincronizaba cuando cambiaban los tramos legales). Actualizar SOLO
+ * aquí cuando cambien los tramos vigentes.
+ */
+var PARAMETROS_DEDUCCIONES_CR = {
+  ccssPct: 0.1067,
+  tramos: [
+    { hasta: 929000,  base: 0,      pct: 0.00, desde: 0 },
+    { hasta: 1364000, base: 0,      pct: 0.10, desde: 929000 },
+    { hasta: 2388000, base: 43500,  pct: 0.15, desde: 1364000 },
+    { hasta: 4775000, base: 197100, pct: 0.20, desde: 2388000 },
+    // Infinity no sobrevive el viaje JSON de google.script.run (se vuelve
+    // null) — usamos un techo grande en su lugar para el último tramo.
+    { hasta: 999999999999, base: 674500, pct: 0.25, desde: 4775000 }
+  ]
+};
+
 function calcularDeduccionesCR(salario) {
   var sal = Number(salario) || 0;
-  var ccss = Math.round(sal * 0.1067);
+  var ccss = Math.round(sal * PARAMETROS_DEDUCCIONES_CR.ccssPct);
   var renta = 0;
-  if      (sal <= 929000)  renta = 0;
-  else if (sal <= 1364000) renta = Math.round((sal - 929000) * 0.10);
-  else if (sal <= 2388000) renta = Math.round(43500 + (sal - 1364000) * 0.15);
-  else if (sal <= 4775000) renta = Math.round(197100 + (sal - 2388000) * 0.20);
-  else                     renta = Math.round(674500 + (sal - 4775000) * 0.25);
+  var tramo = PARAMETROS_DEDUCCIONES_CR.tramos.filter(function (t) { return sal <= t.hasta; })[0]
+    || PARAMETROS_DEDUCCIONES_CR.tramos[PARAMETROS_DEDUCCIONES_CR.tramos.length - 1];
+  renta = Math.round(tramo.base + (sal - tramo.desde) * tramo.pct);
+  if (renta < 0) renta = 0;
   var total = ccss + renta;
   var neto  = sal - total;
   return { salario: sal, ccss: ccss, renta: renta, total: total, neto: neto };
@@ -3999,6 +4105,17 @@ function obtenerDeduccionesCR(empleadoId, token) {
   if (!emp) return { ok: false, mensaje: 'Empleado no encontrado.' };
   var d = calcularDeduccionesCR(emp.salario);
   return Object.assign({ ok: true }, d);
+}
+
+/**
+ * Devuelve solo los parámetros/tramos vigentes de deducciones CR (sin
+ * depender de un empleado), para que el frontend calcule un preview
+ * instantáneo client-side sin duplicar la tabla de tramos a mano.
+ */
+function obtenerParametrosDeduccionesCR(token) {
+  var _authErr = requiereSesion(token);
+  if (_authErr) return _authErr;
+  return Object.assign({ ok: true }, PARAMETROS_DEDUCCIONES_CR);
 }
 
 
@@ -4237,7 +4354,7 @@ function crearPrestamo(datos, token) {
   return conLock(function () {
     var hoja = getHoja(HOJAS.PRESTAMOS);
     var id = generarId('PRE');
-    hoja.appendRow([id, datos.empleado_id, monto, cuotas, cuota, 0, 'activo', datos.fecha || hoy(), datos.notas || '']);
+    hoja.appendRow(sanitizarFilaSheets([id, datos.empleado_id, monto, cuotas, cuota, 0, 'activo', datos.fecha || hoy(), datos.notas || '']));
     invalidarCache(HOJAS.PRESTAMOS);
     registrarBitacora('crear', 'Prestamo', id, 'Prestamo de ' + monto);
     return { ok: true, mensaje: 'Préstamo registrado.' };
@@ -4265,12 +4382,12 @@ function actualizarPrestamo(datos, token) {
         ? String(datos.estado).trim() : String(rows[i][6] || 'activo');
       if (cuotasPagadas >= cuotas) estadoActual = 'saldado';
       var cuota = Math.round(monto / cuotas);
-      hoja.getRange(i+1, 1, 1, 9).setValues([[
+      hoja.getRange(i+1, 1, 1, 9).setValues([sanitizarFilaSheets([
         datos.id, datos.empleado_id, monto, cuotas, cuota,
         cuotasPagadas, estadoActual,
         datos.fecha || rows[i][7] || hoy(),
         (datos.notas !== undefined ? datos.notas : rows[i][8]) || ''
-      ]]);
+      ])]);
       invalidarCache(HOJAS.PRESTAMOS);
       registrarBitacora('actualizar', 'Prestamo', datos.id, 'Monto ' + monto + ' | Pagadas ' + cuotasPagadas);
       return { ok: true, mensaje: 'Préstamo actualizado.' };
@@ -4383,7 +4500,7 @@ function crearHoraExtra(datos, token) {
     }
   }
   var id = generarId('HEX');
-  hoja.appendRow([id, datos.empleado_id, datos.fecha||hoy(), datos.horas, tipo, datos.aprobado||'pendiente', monto, datos.notas||'']);
+  hoja.appendRow(sanitizarFilaSheets([id, datos.empleado_id, datos.fecha||hoy(), datos.horas, tipo, datos.aprobado||'pendiente', monto, datos.notas||'']));
   invalidarCache(HOJAS.HORAS_EXTRA);
   registrarBitacora('crear', 'HoraExtra', id, datos.horas + ' hrs ' + tipo);
   return { ok: true, mensaje: 'Horas extra registradas.' };
@@ -4421,12 +4538,12 @@ function actualizarHoraExtra(datos, token) {
       if (horasDelMes + horasNum > 240) {
         return { ok: false, mensaje: 'Límite mensual alcanzado. Ya tiene ' + horasDelMes + 'h este mes (máximo 240h).' };
       }
-      hoja.getRange(i+1, 1, 1, 8).setValues([[
+      hoja.getRange(i+1, 1, 1, 8).setValues([sanitizarFilaSheets([
         datos.id, empleadoId, datos.fecha || hoy(), horasNum, tipo,
         datos.aprobado || rows[i][5] || 'pendiente',
         Number(datos.monto) || Number(rows[i][6]) || 0,
         (datos.notas !== undefined ? datos.notas : rows[i][7]) || ''
-      ]]);
+      ])]);
       invalidarCache(HOJAS.HORAS_EXTRA);
       registrarBitacora('actualizar', 'HoraExtra', datos.id, horasNum + ' hrs ' + tipo);
       return { ok: true, mensaje: 'Actualizado.' };
@@ -4493,8 +4610,9 @@ function actualizarActivo(datos, token) {
   var rows = hoja.getDataRange().getValues();
   for (var i = 1; i < rows.length; i++) {
     if (String(rows[i][0]) === String(datos.id)) {
-      hoja.getRange(i+1, 1, 1, 9).setValues([[datos.id, datos.empleado_id, datos.nombre, datos.categoria||'', datos.serial||'', datos.fecha_entrega||hoy(), datos.fecha_devolucion||'', datos.estado||'asignado', datos.notas||'']]);
+      hoja.getRange(i+1, 1, 1, 9).setValues([sanitizarFilaSheets([datos.id, datos.empleado_id, datos.nombre, datos.categoria||'', datos.serial||'', datos.fecha_entrega||hoy(), datos.fecha_devolucion||'', datos.estado||'asignado', datos.notas||''])]);
       invalidarCache(HOJAS.ACTIVOS);
+      registrarBitacora('actualizar', 'Activo', datos.id, (datos.nombre||'') + ' actualizado');
       return { ok: true, mensaje: 'Activo actualizado.' };
     }
   }
@@ -4534,16 +4652,16 @@ function guardarTurno(datos, token) {
   var rows = hoja.getDataRange().getValues();
   for (var i = 1; i < rows.length; i++) {
     if (String(rows[i][1]) === String(datos.empleado_id) && String(rows[i][2]) === String(datos.semana)) {
-      hoja.getRange(i+1, 1, 1, 10).setValues([[rows[i][0], datos.empleado_id, datos.semana,
+      hoja.getRange(i+1, 1, 1, 10).setValues([sanitizarFilaSheets([rows[i][0], datos.empleado_id, datos.semana,
         datos.lunes||'', datos.martes||'', datos.miercoles||'', datos.jueves||'',
-        datos.viernes||'', datos.sabado||'', datos.domingo||'']]);
+        datos.viernes||'', datos.sabado||'', datos.domingo||''])]);
       return { ok: true, mensaje: 'Turno actualizado.' };
     }
   }
   var id = generarId('TUR');
-  hoja.appendRow([id, datos.empleado_id, datos.semana,
+  hoja.appendRow(sanitizarFilaSheets([id, datos.empleado_id, datos.semana,
     datos.lunes||'', datos.martes||'', datos.miercoles||'', datos.jueves||'',
-    datos.viernes||'', datos.sabado||'', datos.domingo||'']);
+    datos.viernes||'', datos.sabado||'', datos.domingo||'']));
   return { ok: true, mensaje: 'Turno guardado.' };
 }
 
@@ -4568,6 +4686,7 @@ function obtenerExpediente(empleadoId, token) {
   var balance = _obtenerBalanceVacacionesInterno(empleadoId);
   return {
     ok: true, empleado: emp, balance: balance,
+    deducciones: calcularDeduccionesCR(emp.salario),
     historialSalarios: leerTabla(HOJAS.HISTORIAL_SALARIOS).filter(function (h) { return String(h.empleado_id) === String(empleadoId); }),
     capacitaciones:    leerTabla(HOJAS.CAPACITACIONES).filter(function (c) { return String(c.empleado_id) === String(empleadoId); }),
     evaluaciones:      leerTabla(HOJAS.EVALUACIONES).filter(function (e) { return String(e.empleado_id) === String(empleadoId); }),
@@ -4631,28 +4750,76 @@ function crearIncapacidad(datos, token) {
     return { ok: false, mensaje: 'Entidad debe ser CCSS o INS.' };
   }
   var dias = calcularDias(datos.fecha_desde, datos.fecha_hasta);
+
+  var conflicto = _solapaAusenciaEmpleado(datos.empleado_id, datos.fecha_desde, datos.fecha_hasta, null);
+  if (conflicto) return conflicto;
+
   var hoja = getHoja(HOJAS.INCAPACIDADES);
   var id   = generarId('INC');
-  hoja.appendRow([id, datos.empleado_id, formatearFecha(datos.fecha_desde),
+  hoja.appendRow(sanitizarFilaSheets([id, datos.empleado_id, formatearFecha(datos.fecha_desde),
     formatearFecha(datos.fecha_hasta), dias, entidad,
-    datos.especialidad || '', datos.notas || '']);
+    datos.especialidad || '', datos.notas || '']));
   invalidarCache(HOJAS.INCAPACIDADES);
   registrarBitacora('crear', 'Incapacidad', id, dias + ' días (' + entidad + ')');
   return { ok: true, mensaje: 'Incapacidad registrada (' + dias + ' días).' };
+}
+
+/**
+ * Valida que un rango de fechas no se solape con OTRA incapacidad del mismo
+ * empleado ni con una vacación ya aprobada (evita doble registro de ausencia
+ * para los mismos días). Mismo patrón de comparación de rangos que usa
+ * crearVacaciones.
+ * @param {string} empleadoId
+ * @param {string|Date} fechaDesde
+ * @param {string|Date} fechaHasta
+ * @param {string} [idExcluir] - id de incapacidad a excluir (al editar)
+ * @return {Object|null} {ok:false, mensaje} si hay conflicto, null si no.
+ */
+function _solapaAusenciaEmpleado(empleadoId, fechaDesde, fechaHasta, idExcluir) {
+  var inicio = new Date(fechaDesde);
+  var fin = new Date(fechaHasta);
+
+  var otraIncapacidad = leerTabla(HOJAS.INCAPACIDADES).some(function (inc) {
+    if (String(inc.empleado_id) !== String(empleadoId)) return false;
+    if (idExcluir && String(inc.id) === String(idExcluir)) return false;
+    var incInicio = new Date(inc.fecha_desde);
+    var incFin = new Date(inc.fecha_hasta);
+    return !(fin < incInicio || inicio > incFin);
+  });
+  if (otraIncapacidad) {
+    return { ok: false, mensaje: 'Conflicto: Ya hay una incapacidad registrada en esas fechas.' };
+  }
+
+  var vacacionAprobada = leerTabla(HOJAS.VACACIONES).some(function (vac) {
+    if (String(vac.empleado_id) !== String(empleadoId)) return false;
+    if (String(vac.estado).toLowerCase() !== 'aprobada') return false;
+    var vacInicio = new Date(vac.fecha_inicio);
+    var vacFin = new Date(vac.fecha_fin);
+    return !(fin < vacInicio || inicio > vacFin);
+  });
+  if (vacacionAprobada) {
+    return { ok: false, mensaje: 'Conflicto: Ya hay vacaciones aprobadas en esas fechas.' };
+  }
+
+  return null;
 }
 
 function actualizarIncapacidad(datos, token) {
   var _authErr = requiereEscritura(token);
   if (_authErr) return _authErr;
 
+  var conflicto = _solapaAusenciaEmpleado(datos.empleado_id, datos.fecha_desde, datos.fecha_hasta, datos.id);
+  if (conflicto) return conflicto;
+
   var hoja = getHoja(HOJAS.INCAPACIDADES);
   var rows = hoja.getDataRange().getValues();
   for (var i = 1; i < rows.length; i++) {
     if (String(rows[i][0]) === String(datos.id)) {
       var dias = calcularDias(datos.fecha_desde, datos.fecha_hasta);
-      hoja.getRange(i+1, 1, 1, 8).setValues([[datos.id, datos.empleado_id,
+      hoja.getRange(i+1, 1, 1, 8).setValues([sanitizarFilaSheets([datos.id, datos.empleado_id,
         formatearFecha(datos.fecha_desde), formatearFecha(datos.fecha_hasta), dias,
-        datos.entidad || 'CCSS', datos.especialidad || '', datos.notas || '']]);
+        datos.entidad || 'CCSS', datos.especialidad || '', datos.notas || ''])]);
+      invalidarCache(HOJAS.INCAPACIDADES);
       registrarBitacora('actualizar', 'Incapacidad', datos.id, dias + ' días');
       return { ok: true, mensaje: 'Incapacidad actualizada.' };
     }
@@ -4700,7 +4867,7 @@ function crearFeriado(datos, token) {
   if (existe) return { ok: false, mensaje: 'Ya hay un feriado registrado en esa fecha.' };
   var hoja = getHoja(HOJAS.FERIADOS);
   var id   = generarId('FER');
-  hoja.appendRow([id, fecha, datos.nombre || '', datos.tipo || 'obligatorio']);
+  hoja.appendRow(sanitizarFilaSheets([id, fecha, datos.nombre || '', datos.tipo || 'obligatorio']));
   registrarBitacora('crear', 'Feriado', id, fecha + ' ' + (datos.nombre || ''));
   return { ok: true, mensaje: 'Feriado registrado.' };
 }
@@ -5079,9 +5246,9 @@ function crearLiquidacion(datos, token) {
   var notasCompletas = (datos.notas || '') +
     (calculoAuto ? '\n[Cálculo automático: vacaciones no tomadas + cesantía]' : '');
 
-  hoja.appendRow([id, datos.empleado_id, formatearFecha(datos.fecha_salida),
+  hoja.appendRow(sanitizarFilaSheets([id, datos.empleado_id, formatearFecha(datos.fecha_salida),
     datos.motivo || '', formatearFecha(datos.fecha_calculo || hoy()), monto,
-    datos.estado || 'pendiente', notasCompletas]);
+    datos.estado || 'pendiente', notasCompletas]));
   invalidarCache(HOJAS.LIQUIDACIONES);
 
   registrarBitacora('crear', 'Liquidacion', id, 'Liquidación de ' + monto + ' para ' + datos.empleado_id);
@@ -5104,10 +5271,11 @@ function actualizarLiquidacion(datos, token) {
   var rows = hoja.getDataRange().getValues();
   for (var i = 1; i < rows.length; i++) {
     if (String(rows[i][0]) === String(datos.id)) {
-      hoja.getRange(i+1, 1, 1, 8).setValues([[datos.id, datos.empleado_id,
+      hoja.getRange(i+1, 1, 1, 8).setValues([sanitizarFilaSheets([datos.id, datos.empleado_id,
         formatearFecha(datos.fecha_salida), datos.motivo || '',
         formatearFecha(datos.fecha_calculo || hoy()), Number(datos.monto) || 0,
-        datos.estado || 'pendiente', datos.notas || '']]);
+        datos.estado || 'pendiente', datos.notas || ''])]);
+      invalidarCache(HOJAS.LIQUIDACIONES);
       registrarBitacora('actualizar', 'Liquidacion', datos.id, 'Estado: ' + (datos.estado || 'pendiente'));
       return { ok: true, mensaje: 'Liquidación actualizada.' };
     }
@@ -5152,73 +5320,6 @@ function calcularValorHora(salarioMensual, periodoHoras) {
   var periodo = Number(periodoHoras) || 240;
   if (sal <= 0 || periodo <= 0) return 0;
   return sal / periodo;
-}
-
-/**
- * Patrón genérico para crear un registro en cualquier tabla.
- * Valida token, genera ID, agrega bitácora.
- * @param {string} nombreHoja - Nombre de la pestaña (usar HOJAS.*)
- * @param {string} tipoEntidad - Nombre legible (ej: "Empleado", "Préstamo")
- * @param {Object} datos - Datos a guardar
- * @param {string} token - Token de autorización
- * @param {Function} validar - Función de validación personalizada (opcional)
- * @param {Function} mapear - Función para mapear datos a fila de Sheets (opcional)
- * @return {Object} {ok, mensaje, id}
- */
-function crearRegistro(nombreHoja, tipoEntidad, datos, token, validar, mapear) {
-  var _authErr = requiereEscritura(token);
-  if (_authErr) return _authErr;
-
-  if (!datos) return { ok: false, mensaje: tipoEntidad + ' sin datos.' };
-
-  // Validación personalizada si existe
-  if (validar) {
-    var err = validar(datos);
-    if (err) return { ok: false, mensaje: err };
-  }
-
-  var hoja = getHoja(nombreHoja);
-  var id = generarId(tipoEntidad.toUpperCase().substring(0, 3));
-
-  // Mapeo personalizado o genérico
-  var fila = mapear ? mapear(id, datos) : [id, datos.empleado_id || '', JSON.stringify(datos)];
-
-  hoja.appendRow(fila);
-  registrarBitacora('crear', tipoEntidad, id, tipoEntidad + ' creado');
-  return { ok: true, mensaje: tipoEntidad + ' registrado.', id: id };
-}
-
-/**
- * Patrón genérico para actualizar un registro.
- * @param {string} nombreHoja
- * @param {string} tipoEntidad
- * @param {Object} datos (debe incluir .id)
- * @param {string} token
- * @param {Function} validar (opcional)
- * @param {Function} actualizar (función que actualiza la fila)
- * @return {Object} {ok, mensaje}
- */
-function actualizarRegistro(nombreHoja, tipoEntidad, datos, token, validar, actualizar) {
-  var _authErr = requiereEscritura(token);
-  if (_authErr) return _authErr;
-
-  if (!datos || !datos.id) return { ok: false, mensaje: 'ID requerido.' };
-
-  if (validar) {
-    var err = validar(datos);
-    if (err) return { ok: false, mensaje: err };
-  }
-
-  var hoja = getHoja(nombreHoja);
-  var fila = buscarFilaPorId(hoja, datos.id);
-  if (fila === -1) return { ok: false, mensaje: tipoEntidad + ' no encontrado.' };
-
-  if (actualizar) {
-    actualizar(hoja, fila, datos);
-  }
-
-  registrarBitacora('actualizar', tipoEntidad, datos.id, tipoEntidad + ' actualizado');
-  return { ok: true, mensaje: tipoEntidad + ' actualizado.' };
 }
 
 // UTILIDAD: eliminar fila genérica
@@ -5576,8 +5677,8 @@ function crearPermiso(datos, token) {
   try {
     var hoja = getHoja(HOJAS.PERMISOS);
     var id = generarId('PRM');
-    hoja.appendRow([id, datos.empleado_id, tipo, datos.fecha_inicio || '',
-                    datos.fecha_fin || '', 'pendiente', datos.motivo || '', datos.notas || '']);
+    hoja.appendRow(sanitizarFilaSheets([id, datos.empleado_id, tipo, datos.fecha_inicio || '',
+                    datos.fecha_fin || '', 'pendiente', datos.motivo || '', datos.notas || '']));
     invalidarCache(HOJAS.PERMISOS);
     registrarBitacora('crear', 'Permiso', id, tipo + ' - ' + datos.motivo);
     return { ok: true, mensaje: 'Permiso creado.', id: id };
@@ -5605,6 +5706,17 @@ var ESTADOS_APROBACION = {
 /**
  * Aprueba una solicitud (vacación, permiso, etc.) en el workflow.
  * Fase 5 - Item 20: Workflow multi-nivel.
+ *
+ * LIMITACIÓN CONOCIDA: no valida que el jefe_depto que aprueba tenga
+ * autoridad sobre el departamento específico del empleado dueño de la
+ * solicitud. El sistema de login usa un PIN compartido por ROL (no por
+ * persona — ver CONFIG_ROLES en Auth.gs), así que la sesión solo sabe
+ * "sos jefe_depto", nunca "sos jefe de QUÉ departamento". Cualquier
+ * jefe_depto puede hoy aprobar el nivel 1 de solicitudes de cualquier
+ * equipo. Corregir esto requeriría ligar cada sesión a un empleado_id
+ * concreto (login individual en vez de PIN compartido por rol), que es
+ * un cambio de arquitectura fuera del alcance de este fix puntual.
+ *
  * @param {string} tipoSolicitud - 'vacacion', 'permiso', etc.
  * @param {string} solicitudId
  * @param {string} nuevoEstado - Estado siguiente en workflow
@@ -5670,6 +5782,20 @@ function aprobarSolicitud(tipoSolicitud, solicitudId, nuevoEstado, token, notas)
               mensaje: 'No se puede aprobar. Disponibles: ' + balance.diasDisponibles +
                        ', solicita: ' + diasSolicitud
             };
+          }
+
+          var inicioSol = new Date(solicitud.fecha_inicio);
+          var finSol = new Date(solicitud.fecha_fin);
+          var solapadaWf = datosVac.some(function (otra) {
+            if (String(otra.id) === String(solicitudId)) return false;
+            if (String(otra.empleado_id) !== String(solicitud.empleado_id)) return false;
+            if (String(otra.estado).toLowerCase() !== 'aprobada') return false;
+            var otroInicio = new Date(otra.fecha_inicio);
+            var otroFin = new Date(otra.fecha_fin);
+            return !(finSol < otroInicio || inicioSol > otroFin);
+          });
+          if (solapadaWf) {
+            return { ok: false, mensaje: 'Conflicto: Ya hay otras vacaciones aprobadas en esas fechas.' };
           }
         }
       }

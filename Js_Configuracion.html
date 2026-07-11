@@ -271,7 +271,7 @@
     }
     llamarBackend('guardarConfigCorreo', [cfg], function (res) {
       estado.innerHTML = res.ok
-        ? '<span style="color:var(--ok)">✅ ' + res.mensaje + '</span>'
+        ? '<span style="color:var(--ok)">✅ ' + escapar(res.mensaje) + '</span>'
         : '<span style="color:var(--err)">❌ ' + escapar(res.mensaje) + '</span>';
       if (res.ok) cargarConfigCorreo();
     });
@@ -282,7 +282,7 @@
     estado.innerHTML = '<span style="color:var(--txt-3)">Enviando correo de prueba…</span>';
     llamarBackend('probarConfigCorreo', [], function (res) {
       estado.innerHTML = res.ok
-        ? '<span style="color:var(--ok)">✅ ' + res.mensaje + '</span>'
+        ? '<span style="color:var(--ok)">✅ ' + escapar(res.mensaje) + '</span>'
         : '<span style="color:var(--err)">❌ ' + escapar(res.mensaje) + '</span>';
     });
   }

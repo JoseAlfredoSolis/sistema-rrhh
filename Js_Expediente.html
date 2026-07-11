@@ -11,13 +11,13 @@
     llamarBackend('obtenerExpediente', [empId], function(res) {
       if (!res.ok) { mostrarMensaje(res.mensaje,'error'); return; }
       panel.classList.remove('oculto');
-      _pintarExpHeader(res.empleado, res.balance);
+      _pintarExpHeader(res.empleado, res.balance, res.deducciones);
       _pintarExpSecciones(res);
     });
   }
 
-  function _pintarExpHeader(e, bal) {
-    var d = calcularDeduccionesCliente(e.salario);
+  function _pintarExpHeader(e, bal, ded) {
+    var d = ded || { neto: e.salario };
     document.getElementById('expHeader').innerHTML =
       '<div class="exp-avatar">'+escapar((e.nombre||'?').charAt(0).toUpperCase())+'</div>'+
       '<div class="exp-datos">'+
@@ -34,23 +34,12 @@
       '</div>';
   }
 
-  function calcularDeduccionesCliente(salario) {
-    var sal = Number(salario)||0;
-    var ccss = Math.round(sal*0.1067);
-    var renta = 0;
-    if      (sal<=929000)  renta=0;
-    else if (sal<=1364000) renta=Math.round((sal-929000)*0.10);
-    else if (sal<=2388000) renta=Math.round(43500+(sal-1364000)*0.15);
-    else if (sal<=4775000) renta=Math.round(197100+(sal-2388000)*0.20);
-    else                   renta=Math.round(674500+(sal-4775000)*0.25);
-    return { ccss:ccss, renta:renta, total:ccss+renta, neto:sal-ccss-renta };
-  }
-
   function _pintarExpSecciones(res) {
     var html = '';
 
-    // Deducciones
-    var d = calcularDeduccionesCliente(res.empleado.salario);
+    // Deducciones (calculadas en el backend — calcularDeduccionesCR en Code.gs
+    // es la única fuente de verdad de los tramos, ver obtenerExpediente).
+    var d = res.deducciones || { ccss: 0, renta: 0, neto: res.empleado.salario };
     html += _expSeccion('💰 Desglose salarial', '<div class="ded-grid">'+
       '<div class="ded-item"><span class="ded-lbl">Salario bruto</span><span class="ded-val">'+formatoDinero(res.empleado.salario)+'</span></div>'+
       '<div class="ded-item"><span class="ded-lbl">CCSS (10.67%)</span><span class="ded-val" style="color:var(--err)">-'+formatoDinero(d.ccss)+'</span></div>'+
