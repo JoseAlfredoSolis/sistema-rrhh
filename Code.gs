@@ -4003,11 +4003,15 @@ function _enviarWhatsApp(mensaje, cfg, opciones) {
     var res = UrlFetchApp.fetch(url, { muteHttpExceptions: true, validateHttpsCertificates: true });
     var code = res.getResponseCode();
     var body = res.getContentText();
+    // CallMeBot devuelve HTML incluso en las respuestas de error/éxito — se
+    // limpian las etiquetas y se recorta a 300 chars (antes 120, insuficiente
+    // para diagnosticar: cortaba el mensaje antes de mostrar el motivo real).
+    var bodyLimpio = body.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
     if (code >= 400) {
-      return { ok: false, mensaje: 'CallMeBot error ' + code + ': ' + body.slice(0, 120) };
+      return { ok: false, mensaje: 'CallMeBot error ' + code + ': ' + bodyLimpio.slice(0, 300) };
     }
-    if (/error|invalid|failed/i.test(body) && !/message sent|success/i.test(body)) {
-      return { ok: false, mensaje: 'CallMeBot: ' + body.slice(0, 120) };
+    if (/error|invalid|failed/i.test(body) && !/message (queued|sent)|success/i.test(body)) {
+      return { ok: false, mensaje: 'CallMeBot: ' + bodyLimpio.slice(0, 300) };
     }
     return { ok: true, mensaje: 'Mensaje WhatsApp enviado a ' + telefono + '.' };
   } catch (e) {
