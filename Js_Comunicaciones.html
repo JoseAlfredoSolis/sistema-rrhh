@@ -31,8 +31,12 @@
       document.getElementById('sinComunicaciones').classList.toggle('oculto', (lista || []).length > 0);
       (lista || []).forEach(function (r) {
         var icono = r.tipo === 'whatsapp' ? '💬' : '📧';
-        var estadoColor = r.estado === 'enviado' ? 'var(--ok)' : 'var(--err)';
+        var fallo = String(r.estado).toLowerCase() === 'error';
+        var estadoColor = fallo ? 'var(--err)' : 'var(--ok)';
         var asuntoMensaje = r.asunto ? escapar(r.asunto) : escapar(String(r.cuerpo || '').slice(0, 80));
+        var acciones = fallo && puedeEditar()
+          ? '<button class="btn-mini" onclick="reenviarComunicacionUI(\'' + escaparAttr(r.id) + '\', this)" title="' + escaparAttr(r.detalle || '') + '">🔁 Reenviar</button>'
+          : '';
         var tr = document.createElement('tr');
         tr.innerHTML =
           '<td style="font-size:var(--fs-xs);white-space:nowrap">' + escapar(r.fecha) + '</td>' +
@@ -40,9 +44,19 @@
           '<td style="font-size:var(--fs-xs)">' + escapar(r.empleado_nombre || '—') + '</td>' +
           '<td style="font-size:var(--fs-xs)">' + escapar(r.destinatario || '—') + '</td>' +
           '<td style="font-size:var(--fs-xs);max-width:320px;overflow-wrap:anywhere">' + asuntoMensaje + '</td>' +
-          '<td style="font-size:var(--fs-xs);color:' + estadoColor + ';font-weight:600;text-transform:capitalize">' + escapar(r.estado) + '</td>';
+          '<td style="font-size:var(--fs-xs);color:' + estadoColor + ';font-weight:600;text-transform:capitalize" title="' + escaparAttr(r.detalle || '') + '">' + escapar(r.estado) + '</td>' +
+          '<td class="no-print" style="font-size:var(--fs-xs)">' + acciones + '</td>';
         cuerpo.appendChild(tr);
       });
+    });
+  }
+
+  function reenviarComunicacionUI(id, btnEl) {
+    if (!puedeEditar()) { mostrarMensaje('Sin permisos.', 'error'); return; }
+    if (btnEl) { btnEl.disabled = true; btnEl.textContent = 'Reenviando...'; }
+    llamarBackend('reenviarComunicacion', [id], function (res) {
+      mostrarMensaje(res.mensaje, res.ok ? 'exito' : 'error');
+      _cargarHistorialComunicaciones();
     });
   }
 

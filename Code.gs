@@ -3347,6 +3347,56 @@ function listarComunicaciones(empleadoId, tipo, token) {
   return registros.slice(0, 500);
 }
 
+/**
+ * Reintenta un envío de comunicación (correo o WhatsApp) que había fallado.
+ * Reusa el mismo destinatario/asunto/cuerpo ya guardados en el historial —
+ * útil cuando la falla fue temporal (ej. proveedor de correo caído, IP no
+ * autorizada en Brevo) y ya se corrigió la causa. Solo permite reintentar
+ * registros con estado 'error': un envío exitoso no debería reenviarse por
+ * accidente desde este botón. Cada intento (éxito o no) queda como un
+ * registro NUEVO en el historial, preservando el registro original de la
+ * falla para auditoría.
+ * @param {string} id - id del registro en HOJAS.COMUNICACIONES
+ * @param {string} token
+ * @return {Object} {ok, mensaje}
+ */
+function reenviarComunicacion(id, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
+  var com = leerTabla(HOJAS.COMUNICACIONES).filter(function (r) { return String(r.id) === String(id); })[0];
+  if (!com) return { ok: false, mensaje: 'No se encontró el registro de comunicación.' };
+  if (String(com.estado).toLowerCase() !== 'error') {
+    return { ok: false, mensaje: 'Solo se pueden reenviar comunicaciones que fallaron.' };
+  }
+  if (!com.destinatario) return { ok: false, mensaje: 'No hay destinatario guardado para reenviar.' };
+
+  if (com.tipo === 'email') {
+    try {
+      _enviarCorreo([com.destinatario], com.asunto || '', String(com.cuerpo || '').replace(/\n/g, '<br>'));
+      _registrarComunicacion('email', com.empleado_id, com.destinatario, com.asunto, com.cuerpo, 'enviado', '', token);
+      return { ok: true, mensaje: 'Correo reenviado a ' + com.destinatario + '.' };
+    } catch (e) {
+      _registrarComunicacion('email', com.empleado_id, com.destinatario, com.asunto, com.cuerpo, 'error', e.message, token);
+      registrarErrorSistema('reenviarComunicacion', e.message, id, token);
+      return { ok: false, mensaje: 'Error al reenviar: ' + e.message };
+    }
+  }
+
+  if (com.tipo === 'whatsapp') {
+    var cfgWhatsApp = obtenerConfigWhatsAppInterno();
+    if (!cfgWhatsApp.apikey) {
+      return { ok: false, mensaje: 'Configura primero la API Key de CallMeBot en Configuración > Notificaciones por WhatsApp.' };
+    }
+    var res = _enviarWhatsApp(com.cuerpo, { telefono: com.destinatario, apikey: cfgWhatsApp.apikey }, { forzar: true });
+    _registrarComunicacion('whatsapp', com.empleado_id, com.destinatario, '', com.cuerpo, res.ok ? 'enviado' : 'error', res.mensaje, token);
+    if (!res.ok) registrarErrorSistema('reenviarComunicacion', res.mensaje, id, token);
+    return res;
+  }
+
+  return { ok: false, mensaje: 'Tipo de comunicación no reconocido: ' + com.tipo };
+}
+
 
 // ===================================================================
 // MÓDULO: HISTORIAL DE SALARIOS

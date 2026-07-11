@@ -88,7 +88,8 @@ var PRUEBAS_REGISTRO = [
   { nombre: 'mesDeFecha extrae yyyy-MM tanto de Date como de string',       fn: test_mesDeFecha },
   { nombre: 'crearLiquidacion guarda exactamente el monto que calculó calcularLiquidacion', fn: test_crearLiquidacion_montoCoincideConCalculo },
   { nombre: 'paquete de plantillas minimalistas tiene datos válidos',                     fn: test_paquetePlantillasMinimalistas_esValido },
-  { nombre: '_enviarOutlook valida campos requeridos antes de llamar a Microsoft Graph', fn: test_enviarOutlook_validaCamposRequeridos }
+  { nombre: '_enviarOutlook valida campos requeridos antes de llamar a Microsoft Graph', fn: test_enviarOutlook_validaCamposRequeridos },
+  { nombre: 'reenviarComunicacion solo permite reintentar registros con estado error', fn: test_reenviarComunicacion_soloPermiteRegistrosFallidos }
 ];
 
 // ===================================================================
@@ -588,6 +589,24 @@ function test_enviarOutlook_validaCamposRequeridos(ctx) {
     }
     _assert(lanzo, 'Debería lanzar una excepción cuando falta un campo requerido (config: ' + JSON.stringify(caso.cfg) + ')');
   });
+}
+
+function test_reenviarComunicacion_soloPermiteRegistrosFallidos(ctx) {
+  var resInexistente = reenviarComunicacion(PRUEBA_PREFIJO + 'ID-QUE-NO-EXISTE', ctx.token);
+  _assertFalla(resInexistente, 'Debería fallar si el registro de comunicación no existe');
+
+  var hoja = getHoja(HOJAS.COMUNICACIONES);
+  var idExitosa = generarId('COM');
+  hoja.appendRow(sanitizarFilaSheets([
+    idExitosa, new Date(), 'email', ctx.empleadoId, PRUEBA_PREFIJO + 'destino@ejemplo.com',
+    'Asunto de prueba', 'Cuerpo de prueba', 'enviado', '', 'admin'
+  ]));
+  try {
+    var res = reenviarComunicacion(idExitosa, ctx.token);
+    _assertFalla(res, 'No debería permitir reenviar una comunicación que ya se envió correctamente (regresión: solo debe reintentar las que fallaron)');
+  } finally {
+    eliminarFila(HOJAS.COMUNICACIONES, idExitosa, 'Comunicacion');
+  }
 }
 
 function test_enviarComunicacionAmbos_exigeAlMenosUnMedio(ctx) {
