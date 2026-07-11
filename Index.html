@@ -126,7 +126,7 @@
 
     <div class="sidebar-footer">
       <button class="btn-darkmode" id="btnDarkMode" onclick="toggleDarkMode()" aria-label="Modo oscuro" title="Modo oscuro">🌙</button>
-      <span class="app-version" title="Versión desplegada del Sistema RRHH">Sistema RRHH · v34</span>
+      <span class="app-version" title="Versión desplegada del Sistema RRHH">Sistema RRHH · v35</span>
     </div>
   </aside>
 
@@ -1843,7 +1843,7 @@
     setTimeout(function() {
       var badge = document.getElementById('versionBadge');
       var fecha = new Date();
-      var version = 'v34.' + fecha.getTime().toString().slice(-4);
+      var version = 'v35.' + fecha.getTime().toString().slice(-4);
       badge.textContent = version;
       badge.title = 'Última actualización: ' + fecha.toLocaleString();
     }, 100);
