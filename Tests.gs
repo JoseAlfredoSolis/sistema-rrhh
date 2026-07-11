@@ -87,7 +87,8 @@ var PRUEBAS_REGISTRO = [
   { nombre: 'estadoNormalizado recorta espacios y normaliza mayúsculas',    fn: test_estadoNormalizado },
   { nombre: 'mesDeFecha extrae yyyy-MM tanto de Date como de string',       fn: test_mesDeFecha },
   { nombre: 'crearLiquidacion guarda exactamente el monto que calculó calcularLiquidacion', fn: test_crearLiquidacion_montoCoincideConCalculo },
-  { nombre: 'paquete de plantillas minimalistas tiene datos válidos',                     fn: test_paquetePlantillasMinimalistas_esValido }
+  { nombre: 'paquete de plantillas minimalistas tiene datos válidos',                     fn: test_paquetePlantillasMinimalistas_esValido },
+  { nombre: '_enviarOutlook valida campos requeridos antes de llamar a Microsoft Graph', fn: test_enviarOutlook_validaCamposRequeridos }
 ];
 
 // ===================================================================
@@ -564,6 +565,28 @@ function test_paquetePlantillasMinimalistas_esValido(ctx) {
   paquete.forEach(function (p) {
     _assert(!clavesOtro[p.nombre + '|' + p.tipo],
       'La plantilla minimalista "' + p.nombre + '" (' + p.tipo + ') colisiona en nombre+tipo con el paquete profesional');
+  });
+}
+
+function test_enviarOutlook_validaCamposRequeridos(ctx) {
+  // Ninguna de estas llamadas debería llegar a hacer un UrlFetchApp.fetch
+  // real: deben fallar en la validación de campos antes de eso.
+  var casos = [
+    { cfg: {}, esperado: 'Tenant ID' },
+    { cfg: { tenantId: 't' }, esperado: 'Client ID' },
+    { cfg: { tenantId: 't', clientId: 'c' }, esperado: 'Client Secret' },
+    { cfg: { tenantId: 't', clientId: 'c', clientSecret: 's' }, esperado: 'remitente' }
+  ];
+  casos.forEach(function (caso) {
+    var lanzo = false;
+    try {
+      _enviarOutlook(['destino@ejemplo.com'], 'Asunto', '<p>Cuerpo</p>', caso.cfg);
+    } catch (e) {
+      lanzo = true;
+      _assert(e.message.toLowerCase().indexOf(caso.esperado.toLowerCase()) !== -1,
+        'El mensaje de error debería mencionar "' + caso.esperado + '" — recibido: ' + e.message);
+    }
+    _assert(lanzo, 'Debería lanzar una excepción cuando falta un campo requerido (config: ' + JSON.stringify(caso.cfg) + ')');
   });
 }
 

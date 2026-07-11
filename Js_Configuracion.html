@@ -242,19 +242,31 @@
       document.getElementById('correoApiKey').placeholder =
         cfg.apiKey ? '••••••••  (ya configurada, deja vacío para mantenerla)' : 'Pega aquí tu API Key';
       document.getElementById('correoApiKey').value = '';
+      document.getElementById('correoTenantId').value = cfg.tenantId || '';
+      document.getElementById('correoClientId').value = cfg.clientId || '';
+      document.getElementById('correoClientSecret').placeholder =
+        cfg.clientSecret ? '••••••••  (ya configurado, deja vacío para mantenerlo)' : 'Pega aquí el Client Secret';
+      document.getElementById('correoClientSecret').value = '';
       cambiarProveedorCorreo();
     });
   }
 
   function cambiarProveedorCorreo() {
-    var prv    = document.getElementById('correoProveedor').value;
-    var ext    = document.getElementById('smtpExterno');
-    var ayuda  = document.getElementById('smtpAyudaLinks');
-    var hint   = document.getElementById('correoApiKeyHint');
-    ext.classList.toggle('oculto', prv === 'google');
+    var prv       = document.getElementById('correoProveedor').value;
+    var ext       = document.getElementById('smtpExterno');
+    var outlookEx = document.getElementById('outlookExterno');
+    var ayuda     = document.getElementById('smtpAyudaLinks');
+    var hint      = document.getElementById('correoApiKeyHint');
+    ext.classList.toggle('oculto', prv !== 'sendgrid' && prv !== 'brevo');
+    outlookEx.classList.toggle('oculto', prv !== 'outlook');
     if (prv === 'sendgrid') { hint.textContent = '(SendGrid)'; ayuda.innerHTML = '<p class="smtp-ayuda-texto">ℹ️ ' + SMTP_AYUDA.sendgrid + '</p>'; }
     else if (prv === 'brevo') { hint.textContent = '(Brevo)'; ayuda.innerHTML = '<p class="smtp-ayuda-texto">ℹ️ ' + SMTP_AYUDA.brevo + '</p>'; }
     else { ayuda.innerHTML = ''; }
+  }
+
+  function toggleClientSecret() {
+    var inp = document.getElementById('correoClientSecret');
+    inp.type = inp.type === 'password' ? 'text' : 'password';
   }
 
   function guardarConfigCorreo() {
@@ -262,12 +274,18 @@
       proveedor:  document.getElementById('correoProveedor').value,
       fromNombre: document.getElementById('correoFromNombre').value.trim(),
       fromEmail:  document.getElementById('correoFromEmail').value.trim(),
-      apiKey:     document.getElementById('correoApiKey').value.trim()
+      apiKey:     document.getElementById('correoApiKey').value.trim(),
+      tenantId:     document.getElementById('correoTenantId').value.trim(),
+      clientId:     document.getElementById('correoClientId').value.trim(),
+      clientSecret: document.getElementById('correoClientSecret').value.trim()
     };
     var estado = document.getElementById('correoEstado');
     estado.textContent = '';
-    if ((cfg.proveedor === 'sendgrid' || cfg.proveedor === 'brevo') && !cfg.fromEmail) {
+    if ((cfg.proveedor === 'sendgrid' || cfg.proveedor === 'brevo' || cfg.proveedor === 'outlook') && !cfg.fromEmail) {
       estado.innerHTML = '<span style="color:var(--err)">Introduce el correo del remitente.</span>'; return;
+    }
+    if (cfg.proveedor === 'outlook' && (!cfg.tenantId || !cfg.clientId)) {
+      estado.innerHTML = '<span style="color:var(--err)">Introduce el Tenant ID y el Client ID.</span>'; return;
     }
     llamarBackend('guardarConfigCorreo', [cfg], function (res) {
       estado.innerHTML = res.ok

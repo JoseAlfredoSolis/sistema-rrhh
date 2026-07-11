@@ -1005,8 +1005,9 @@
         <h3>📤 Configuración de envío de correo</h3>
         <p class="config-ayuda">
           Elige el proveedor con el que se enviarán las alertas. Puedes usar tu cuenta de Google
-          sin configurar nada, o conectar un servicio externo (SendGrid, Brevo) para enviar desde
-          tu propio dominio con mayor control y estadísticas.
+          sin configurar nada, o conectar un servicio externo (SendGrid, Brevo, Outlook/Microsoft 365)
+          para enviar desde tu propio dominio con mayor control y estadísticas. Nota: Apps Script no
+          soporta SMTP directo — los proveedores externos se conectan por su API HTTP.
         </p>
 
         <div class="campo">
@@ -1015,6 +1016,7 @@
             <option value="google">Google Gmail (sin configuración extra)</option>
             <option value="sendgrid">SendGrid</option>
             <option value="brevo">Brevo (Sendinblue)</option>
+            <option value="outlook">Outlook / Microsoft 365</option>
           </select>
         </div>
 
@@ -1030,7 +1032,7 @@
           </div>
         </div>
 
-        <!-- Campos solo para proveedores externos -->
+        <!-- Campos solo para SendGrid / Brevo (API Key única) -->
         <div id="smtpExterno" class="oculto">
           <div class="campo">
             <label for="correoApiKey">API Key <span id="correoApiKeyHint" style="font-weight:400;color:var(--txt-3)"></span></label>
@@ -1046,6 +1048,39 @@
           </div>
 
           <div id="smtpAyudaLinks" class="smtp-ayuda"></div>
+        </div>
+
+        <!-- Campos solo para Outlook / Microsoft 365 (app de Azure AD) -->
+        <div id="outlookExterno" class="oculto">
+          <p class="smtp-ayuda-texto" style="margin-bottom:10px">
+            ℹ️ Requiere una app registrada en Azure AD (<strong>portal.azure.com → Azure Active
+            Directory → App registrations → New registration</strong>), con el permiso de API
+            <strong>Mail.Send</strong> de tipo <strong>Application</strong> (no Delegated) y
+            consentimiento de administrador otorgado. El "Correo del remitente" de arriba debe ser
+            un buzón real de ese tenant.
+          </p>
+          <div class="smtp-fila">
+            <div class="campo smtp-campo">
+              <label for="correoTenantId">Tenant ID (Directory ID)</label>
+              <input type="text" id="correoTenantId" placeholder="00000000-0000-0000-0000-000000000000">
+            </div>
+            <div class="campo smtp-campo">
+              <label for="correoClientId">Client ID (Application ID)</label>
+              <input type="text" id="correoClientId" placeholder="00000000-0000-0000-0000-000000000000">
+            </div>
+          </div>
+          <div class="campo">
+            <label for="correoClientSecret">Client Secret <span id="correoClientSecretHint" style="font-weight:400;color:var(--txt-3)"></span></label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input type="password" id="correoClientSecret" placeholder="Pega aquí el Client Secret" style="flex:1">
+              <button type="button" class="btn btn-secundario" style="padding:8px 12px;font-size:13px"
+                onclick="toggleClientSecret()">👁</button>
+            </div>
+            <small style="color:var(--txt-3);font-size:12px;margin-top:4px;display:block">
+              Se guarda de forma segura en el servidor. Deja el campo vacío para mantener el
+              guardado actualmente.
+            </small>
+          </div>
         </div>
 
         <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px">

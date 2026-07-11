@@ -1691,16 +1691,21 @@ var CLAVE_CONFIG_CORREO  = 'CONFIG_CORREO';
 
 /**
  * Devuelve la configuración del proveedor de correo.
- * Proveedores soportados: 'google' | 'sendgrid' | 'brevo'
+ * Proveedores soportados: 'google' | 'sendgrid' | 'brevo' | 'outlook'
+ * ('outlook' usa Microsoft Graph API vía tenantId/clientId/clientSecret,
+ * no SMTP — Apps Script no puede abrir conexiones SMTP directas).
  */
 function obtenerConfigCorreoInterno() {
   var raw = PropertiesService.getScriptProperties().getProperty(CLAVE_CONFIG_CORREO);
   var def = {
-    proveedor:  'google',
-    fromNombre: 'Sistema RRHH',
-    fromEmail:  '',
-    apiKey:     '',
-    dominio:    ''
+    proveedor:    'google',
+    fromNombre:   'Sistema RRHH',
+    fromEmail:    '',
+    apiKey:       '',
+    dominio:      '',
+    tenantId:     '',
+    clientId:     '',
+    clientSecret: ''
   };
   if (!raw) return def;
   try { return Object.assign(def, JSON.parse(raw)); } catch (e) { return def; }
@@ -1712,19 +1717,22 @@ function obtenerConfigCorreo(token) {
 
   var cfg = obtenerConfigCorreoInterno();
   cfg.apiKey = enmascararSecreto(cfg.apiKey);
+  cfg.clientSecret = enmascararSecreto(cfg.clientSecret);
   return cfg;
 }
 
 /**
  * Guarda la configuración del proveedor de correo.
- * Si apiKey llega vacía no sobreescribe la guardada (evita borrarla al editar).
+ * Si apiKey/clientSecret llegan vacíos no sobreescribe lo guardado (evita
+ * borrarlos al editar otros campos).
  */
 function guardarConfigCorreo(cfg, token) {
   var _authErr = requiereAdmin(token);
   if (_authErr) return _authErr;
 
   var actual = obtenerConfigCorreoInterno();
-  if (!cfg.apiKey) cfg.apiKey = actual.apiKey; // preservar key existente si no se cambia
+  if (!cfg.apiKey) cfg.apiKey = actual.apiKey;
+  if (!cfg.clientSecret) cfg.clientSecret = actual.clientSecret;
   PropertiesService.getScriptProperties().setProperty(CLAVE_CONFIG_CORREO, JSON.stringify(cfg));
   return { ok: true, mensaje: 'Configuración de correo guardada.' };
 }
@@ -1953,6 +1961,7 @@ function _plantillaCorreo(cuerpoHtml) {
 /**
  * Despacha el correo al proveedor configurado.
  * Proveedor 'google' → MailApp | 'sendgrid' → SendGrid API | 'brevo' → Brevo API
+ * | 'outlook' → Microsoft Graph API
  */
 function _enviarCorreo(emails, asunto, cuerpoHtml) {
   var cfg  = obtenerConfigCorreoInterno();
@@ -1962,6 +1971,8 @@ function _enviarCorreo(emails, asunto, cuerpoHtml) {
     _enviarSendGrid(emails, asunto, html, cfg);
   } else if (cfg.proveedor === 'brevo') {
     _enviarBrevo(emails, asunto, html, cfg);
+  } else if (cfg.proveedor === 'outlook') {
+    _enviarOutlook(emails, asunto, html, cfg);
   } else {
     // Google MailApp (sin configuración extra requerida)
     emails.forEach(function (to) {
@@ -2021,6 +2032,69 @@ function _enviarBrevo(emails, asunto, html, cfg) {
   var code = res.getResponseCode();
   if (code >= 400) {
     throw new Error('Brevo error ' + code + ': ' + res.getContentText().slice(0, 200));
+  }
+}
+
+/**
+ * Envía vía Microsoft Graph API (Outlook / Microsoft 365). No es SMTP —
+ * Apps Script no puede abrir conexiones SMTP directas — sino una API HTTP:
+ * primero se pide un token OAuth2 (client credentials) contra Azure AD, y
+ * luego se llama a POST /users/{fromEmail}/sendMail con ese token.
+ *
+ * Requiere una app registrada en Azure AD (portal.azure.com → Azure Active
+ * Directory → App registrations) con permiso de API "Mail.Send" tipo
+ * Application (no Delegated), con consentimiento de administrador otorgado.
+ * cfg.fromEmail debe ser un buzón real del tenant.
+ */
+function _enviarOutlook(emails, asunto, html, cfg) {
+  if (!cfg.tenantId)     throw new Error('Outlook: falta el Tenant ID.');
+  if (!cfg.clientId)     throw new Error('Outlook: falta el Client ID.');
+  if (!cfg.clientSecret) throw new Error('Outlook: falta el Client Secret.');
+  if (!cfg.fromEmail)    throw new Error('Outlook: falta el correo del remitente (debe ser un buzón real del tenant).');
+
+  var tokenRes = UrlFetchApp.fetch(
+    'https://login.microsoftonline.com/' + encodeURIComponent(cfg.tenantId) + '/oauth2/v2.0/token', {
+    method:      'post',
+    contentType: 'application/x-www-form-urlencoded',
+    payload: {
+      grant_type:    'client_credentials',
+      client_id:     cfg.clientId,
+      client_secret: cfg.clientSecret,
+      scope:         'https://graph.microsoft.com/.default'
+    },
+    muteHttpExceptions: true
+  });
+  if (tokenRes.getResponseCode() >= 400) {
+    throw new Error('Outlook: error obteniendo token — ' + tokenRes.getContentText().slice(0, 200));
+  }
+  var accessToken;
+  try {
+    accessToken = JSON.parse(tokenRes.getContentText()).access_token;
+  } catch (e) {
+    accessToken = null;
+  }
+  if (!accessToken) throw new Error('Outlook: no se pudo obtener el token de acceso.');
+
+  var payload = {
+    message: {
+      subject: asunto,
+      body: { contentType: 'HTML', content: html },
+      from: { emailAddress: { address: cfg.fromEmail, name: cfg.fromNombre || 'Sistema RRHH' } },
+      toRecipients: emails.map(function (e) { return { emailAddress: { address: e } }; })
+    },
+    saveToSentItems: false
+  };
+  var res = UrlFetchApp.fetch(
+    'https://graph.microsoft.com/v1.0/users/' + encodeURIComponent(cfg.fromEmail) + '/sendMail', {
+    method:      'post',
+    contentType: 'application/json',
+    headers:     { Authorization: 'Bearer ' + accessToken },
+    payload:     JSON.stringify(payload),
+    muteHttpExceptions: true
+  });
+  var code = res.getResponseCode();
+  if (code >= 400) {
+    throw new Error('Outlook error ' + code + ': ' + res.getContentText().slice(0, 200));
   }
 }
 
