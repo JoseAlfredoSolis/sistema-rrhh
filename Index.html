@@ -1227,6 +1227,90 @@
       </div>
     </section>
 
+    <!-- ====== VISTA: CALCULADORA DE LIQUIDACIÓN (pantalla propia, sin entrada de menú — se llega solo desde "Nueva liquidación") ====== -->
+    <section id="vista-calculadora-liquidacion" class="vista oculto">
+      <div class="barra-acciones">
+        <div style="display:flex;gap:12px;align-items:center">
+          <button class="btn btn-secundario" onclick="cerrarCalculadoraLiquidacion()">← Volver a Liquidaciones</button>
+          <h2 class="titulo-vista" style="margin:0">🧮 Calculadora de Liquidación Laboral</h2>
+        </div>
+      </div>
+
+      <form id="formCalculadoraLiq" onsubmit="calcularYMostrarLiquidacion(event)" novalidate>
+
+        <!-- Sección 1: Datos del empleado -->
+        <div style="padding:12px;background:var(--surface-2);border-radius:6px;margin-bottom:12px">
+          <h4 style="margin-top:0">Datos del Empleado</h4>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="campo"><label>Empleado *</label><select id="calcEmpleado" required onchange="autocompletarCalculadora()"></select></div>
+            <div class="campo"><label>Digite la fecha inicio: *</label><input type="date" id="calcFechaInicio" required onchange="calcularMesesLaborados()"></div>
+            <div class="campo"><label>Digite la fecha salida: *</label><input type="date" id="calcFechaSalida" required onchange="calcularMesesLaborados()"></div>
+            <div class="campo"><label>Meses Laborados</label><input type="text" id="calcMesesLaborados" readonly style="background:var(--surface);cursor:not-allowed;font-weight:600;color:var(--p)" placeholder="0,00"></div>
+            <div class="campo"><label>Tipo de nómina *</label>
+              <div style="display:flex;gap:16px;margin-top:6px">
+                <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer">
+                  <input type="radio" name="calcTipoNomina" value="Semanal" id="calcNominaSemanal" required checked> Semanal
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer">
+                  <input type="radio" name="calcTipoNomina" value="Quincenal" id="calcNominaQuincenal" required> Quincenal
+                </label>
+              </div>
+            </div>
+            <div class="campo"><label>Motivo de salida *</label>
+              <select id="calcMotivo" required>
+                <option value="">Seleccionar...</option>
+                <option value="renuncia">Renuncia del Trabajador</option>
+                <option value="despido_con_resp">Despido Con Responsabilidad Patronal</option>
+                <option value="despido_sin_resp">Despido Sin Responsabilidad Patronal</option>
+              </select>
+            </div>
+            <div class="campo"><label>Días de vacaciones</label><input type="number" id="calcDiasVac" min="0" max="30" step="0.5" value="5" placeholder="5"><small style="color:var(--txt-3)">Días pendientes a liquidar (por defecto 5)</small></div>
+            <div class="campo"><label>Estado *</label><select id="calcEstado" required><option value="pendiente">Pendiente</option><option value="pagada">Pagada</option></select></div>
+          </div>
+        </div>
+
+        <!-- Sección 2: Salarios mensuales -->
+        <div style="padding:12px;background:var(--surface-2);border-radius:6px;margin-bottom:12px">
+          <h4 style="margin-top:0">Cálculo de Aguinaldo - Salarios Últimos 12 Meses</h4>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:12px">
+            <div><label style="display:block;font-size:11px;color:var(--txt-2);margin-bottom:4px">Diciembre</label><input type="number" id="salDiciembre" placeholder="0.00" step="0.01" onchange="recalcularAguinaldo()" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px"></div>
+            <div><label style="display:block;font-size:11px;color:var(--txt-2);margin-bottom:4px">Enero</label><input type="number" id="salEnero" placeholder="0.00" step="0.01" onchange="recalcularAguinaldo()" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px"></div>
+            <div><label style="display:block;font-size:11px;color:var(--txt-2);margin-bottom:4px">Febrero</label><input type="number" id="salFebrero" placeholder="0.00" step="0.01" onchange="recalcularAguinaldo()" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px"></div>
+            <div><label style="display:block;font-size:11px;color:var(--txt-2);margin-bottom:4px">Marzo</label><input type="number" id="salMarzo" placeholder="0.00" step="0.01" onchange="recalcularAguinaldo()" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px"></div>
+            <div><label style="display:block;font-size:11px;color:var(--txt-2);margin-bottom:4px">Abril</label><input type="number" id="salAbril" placeholder="0.00" step="0.01" onchange="recalcularAguinaldo()" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px"></div>
+            <div><label style="display:block;font-size:11px;color:var(--txt-2);margin-bottom:4px">Mayo</label><input type="number" id="salMayo" placeholder="0.00" step="0.01" onchange="recalcularAguinaldo()" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px"></div>
+            <div><label style="display:block;font-size:11px;color:var(--txt-2);margin-bottom:4px">Junio</label><input type="number" id="salJunio" placeholder="0.00" step="0.01" onchange="recalcularAguinaldo()" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px"></div>
+            <div><label style="display:block;font-size:11px;color:var(--txt-2);margin-bottom:4px">Julio</label><input type="number" id="salJulio" placeholder="0.00" step="0.01" onchange="recalcularAguinaldo()" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px"></div>
+            <div><label style="display:block;font-size:11px;color:var(--txt-2);margin-bottom:4px">Agosto</label><input type="number" id="salAgosto" placeholder="0.00" step="0.01" onchange="recalcularAguinaldo()" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px"></div>
+            <div><label style="display:block;font-size:11px;color:var(--txt-2);margin-bottom:4px">Septiembre</label><input type="number" id="salSeptiembre" placeholder="0.00" step="0.01" onchange="recalcularAguinaldo()" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px"></div>
+            <div><label style="display:block;font-size:11px;color:var(--txt-2);margin-bottom:4px">Octubre</label><input type="number" id="salOctubre" placeholder="0.00" step="0.01" onchange="recalcularAguinaldo()" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px"></div>
+            <div><label style="display:block;font-size:11px;color:var(--txt-2);margin-bottom:4px">Noviembre</label><input type="number" id="salNoviembre" placeholder="0.00" step="0.01" onchange="recalcularAguinaldo()" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px"></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
+            <div style="padding:10px;background:var(--ok-bg);border-radius:4px">
+              <small style="color:var(--txt-2)">Total 12 meses:</small><br>
+              <strong style="font-size:16px;color:var(--ok)">₡<span id="totalSalarios">0.00</span></strong>
+            </div>
+            <div style="padding:10px;background:var(--p-bg);border-radius:4px">
+              <small style="color:var(--txt-2)">Promedio últimos 6 meses:</small><br>
+              <strong style="font-size:16px;color:var(--p)">₡<span id="promedioSalarios">0.00</span></strong>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+          <button type="submit" class="btn btn-primario" id="btnCalcular">🧮 Calcular Liquidación</button>
+          <button type="button" id="btnGuardarLiqCalc" class="btn btn-primario oculto" onclick="guardarCalculoLiquidacion()" style="background:var(--ok)">💾 Guardar Liquidación</button>
+        </div>
+      </form>
+
+      <div id="calcErrorGuardado" style="margin-top:8px;padding:10px 14px;background:#fee2e2;color:#991b1b;border-radius:6px;font-size:13px;display:none"></div>
+      <div id="calcResultado" class="oculto" style="margin-top:16px;padding:16px;background:var(--surface-2);border-radius:6px;max-height:60vh;overflow-y:auto">
+        <h3 style="margin-top:0">Resultado del Cálculo</h3>
+        <div id="calcDetalles"></div>
+      </div>
+    </section>
+
     <!-- ====== VISTA: FERIADOS ====== -->
     <section id="vista-feriados" class="vista oculto">
       <div class="barra-acciones">
@@ -1710,86 +1794,6 @@
         <div class="campo" id="liqInactivarWrap"><label style="display:flex;align-items:center;gap:8px;font-weight:400"><input type="checkbox" id="liqInactivar" style="width:auto"> Marcar empleado como inactivo al guardar</label></div>
         <div class="modal-pie"><button type="button" class="btn btn-secundario" onclick="cerrarModalLiquidacion()">Cancelar</button><button type="submit" class="btn btn-primario" id="btnGuardarLiq">Guardar</button></div>
       </form>
-    </div>
-  </div>
-
-  <!-- Modal Calculadora Liquidación -->
-  <div id="modalCalculadoraLiq" class="modal oculto">
-    <div class="modal-contenido" style="max-width:900px;max-height:90vh;overflow-y:auto">
-      <div class="modal-cabecera"><h2>🧮 Calculadora de Liquidación Laboral</h2><button class="cerrar" onclick="cerrarCalculadoraLiquidacion()">&times;</button></div>
-      <form id="formCalculadoraLiq" onsubmit="calcularYMostrarLiquidacion(event)" novalidate>
-
-        <!-- Sección 1: Datos del empleado -->
-        <div style="padding:12px;background:var(--surface-2);border-radius:6px;margin-bottom:12px">
-          <h4 style="margin-top:0">Datos del Empleado</h4>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-            <div class="campo"><label>Empleado *</label><select id="calcEmpleado" required onchange="autocompletarCalculadora()"></select></div>
-            <div class="campo"><label>Digite la fecha inicio: *</label><input type="date" id="calcFechaInicio" required onchange="calcularMesesLaborados()"></div>
-            <div class="campo"><label>Digite la fecha salida: *</label><input type="date" id="calcFechaSalida" required onchange="calcularMesesLaborados()"></div>
-            <div class="campo"><label>Meses Laborados</label><input type="text" id="calcMesesLaborados" readonly style="background:var(--surface);cursor:not-allowed;font-weight:600;color:var(--p)" placeholder="0,00"></div>
-            <div class="campo"><label>Tipo de nómina *</label>
-              <div style="display:flex;gap:16px;margin-top:6px">
-                <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer">
-                  <input type="radio" name="calcTipoNomina" value="Semanal" id="calcNominaSemanal" required checked> Semanal
-                </label>
-                <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer">
-                  <input type="radio" name="calcTipoNomina" value="Quincenal" id="calcNominaQuincenal" required> Quincenal
-                </label>
-              </div>
-            </div>
-            <div class="campo"><label>Motivo de salida *</label>
-              <select id="calcMotivo" required>
-                <option value="">Seleccionar...</option>
-                <option value="renuncia">Renuncia del Trabajador</option>
-                <option value="despido_con_resp">Despido Con Responsabilidad Patronal</option>
-                <option value="despido_sin_resp">Despido Sin Responsabilidad Patronal</option>
-              </select>
-            </div>
-            <div class="campo"><label>Días de vacaciones</label><input type="number" id="calcDiasVac" min="0" max="30" step="0.5" value="5" placeholder="5"><small style="color:var(--txt-3)">Días pendientes a liquidar (por defecto 5)</small></div>
-            <div class="campo"><label>Estado *</label><select id="calcEstado" required><option value="pendiente">Pendiente</option><option value="pagada">Pagada</option></select></div>
-          </div>
-        </div>
-
-        <!-- Sección 2: Salarios mensuales -->
-        <div style="padding:12px;background:var(--surface-2);border-radius:6px;margin-bottom:12px">
-          <h4 style="margin-top:0">Cálculo de Aguinaldo - Salarios Últimos 12 Meses</h4>
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:12px">
-            <div><label style="display:block;font-size:11px;color:var(--txt-2);margin-bottom:4px">Diciembre</label><input type="number" id="salDiciembre" placeholder="0.00" step="0.01" onchange="recalcularAguinaldo()" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px"></div>
-            <div><label style="display:block;font-size:11px;color:var(--txt-2);margin-bottom:4px">Enero</label><input type="number" id="salEnero" placeholder="0.00" step="0.01" onchange="recalcularAguinaldo()" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px"></div>
-            <div><label style="display:block;font-size:11px;color:var(--txt-2);margin-bottom:4px">Febrero</label><input type="number" id="salFebrero" placeholder="0.00" step="0.01" onchange="recalcularAguinaldo()" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px"></div>
-            <div><label style="display:block;font-size:11px;color:var(--txt-2);margin-bottom:4px">Marzo</label><input type="number" id="salMarzo" placeholder="0.00" step="0.01" onchange="recalcularAguinaldo()" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px"></div>
-            <div><label style="display:block;font-size:11px;color:var(--txt-2);margin-bottom:4px">Abril</label><input type="number" id="salAbril" placeholder="0.00" step="0.01" onchange="recalcularAguinaldo()" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px"></div>
-            <div><label style="display:block;font-size:11px;color:var(--txt-2);margin-bottom:4px">Mayo</label><input type="number" id="salMayo" placeholder="0.00" step="0.01" onchange="recalcularAguinaldo()" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px"></div>
-            <div><label style="display:block;font-size:11px;color:var(--txt-2);margin-bottom:4px">Junio</label><input type="number" id="salJunio" placeholder="0.00" step="0.01" onchange="recalcularAguinaldo()" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px"></div>
-            <div><label style="display:block;font-size:11px;color:var(--txt-2);margin-bottom:4px">Julio</label><input type="number" id="salJulio" placeholder="0.00" step="0.01" onchange="recalcularAguinaldo()" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px"></div>
-            <div><label style="display:block;font-size:11px;color:var(--txt-2);margin-bottom:4px">Agosto</label><input type="number" id="salAgosto" placeholder="0.00" step="0.01" onchange="recalcularAguinaldo()" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px"></div>
-            <div><label style="display:block;font-size:11px;color:var(--txt-2);margin-bottom:4px">Septiembre</label><input type="number" id="salSeptiembre" placeholder="0.00" step="0.01" onchange="recalcularAguinaldo()" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px"></div>
-            <div><label style="display:block;font-size:11px;color:var(--txt-2);margin-bottom:4px">Octubre</label><input type="number" id="salOctubre" placeholder="0.00" step="0.01" onchange="recalcularAguinaldo()" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px"></div>
-            <div><label style="display:block;font-size:11px;color:var(--txt-2);margin-bottom:4px">Noviembre</label><input type="number" id="salNoviembre" placeholder="0.00" step="0.01" onchange="recalcularAguinaldo()" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px"></div>
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
-            <div style="padding:10px;background:var(--ok-bg);border-radius:4px">
-              <small style="color:var(--txt-2)">Total 12 meses:</small><br>
-              <strong style="font-size:16px;color:var(--ok)">₡<span id="totalSalarios">0.00</span></strong>
-            </div>
-            <div style="padding:10px;background:var(--p-bg);border-radius:4px">
-              <small style="color:var(--txt-2)">Promedio últimos 6 meses:</small><br>
-              <strong style="font-size:16px;color:var(--p)">₡<span id="promedioSalarios">0.00</span></strong>
-            </div>
-          </div>
-        </div>
-
-        <div class="modal-pie" style="gap:8px">
-          <button type="submit" class="btn btn-primario" id="btnCalcular">🧮 Calcular Liquidación</button>
-          <button type="button" id="btnGuardarLiqCalc" class="btn btn-primario oculto" onclick="guardarCalculoLiquidacion()" style="background:var(--ok)">💾 Guardar Liquidación</button>
-        </div>
-      </form>
-
-      <div id="calcErrorGuardado" style="margin-top:8px;padding:10px 14px;background:#fee2e2;color:#991b1b;border-radius:6px;font-size:13px;display:none"></div>
-      <div id="calcResultado" class="oculto" style="margin-top:16px;padding:16px;background:var(--surface-2);border-radius:6px;max-height:400px;overflow-y:auto">
-        <h3 style="margin-top:0">Resultado del Cálculo</h3>
-        <div id="calcDetalles"></div>
-      </div>
     </div>
   </div>
 

@@ -264,7 +264,7 @@
     recalcularAguinaldo(); // Mostrar 0 inicialmente
     document.getElementById('calcResultado').classList.add('oculto');
     document.getElementById('btnGuardarLiqCalc').classList.add('oculto');
-    document.getElementById('modalCalculadoraLiq').classList.remove('oculto');
+    mostrarVista('calculadora-liquidacion');
   }
 
   function recalcularAguinaldo() {
@@ -299,7 +299,7 @@
   }
 
   function cerrarCalculadoraLiquidacion() {
-    document.getElementById('modalCalculadoraLiq').classList.add('oculto');
+    mostrarVista('liquidaciones');
     CALCULO_ACTUAL = null;
   }
 
