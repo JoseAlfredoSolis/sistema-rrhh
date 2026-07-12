@@ -94,7 +94,8 @@ var PRUEBAS_REGISTRO = [
   { nombre: '_whatsappCredencialesListas distingue CallMeBot de servidor propio', fn: test_whatsappCredencialesListas_porProveedor },
   { nombre: '_enviarWhatsAppServidorPropio valida URL y secreto antes de llamar al servidor', fn: test_enviarWhatsAppServidorPropio_validaCamposRequeridos },
   { nombre: 'obtenerReportes devuelve todas las series y KPIs con la estructura esperada', fn: test_obtenerReportes_estructuraCompleta },
-  { nombre: 'crearLiquidacion y actualizarLiquidacion guardan y preservan los 12 salarios mensuales', fn: test_liquidacion_guardaSalariosMensuales }
+  { nombre: 'crearLiquidacion y actualizarLiquidacion guardan y preservan los 12 salarios mensuales', fn: test_liquidacion_guardaSalariosMensuales },
+  { nombre: '_asegurarEncabezadosLiquidaciones deja cada encabezado en su columna exacta', fn: test_asegurarEncabezadosLiquidaciones_posicionCorrecta }
 ];
 
 // ===================================================================
@@ -719,6 +720,18 @@ function test_liquidacion_guardaSalariosMensuales(ctx) {
   } finally {
     eliminarFila(HOJAS.LIQUIDACIONES, res.id, 'Liquidacion');
   }
+}
+
+function test_asegurarEncabezadosLiquidaciones_posicionCorrecta(ctx) {
+  _asegurarEncabezadosLiquidaciones();
+  var hoja = getHoja(HOJAS.LIQUIDACIONES);
+  var esperados = ENCABEZADOS.Liquidaciones;
+  var actuales = hoja.getRange(1, 1, 1, esperados.length).getValues()[0];
+  esperados.forEach(function (nombre, i) {
+    _assertIgual(String(actuales[i]), nombre,
+      'La columna ' + (i + 1) + ' de Liquidaciones debería tener el encabezado "' + nombre +
+      '" (regresión: un encabezado faltante hace que leerTabla ignore esa columna aunque tenga datos)');
+  });
 }
 
 function test_enviarComunicacionAmbos_exigeAlMenosUnMedio(ctx) {

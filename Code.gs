@@ -5320,10 +5320,41 @@ function eliminarFeriado(id, token) {
 //             monto | estado ('pendiente' | 'pagada') | notas
 // ===================================================================
 
+/**
+ * Agrega el encabezado 'salariosMensuales' a la hoja de Liquidaciones si
+ * falta — hojas creadas antes de este campo solo tienen 8 columnas en la
+ * fila 1, y leerTabla() arma cada fila leyendo SOLO los encabezados que
+ * encuentra ahí (no los del código), así que sin este encabezado el dato
+ * de la columna 9 queda invisible aunque sí se haya escrito.
+ *
+ * A propósito NO usa migrarColumnas() genérico: ese agrega columnas
+ * faltantes al final según cuántos encabezados YA tiene la fila 1 — pero
+ * si ya se escribieron filas con una 9na columna de datos (como pasó acá)
+ * antes de que existiera su encabezado, getDataRange() ya cuenta esa
+ * columna como parte de la hoja aunque el encabezado esté vacío, y
+ * migrarColumnas terminaría escribiendo el nombre en la columna 10 en vez
+ * de rellenar el encabezado vacío de la columna 9. Esta versión escribe
+ * cada encabezado exactamente en SU posición esperada (por índice), que es
+ * la misma posición en la que crearLiquidacion/actualizarLiquidacion ya
+ * escriben los valores.
+ */
+function _asegurarEncabezadosLiquidaciones() {
+  var hoja = getHoja(HOJAS.LIQUIDACIONES);
+  var esperados = ENCABEZADOS.Liquidaciones;
+  var ultimaCol = Math.max(hoja.getLastColumn(), esperados.length);
+  var actuales = hoja.getRange(1, 1, 1, ultimaCol).getValues()[0];
+  esperados.forEach(function (nombre, i) {
+    if (String(actuales[i] || '') !== nombre) {
+      hoja.getRange(1, i + 1).setValue(nombre);
+    }
+  });
+}
+
 function listarLiquidaciones(empleadoId, estado, token) {
   var _authErr = requiereEscritura(token);
   if (_authErr) return _authErr;
 
+  _asegurarEncabezadosLiquidaciones();
   var rows  = leerTabla(HOJAS.LIQUIDACIONES);
   var empls = leerTabla(HOJAS.EMPLEADOS);
   if (empleadoId) rows = rows.filter(function (r) { return String(r.empleado_id) === String(empleadoId); });
@@ -5655,6 +5686,7 @@ function crearLiquidacion(datos, token) {
   var _authErr = requiereEscritura(token);
   if (_authErr) return _authErr;
 
+  _asegurarEncabezadosLiquidaciones();
   if (!datos || !datos.empleado_id) return { ok: false, mensaje: 'Selecciona un empleado.' };
   if (!datos.fecha_salida || isNaN(new Date(datos.fecha_salida).getTime())) {
     return { ok: false, mensaje: 'La fecha de salida no es válida.' };
@@ -5699,6 +5731,7 @@ function actualizarLiquidacion(datos, token) {
   var _authErr = requiereEscritura(token);
   if (_authErr) return _authErr;
 
+  _asegurarEncabezadosLiquidaciones();
   var hoja = getHoja(HOJAS.LIQUIDACIONES);
   var rows = hoja.getDataRange().getValues();
   for (var i = 1; i < rows.length; i++) {
