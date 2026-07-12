@@ -1760,10 +1760,12 @@
     </div>
   </div>
 
-  <!-- Modal Historial Salarios -->
+  <!-- Modal Historial del empleado (salarios + bajas/reactivaciones) -->
   <div id="modalHistorialSal" class="modal oculto">
     <div class="modal-contenido modal-grande">
-      <div class="modal-cabecera"><h2 id="modalHistTitulo">Historial de salarios</h2><button class="cerrar" onclick="cerrarModalHistorial()">&times;</button></div>
+      <div class="modal-cabecera"><h2 id="modalHistTitulo">Historial</h2><button class="cerrar" onclick="cerrarModalHistorial()">&times;</button></div>
+
+      <h3 style="margin:0 4px 8px;font-size:13.5px;color:var(--txt-2)">💰 Salarios</h3>
       <div class="tabla-envoltorio" style="padding:0 4px 12px">
         <table class="tabla" id="tablaHistSal">
           <thead><tr><th>Fecha</th><th>Salario anterior</th><th>Salario nuevo</th><th>Variación</th><th>Notas</th></tr></thead>
@@ -1771,6 +1773,16 @@
         </table>
         <p id="sinHistSal" class="sin-datos oculto">No hay cambios de salario registrados.</p>
       </div>
+
+      <h3 style="margin:16px 4px 8px;font-size:13.5px;color:var(--txt-2)">🔄 Bajas / reactivaciones</h3>
+      <div class="tabla-envoltorio" style="padding:0 4px 12px">
+        <table class="tabla" id="tablaHistEstados">
+          <thead><tr><th>Fecha</th><th>Cambio de estado</th><th>Fecha de ingreso</th><th>Usuario</th></tr></thead>
+          <tbody id="cuerpoHistEstados"></tbody>
+        </table>
+        <p id="sinHistEstados" class="sin-datos oculto">No hay bajas ni reactivaciones registradas.</p>
+      </div>
+
       <div class="modal-pie"><button class="btn btn-primario" onclick="cerrarModalHistorial()">Cerrar</button></div>
     </div>
   </div>

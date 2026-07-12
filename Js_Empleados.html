@@ -76,18 +76,21 @@
         '<td>' + formatoDinero(e.salario) + '</td>' +
         '<td>' + badge(esActivo ? 'activo' : 'inactivo') + '</td>' +
         '<td class="no-print">' + accionesCRUD +
-          '<button class="btn-mini" onclick="verHistorial(\'' + escaparAttr(e.id) + '\',\'' + escaparAttr(e.nombre) + '\')">📈</button>' +
+          '<button class="btn-mini" title="Ver historial" onclick="verHistorial(\'' + escaparAttr(e.id) + '\',\'' + escaparAttr(e.nombre) + '\')">📈</button>' +
         '</td>';
       cuerpo.appendChild(tr);
     });
   }
 
-  // ── Historial de salarios ─────────────────────────────────
+  // ── Historial del empleado (salarios + bajas/reactivaciones) ──────
   function verHistorial(id, nombre) {
-    document.getElementById('modalHistTitulo').textContent = 'Historial de salarios — ' + nombre;
+    document.getElementById('modalHistTitulo').textContent = 'Historial — ' + nombre;
     document.getElementById('cuerpoHistSal').innerHTML = '';
     document.getElementById('sinHistSal').classList.add('oculto');
+    document.getElementById('cuerpoHistEstados').innerHTML = '';
+    document.getElementById('sinHistEstados').classList.add('oculto');
     document.getElementById('modalHistorialSal').classList.remove('oculto');
+
     llamarBackend('listarHistorialSalario', [id], function (lista) {
       var cuerpo = document.getElementById('cuerpoHistSal');
       if (!lista || !lista.length) {
@@ -105,6 +108,26 @@
           '<td>' + formatoDinero(h.salario_nuevo) + '</td>' +
           '<td style="color:' + varColor + ';font-weight:600">' + varStr + '</td>' +
           '<td>' + escapar(h.notas || '—') + '</td>';
+        cuerpo.appendChild(tr);
+      });
+    });
+
+    llamarBackend('listarHistorialEstados', [id], function (lista) {
+      var cuerpo = document.getElementById('cuerpoHistEstados');
+      if (!lista || !lista.length) {
+        document.getElementById('sinHistEstados').classList.remove('oculto');
+        return;
+      }
+      lista.forEach(function (h) {
+        var cambioIngreso = (h.estado_nuevo === 'activo' && h.fecha_ingreso_anterior !== h.fecha_ingreso_nueva)
+          ? escapar(h.fecha_ingreso_anterior || '—') + ' → ' + escapar(h.fecha_ingreso_nueva || '—')
+          : '—';
+        var tr = document.createElement('tr');
+        tr.innerHTML =
+          '<td>' + escapar(h.fecha) + '</td>' +
+          '<td>' + badge(h.estado_anterior || '') + ' → ' + badge(h.estado_nuevo || '') + '</td>' +
+          '<td>' + cambioIngreso + '</td>' +
+          '<td>' + escapar(h.usuario || '—') + '</td>';
         cuerpo.appendChild(tr);
       });
     });
