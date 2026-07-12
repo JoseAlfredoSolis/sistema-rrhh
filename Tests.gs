@@ -96,7 +96,9 @@ var PRUEBAS_REGISTRO = [
   { nombre: 'obtenerReportes devuelve todas las series y KPIs con la estructura esperada', fn: test_obtenerReportes_estructuraCompleta },
   { nombre: 'crearLiquidacion y actualizarLiquidacion guardan y preservan los 12 salarios mensuales', fn: test_liquidacion_guardaSalariosMensuales },
   { nombre: '_asegurarEncabezadosLiquidaciones deja cada encabezado en su columna exacta', fn: test_asegurarEncabezadosLiquidaciones_posicionCorrecta },
-  { nombre: 'cambiarEstadoEmpleado registra historial y actualiza fecha_ingreso/fecha_salida', fn: test_cambiarEstadoEmpleado_historialYFechaIngreso }
+  { nombre: 'cambiarEstadoEmpleado registra historial y actualiza fecha_ingreso/fecha_salida', fn: test_cambiarEstadoEmpleado_historialYFechaIngreso },
+  { nombre: 'obtenerPuestosCriticos solo incluye empleados activos con cargo_critico=SI', fn: test_obtenerPuestosCriticos_filtraCargoCriticoActivo },
+  { nombre: 'listarEmpleados filtra por estado activo/inactivo/todos según filtroEstado', fn: test_listarEmpleados_filtroEstadoInactivo }
 ];
 
 // ===================================================================
@@ -796,6 +798,88 @@ function test_cambiarEstadoEmpleado_historialYFechaIngreso(ctx) {
     var empEditado = obtenerEmpleadoCompleto(empId, ctx.token);
     _assertIgual(empEditado.fecha_salida, fechaSalidaManual,
       'fecha_salida debería poder editarse manualmente desde el formulario de empleado');
+  } finally {
+    listarHistorialEstados(empId, ctx.token).forEach(function (h) {
+      eliminarFila(HOJAS.HISTORIAL_ESTADOS, h.id, 'HistorialEstado');
+    });
+    eliminarFila(HOJAS.EMPLEADOS, empId, 'Empleado');
+  }
+}
+
+function test_obtenerPuestosCriticos_filtraCargoCriticoActivo(ctx) {
+  var creado = crearEmpleado({
+    nombre: PRUEBA_PREFIJO + 'PuestoCritico',
+    cedula: '000000098',
+    departamento: ctx.departamentoNombre,
+    puesto: 'Puesto de prueba crítico',
+    fecha_ingreso: '2022-01-15',
+    salario: 500000,
+    cargo_critico: 'SI'
+  }, ctx.token);
+  _assertOk(creado, 'No se pudo preparar el empleado crítico de prueba');
+  var empId = creado.id;
+
+  try {
+    var res = obtenerPuestosCriticos(ctx.token);
+    _assertOk(res, 'obtenerPuestosCriticos no debería fallar con una sesión válida');
+    _assert(Array.isArray(res.empleados), 'empleados debería ser un arreglo');
+    _assert(Array.isArray(res.porDepartamento), 'porDepartamento debería ser un arreglo');
+    _assertIgual(typeof res.total, 'number', 'total debería ser numérico');
+    _assertIgual(res.total, res.empleados.length, 'total debería coincidir con la cantidad de empleados devueltos');
+
+    var encontrado = res.empleados.filter(function (e) { return e.id === empId; })[0];
+    _assert(!!encontrado, 'El empleado marcado como cargo_critico=SI y activo debería aparecer en el listado');
+    _assertIgual(encontrado.departamento, ctx.departamentoNombre, 'Debería incluir el departamento del empleado');
+
+    // Desmarcarlo como crítico debe sacarlo de la lista.
+    var edicion = actualizarEmpleado({
+      id: empId, nombre: PRUEBA_PREFIJO + 'PuestoCritico', cedula: '000000098',
+      departamento: ctx.departamentoNombre, puesto: 'Puesto de prueba crítico',
+      fecha_ingreso: '2022-01-15', salario: 500000, cargo_critico: ''
+    }, ctx.token);
+    _assertOk(edicion, 'Debería poder quitar la marca de cargo_critico');
+    var resTrasEditar = obtenerPuestosCriticos(ctx.token);
+    _assert(!resTrasEditar.empleados.some(function (e) { return e.id === empId; }),
+      'Al quitar cargo_critico, el empleado ya no debería aparecer en puestos críticos');
+
+    var sinSesion = obtenerPuestosCriticos('');
+    _assert(sinSesion && sinSesion.ok === false, 'obtenerPuestosCriticos debería bloquear sin sesión válida');
+  } finally {
+    eliminarFila(HOJAS.EMPLEADOS, empId, 'Empleado');
+  }
+}
+
+function test_listarEmpleados_filtroEstadoInactivo(ctx) {
+  var creado = crearEmpleado({
+    nombre: PRUEBA_PREFIJO + 'Inactivo',
+    cedula: '000000097',
+    departamento: ctx.departamentoNombre,
+    puesto: 'Puesto de prueba',
+    fecha_ingreso: '2021-06-01',
+    salario: 500000
+  }, ctx.token);
+  _assertOk(creado, 'No se pudo preparar el empleado inactivo de prueba');
+  var empId = creado.id;
+
+  try {
+    var baja = cambiarEstadoEmpleado(empId, 'inactivo', ctx.token);
+    _assertOk(baja, 'Debería poder dar de baja al empleado de prueba');
+
+    var soloActivos = listarEmpleados('activo', ctx.token);
+    _assert(!soloActivos.some(function (e) { return e.id === empId; }),
+      'listarEmpleados("activo") no debería incluir al empleado dado de baja');
+    _assert(soloActivos.some(function (e) { return e.id === ctx.empleadoId; }),
+      'listarEmpleados("activo") debería incluir al empleado activo del setup');
+
+    var soloInactivos = listarEmpleados('inactivo', ctx.token);
+    _assert(soloInactivos.some(function (e) { return e.id === empId; }),
+      'listarEmpleados("inactivo") debería incluir al empleado dado de baja');
+    _assert(!soloInactivos.some(function (e) { return e.id === ctx.empleadoId; }),
+      'listarEmpleados("inactivo") no debería incluir al empleado activo del setup');
+
+    var todos = listarEmpleados('', ctx.token);
+    _assert(todos.some(function (e) { return e.id === empId; }) && todos.some(function (e) { return e.id === ctx.empleadoId; }),
+      'listarEmpleados("") debería incluir tanto activos como inactivos');
   } finally {
     listarHistorialEstados(empId, ctx.token).forEach(function (h) {
       eliminarFila(HOJAS.HISTORIAL_ESTADOS, h.id, 'HistorialEstado');

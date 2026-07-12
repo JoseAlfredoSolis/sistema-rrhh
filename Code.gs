@@ -53,7 +53,7 @@ var ENCABEZADOS = {
   Empleados:         ['id', 'nombre', 'cedula', 'departamento', 'puesto', 'fecha_ingreso', 'salario', 'estado', 'fecha_nacimiento', 'telefono',
                       'correo', 'direccion', 'genero', 'estado_civil', 'nacionalidad', 'sede', 'tipo_nomina', 'cuenta_iban', 'carne_ccss',
                       'vencimiento_cedula', 'licencia_conducir', 'vencimiento_licencia', 'jefe_inmediato', 'cargo_critico', 'actividad', 'padre_madre',
-                      'fecha_salida'],
+                      'fecha_salida', 'motivo_salida', 'observaciones'],
   Departamentos:     ['id', 'nombre', 'responsable'],
   Asistencia:        ['id', 'empleado_id', 'fecha', 'hora_entrada', 'hora_salida', 'horas'],
   Vacaciones:        ['id', 'empleado_id', 'fecha_inicio', 'fecha_fin', 'dias', 'estado', 'notas'],
@@ -408,11 +408,12 @@ function cedulaDuplicada(cedula, idExcluir) {
 }
 
 /**
- * LISTAR empleados.
- * @param {boolean} soloActivos  si es true, devuelve solo los activos.
+ * Lista empleados, opcionalmente filtrados por estado.
+ * @param {boolean|string} filtroEstado - true o 'activo' → solo activos;
+ *   'inactivo' → solo inactivos; false/''/undefined → todos.
  * @return {Object[]} arreglo de empleados.
  */
-function listarEmpleados(soloActivos, token) {
+function listarEmpleados(filtroEstado, token) {
   var _authErr = requiereSesion(token);
   if (_authErr) return _authErr;
 
@@ -437,12 +438,54 @@ function listarEmpleados(soloActivos, token) {
     }
   });
 
-  if (soloActivos) {
-    empleados = empleados.filter(function (e) {
-      return String(e.estado).toLowerCase() === 'activo';
-    });
+  if (filtroEstado === true || filtroEstado === 'activo') {
+    empleados = empleados.filter(function (e) { return String(e.estado).toLowerCase() === 'activo'; });
+  } else if (filtroEstado === 'inactivo') {
+    empleados = empleados.filter(function (e) { return String(e.estado).toLowerCase() === 'inactivo'; });
   }
   return empleados;
+}
+
+/**
+ * Lista los puestos marcados como críticos (empleados activos con
+ * cargo_critico = 'SI') — personal cuya ausencia afecta directamente la
+ * operación y que por lo tanto necesita un plan de respaldo/cobertura.
+ * @return {Object} {ok, total, porDepartamento, empleados}
+ */
+function obtenerPuestosCriticos(token) {
+  var _authErr = requiereSesion(token);
+  if (_authErr) return _authErr;
+
+  _asegurarEncabezados(HOJAS.EMPLEADOS);
+  var empleados = leerTabla(HOJAS.EMPLEADOS).filter(function (e) {
+    return String(e.cargo_critico || '').trim().toUpperCase() === 'SI' &&
+      String(e.estado).toLowerCase() === 'activo';
+  });
+
+  var porDepto = {};
+  var resultado = empleados.map(function (e) {
+    var dep = String(e.departamento || '').trim() || 'Sin asignar';
+    porDepto[dep] = (porDepto[dep] || 0) + 1;
+    return {
+      id: e.id,
+      nombre: e.nombre,
+      cedula: e.cedula,
+      departamento: e.departamento || '—',
+      puesto: e.puesto || '—',
+      actividad: e.actividad || '—',
+      jefe_inmediato: e.jefe_inmediato || '—',
+      telefono: e.telefono ? String(e.telefono) : '',
+      correo: e.correo || '',
+      fecha_ingreso: formatearFecha(e.fecha_ingreso)
+    };
+  }).sort(function (a, b) { return a.departamento.localeCompare(b.departamento) || a.nombre.localeCompare(b.nombre); });
+
+  return {
+    ok: true,
+    total: resultado.length,
+    porDepartamento: Object.keys(porDepto).sort().map(function (d) { return [d, porDepto[d]]; }),
+    empleados: resultado
+  };
 }
 
 /**
@@ -538,7 +581,7 @@ function _camposExtraEmpleado(emp, filaActual) {
   var campos = ['correo', 'direccion', 'genero', 'estado_civil', 'nacionalidad', 'sede',
     'tipo_nomina', 'cuenta_iban', 'carne_ccss', 'vencimiento_cedula', 'licencia_conducir',
     'vencimiento_licencia', 'jefe_inmediato', 'cargo_critico', 'actividad', 'padre_madre',
-    'fecha_salida'];
+    'fecha_salida', 'motivo_salida', 'observaciones'];
   var fechas = { vencimiento_cedula: true, vencimiento_licencia: true, fecha_salida: true };
   return campos.map(function (campo, i) {
     var valor = emp[campo];

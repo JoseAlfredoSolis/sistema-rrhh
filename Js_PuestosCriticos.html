@@ -1,0 +1,41 @@
+<script>
+  /* ============================================================
+     MÓDULO PUESTOS CRÍTICOS
+     ============================================================ */
+  function cargarPuestosCriticos() {
+    llamarBackend('obtenerPuestosCriticos', [], function (r) {
+      if (!r || !r.ok) { mostrarMensaje((r && r.mensaje) || 'No se pudo cargar.', 'error'); return; }
+      _pintarKpisPuestosCriticos(r);
+      _pintarTablaPuestosCriticos(r.empleados);
+      cargarLibreriaLocal('chart', function () {
+        if (typeof Chart === 'undefined') return;
+        graficoPastel('grafPuestosCriticos', r.porDepartamento);
+      });
+    });
+  }
+
+  function _pintarKpisPuestosCriticos(r) {
+    document.getElementById('kpiPCTotal').textContent  = r.total || 0;
+    document.getElementById('kpiPCDeptos').textContent = (r.porDepartamento || []).length;
+  }
+
+  function _pintarTablaPuestosCriticos(lista) {
+    lista = lista || [];
+    var cuerpo = document.getElementById('cuerpoPuestosCriticos');
+    cuerpo.innerHTML = lista.map(function (e) {
+      return '<tr>' +
+        '<td>' + escapar(e.nombre) + '</td>' +
+        '<td>' + escapar(e.cedula) + '</td>' +
+        '<td>' + escapar(e.departamento) + '</td>' +
+        '<td>' + escapar(e.puesto) + '</td>' +
+        '<td>' + escapar(e.actividad) + '</td>' +
+        '<td>' + escapar(e.jefe_inmediato) + '</td>' +
+        '<td>' + escapar(e.telefono || '—') + '</td>' +
+        '<td>' + escapar(e.correo || '—') + '</td>' +
+        '<td>' + escapar(e.fecha_ingreso || '—') + '</td>' +
+      '</tr>';
+    }).join('');
+    document.getElementById('tablaPuestosCriticos').classList.toggle('oculto', lista.length === 0);
+    document.getElementById('sinPuestosCriticos').classList.toggle('oculto', lista.length > 0);
+  }
+</script>

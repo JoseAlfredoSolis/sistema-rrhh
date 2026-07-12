@@ -93,6 +93,9 @@
       </button>
 
       <span class="nav-sep">Análisis</span>
+      <button class="nav-item" data-vista="puestoscriticos" data-tooltip="Puestos Críticos" onclick="mostrarVista('puestoscriticos')">
+        <span class="nav-icon">🎯</span><span class="nav-label">Puestos Críticos</span>
+      </button>
       <button class="nav-item" data-vista="calendario"     data-tooltip="Calendario"     onclick="mostrarVista('calendario')">
         <span class="nav-icon">📅</span><span class="nav-label">Calendario</span>
       </button>
@@ -241,7 +244,11 @@
           <select id="filtroDeptEmp" onchange="filtrarTabla()" style="max-width:160px">
             <option value="">Todos los departamentos</option>
           </select>
-          <label class="check-activos"><input type="checkbox" id="soloActivos" onchange="cargarEmpleados()"> Solo activos</label>
+          <select id="filtroEstadoEmp" onchange="cargarEmpleados()" style="max-width:150px">
+            <option value="">Todos los estados</option>
+            <option value="activo">Solo activos</option>
+            <option value="inactivo">Solo inactivos</option>
+          </select>
         </div>
       </div>
       <div class="tabla-envoltorio">
@@ -450,6 +457,38 @@
           <div id="grafVacaciones" class="grafico"></div>
           <p class="grafico-vacio oculto" data-for="grafVacaciones">Sin solicitudes aún.</p>
         </div>
+      </div>
+    </section>
+
+    <!-- ============== VISTA: PUESTOS CRÍTICOS ============== -->
+    <section id="vista-puestoscriticos" class="vista oculto">
+      <div class="barra-acciones">
+        <h2 class="titulo-vista">Puestos críticos</h2>
+        <button class="btn btn-secundario" onclick="cargarPuestosCriticos()">🔄 Actualizar</button>
+        <button class="btn btn-secundario" onclick="exportarTabla('tablaPuestosCriticos','PuestosCriticos')">⬇ Excel</button>
+      </div>
+
+      <p class="config-ayuda">Personal marcado como <strong>cargo crítico</strong>: puestos cuya ausencia afecta directamente la operación y que requieren un plan de respaldo o cobertura.</p>
+
+      <div class="tarjetas" id="kpisPuestosCriticos">
+        <div class="tarjeta"><div class="num" id="kpiPCTotal">—</div><div class="lbl">Puestos críticos activos</div></div>
+        <div class="tarjeta"><div class="num" id="kpiPCDeptos">—</div><div class="lbl">Departamentos con cobertura crítica</div></div>
+      </div>
+
+      <div class="reportes-grid">
+        <div class="reporte-card">
+          <h3>Distribución por departamento</h3>
+          <div id="grafPuestosCriticos" class="grafico"></div>
+          <p class="grafico-vacio oculto" data-for="grafPuestosCriticos">Sin puestos críticos registrados.</p>
+        </div>
+      </div>
+
+      <div class="tabla-envoltorio">
+        <table class="tabla" id="tablaPuestosCriticos">
+          <thead><tr><th>Nombre</th><th>Cédula</th><th>Departamento</th><th>Puesto</th><th>Actividad</th><th>Jefe inmediato</th><th>Teléfono</th><th>Correo</th><th>Fecha ingreso</th></tr></thead>
+          <tbody id="cuerpoPuestosCriticos"></tbody>
+        </table>
+        <p id="sinPuestosCriticos" class="sin-datos oculto">No hay puestos marcados como críticos.</p>
       </div>
     </section>
 
@@ -1533,6 +1572,22 @@
             <input type="date" id="fecha_salida">
             <small style="color:var(--txt-3);font-size:12px">Se actualiza sola al dar de baja; podés corregirla acá si hace falta.</small>
           </div>
+          <div class="campo smtp-campo">
+            <label for="motivo_salida">Motivo de salida</label>
+            <select id="motivo_salida">
+              <option value="">—</option>
+              <option value="Renuncia">Renuncia</option>
+              <option value="Despido con responsabilidad">Despido con responsabilidad patronal</option>
+              <option value="Despido sin responsabilidad">Despido sin responsabilidad patronal</option>
+              <option value="Fin de contrato">Fin de contrato</option>
+              <option value="Abandono de trabajo">Abandono de trabajo</option>
+              <option value="Mutuo acuerdo">Mutuo acuerdo</option>
+            </select>
+          </div>
+        </div>
+        <div class="campo">
+          <label for="observaciones">Observaciones</label>
+          <textarea id="observaciones" rows="3" maxlength="1000" placeholder="Notas generales del empleado (desempeño, incidentes, contexto de la salida, etc.)" style="width:100%;resize:vertical"></textarea>
         </div>
         <div class="smtp-fila">
           <div class="campo smtp-campo"><label for="cuenta_iban">N° cuenta IBAN</label><input type="text" id="cuenta_iban" maxlength="30" placeholder="CR00000000000000000000"></div>
@@ -1940,6 +1995,7 @@
   <?!= include('Js_Nomina'); ?>
   <?!= include('Js_Dashboard'); ?>
   <?!= include('Js_Reportes'); ?>
+  <?!= include('Js_PuestosCriticos'); ?>
   <?!= include('Js_Configuracion'); ?>
   <?!= include('Js_Capacitaciones'); ?>
   <?!= include('Js_Evaluaciones'); ?>
