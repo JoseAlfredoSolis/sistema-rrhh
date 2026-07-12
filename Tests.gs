@@ -92,7 +92,8 @@ var PRUEBAS_REGISTRO = [
   { nombre: 'reenviarComunicacion solo permite reintentar registros con estado error', fn: test_reenviarComunicacion_soloPermiteRegistrosFallidos },
   { nombre: '_normalizarTelefonoWhatsApp antepone +506 a números nacionales de 8 dígitos', fn: test_normalizarTelefonoWhatsApp_anteponeCodigoPaisCR },
   { nombre: '_whatsappCredencialesListas distingue CallMeBot de servidor propio', fn: test_whatsappCredencialesListas_porProveedor },
-  { nombre: '_enviarWhatsAppServidorPropio valida URL y secreto antes de llamar al servidor', fn: test_enviarWhatsAppServidorPropio_validaCamposRequeridos }
+  { nombre: '_enviarWhatsAppServidorPropio valida URL y secreto antes de llamar al servidor', fn: test_enviarWhatsAppServidorPropio_validaCamposRequeridos },
+  { nombre: 'obtenerReportes devuelve todas las series y KPIs con la estructura esperada', fn: test_obtenerReportes_estructuraCompleta }
 ];
 
 // ===================================================================
@@ -643,6 +644,38 @@ function test_enviarWhatsAppServidorPropio_validaCamposRequeridos(ctx) {
 
   var res2 = _enviarWhatsAppServidorPropio('+50688887777', 'hola', { servidorUrl: 'https://x.com' });
   _assertFalla(res2, 'Debería fallar con URL pero sin secreto');
+}
+
+function test_obtenerReportes_estructuraCompleta(ctx) {
+  var r = obtenerReportes('', '', '', ctx.token);
+  _assert(r && r.ok !== false, 'obtenerReportes no debería fallar con una sesión válida');
+
+  ['empleadosPorDepartamento', 'empleadosPorEstado', 'nominaPorMes', 'horasPorEmpleado',
+   'vacacionesPorEstado', 'nominaPorDepartamento', 'horasExtraPorMes', 'incapacidadesPorMes']
+    .forEach(function (clave) {
+      _assert(Array.isArray(r[clave]), 'La serie "' + clave + '" debería ser un arreglo');
+    });
+
+  _assert(r.rotacionPorMes && Array.isArray(r.rotacionPorMes.meses) &&
+    Array.isArray(r.rotacionPorMes.altas) && Array.isArray(r.rotacionPorMes.bajas),
+    'rotacionPorMes debería tener meses/altas/bajas como arreglos');
+  _assertIgual(r.rotacionPorMes.altas.length, r.rotacionPorMes.meses.length,
+    'altas debería tener un valor por cada mes');
+  _assertIgual(r.rotacionPorMes.bajas.length, r.rotacionPorMes.meses.length,
+    'bajas debería tener un valor por cada mes');
+
+  _assert(r.kpis, 'Debería incluir el bloque de KPIs');
+  ['activos', 'netoPeriodo', 'horasExtraHoras', 'horasExtraMonto', 'diasIncapacidad', 'vacacionesPendientes']
+    .forEach(function (clave) {
+      _assert(typeof r.kpis[clave] === 'number' && !isNaN(r.kpis[clave]),
+        'El KPI "' + clave + '" debería ser un número (recibido: ' + r.kpis[clave] + ')');
+    });
+
+  // El empleado de prueba del setup está activo — el snapshot debe reflejarlo.
+  _assert(r.kpis.activos >= 1, 'Con el empleado de prueba creado, activos debería ser >= 1');
+
+  var sinSesion = obtenerReportes('', '', '', '');
+  _assert(sinSesion && sinSesion.ok === false, 'obtenerReportes debería bloquear sin sesión válida');
 }
 
 function test_enviarComunicacionAmbos_exigeAlMenosUnMedio(ctx) {

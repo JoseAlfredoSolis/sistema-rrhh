@@ -30,11 +30,89 @@
   }
 
   function dibujarReportes(r) {
+    _pintarKpisReportes(r.kpis);
     graficoPastel('grafDepartamentos', r.empleadosPorDepartamento);
     graficoDona('grafEstado', r.empleadosPorEstado, ['#059669', '#9ca3af', '#d97706', '#dc2626']);
     graficoColumnas('grafNomina', r.nominaPorMes, '#2563eb', true);
+    graficoBarras('grafNominaDepto', r.nominaPorDepartamento, '#2563eb', true);
     graficoBarras('grafHoras', r.horasPorEmpleado, '#7c3aed');
+    graficoColumnas('grafHorasExtra', r.horasExtraPorMes, '#0891b2');
+    graficoColumnas('grafIncapacidades', r.incapacidadesPorMes, '#d97706');
+    graficoRotacion('grafRotacion', r.rotacionPorMes);
     graficoPastel('grafVacaciones', r.vacacionesPorEstado);
+  }
+
+  function _pintarKpisReportes(k) {
+    k = k || {};
+    document.getElementById('kpiRepActivos').textContent  = (k.activos != null) ? k.activos : '—';
+    document.getElementById('kpiRepNeto').textContent     = formatoDinero(k.netoPeriodo || 0);
+    document.getElementById('kpiRepHex').textContent      = (k.horasExtraHoras || 0) + ' h';
+    document.getElementById('kpiRepHexMonto').textContent = formatoDinero(k.horasExtraMonto || 0);
+    document.getElementById('kpiRepIncap').textContent    = (k.diasIncapacidad || 0) + ' días';
+    document.getElementById('kpiRepVacPend').textContent  = k.vacacionesPendientes || 0;
+  }
+
+  /** Exporta todos los datos de los reportes (una hoja por gráfico) a Excel. */
+  function exportarReportesExcel() {
+    if (!ULTIMOS_REPORTES) { mostrarMensaje('Primero carga los reportes.', 'error'); return; }
+    var r = ULTIMOS_REPORTES;
+    cargarLibreriaLocal('xlsx', function () {
+      if (typeof XLSX === 'undefined') {
+        mostrarMensaje('La librería XLSX no está cargada.', 'error');
+        return;
+      }
+      var wb = XLSX.utils.book_new();
+      function hoja(nombre, encabezados, filas) {
+        if (!filas || !filas.length) return;
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([encabezados].concat(filas)), nombre);
+      }
+      var k = r.kpis || {};
+      hoja('KPIs', ['Indicador', 'Valor'], [
+        ['Empleados activos', k.activos || 0],
+        ['Nómina neta del período', k.netoPeriodo || 0],
+        ['Horas extra del período (h)', k.horasExtraHoras || 0],
+        ['Costo horas extra', k.horasExtraMonto || 0],
+        ['Días de incapacidad', k.diasIncapacidad || 0],
+        ['Vacaciones pendientes', k.vacacionesPendientes || 0]
+      ]);
+      hoja('Por departamento', ['Departamento', 'Empleados activos'], r.empleadosPorDepartamento);
+      hoja('Por estado', ['Estado', 'Empleados'], r.empleadosPorEstado);
+      hoja('Nómina por mes', ['Mes', 'Neto'], r.nominaPorMes);
+      hoja('Nómina por depto', ['Departamento', 'Neto'], r.nominaPorDepartamento);
+      hoja('Horas asistencia', ['Empleado', 'Horas'], r.horasPorEmpleado);
+      hoja('Horas extra por mes', ['Mes', 'Horas'], r.horasExtraPorMes);
+      hoja('Incapacidades por mes', ['Mes', 'Días'], r.incapacidadesPorMes);
+      if (r.rotacionPorMes && r.rotacionPorMes.meses.length) {
+        hoja('Rotación', ['Mes', 'Contrataciones', 'Salidas'], r.rotacionPorMes.meses.map(function (m, i) {
+          return [m, r.rotacionPorMes.altas[i], r.rotacionPorMes.bajas[i]];
+        }));
+      }
+      hoja('Vacaciones por estado', ['Estado', 'Solicitudes'], r.vacacionesPorEstado);
+      if (!wb.SheetNames.length) { mostrarMensaje('No hay datos para exportar.', 'error'); return; }
+      XLSX.writeFile(wb, 'reportes_rrhh_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+    });
+  }
+
+  /** Columnas agrupadas de contrataciones (verde) vs salidas (rojo) por mes. */
+  function graficoRotacion(idDiv, rot) {
+    var hay = rot && rot.meses && rot.meses.length > 0;
+    alternarVacio(idDiv, hay);
+    if (!hay) return;
+    var canvas = prepararCanvasGrafico(idDiv);
+    _chartInst[idDiv] = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: rot.meses,
+        datasets: [
+          { label: 'Contrataciones', data: rot.altas, backgroundColor: '#059669', borderRadius: 6 },
+          { label: 'Salidas',        data: rot.bajas, backgroundColor: '#dc2626', borderRadius: 6 }
+        ]
+      },
+      options: Object.assign({}, CHART_OPTS_BASE, {
+        plugins: { legend: { position: 'bottom' } },
+        scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+      })
+    });
   }
 
   function alternarVacio(idDiv, hayDatos) {
@@ -116,7 +194,7 @@
     });
   }
 
-  function graficoBarras(idDiv, datos, color) {
+  function graficoBarras(idDiv, datos, color, esDinero) {
     var hay = datos && datos.length > 0;
     alternarVacio(idDiv, hay);
     if (!hay) return;
@@ -128,7 +206,7 @@
       data: {
         labels: datos.map(function (d) { return d[0]; }),
         datasets: [{
-          label: 'Horas',
+          label: esDinero ? 'Neto' : 'Horas',
           data: datos.map(function (d) { return Number(d[1]) || 0; }),
           backgroundColor: color,
           borderRadius: 6
@@ -136,8 +214,18 @@
       },
       options: Object.assign({}, CHART_OPTS_BASE, {
         indexAxis: 'y',
-        plugins: { legend: { display: false } },
-        scales: { x: { beginAtZero: true } }
+        plugins: {
+          legend: { display: false },
+          tooltip: esDinero ? {
+            callbacks: { label: function (ctx) { return formatoDinero(ctx.parsed.x); } }
+          } : {}
+        },
+        scales: {
+          x: {
+            beginAtZero: true,
+            ticks: esDinero ? { callback: function (v) { return formatoDinero(v); } } : {}
+          }
+        }
       })
     });
   }

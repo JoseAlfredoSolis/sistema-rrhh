@@ -1613,6 +1613,7 @@ function obtenerReportes(empleadoId, fechaDesde, fechaHasta, token) {
 
   // 5) Vacaciones por estado, filtrable por empleado y rango de fechas (fecha_inicio).
   var vacEstado = {};
+  var vacacionesPendientes = 0;
   leerTabla(HOJAS.VACACIONES).forEach(function (v) {
     if (empleadoId && String(v.empleado_id) !== empleadoId) return;
     var inicio = formatearFecha(v.fecha_inicio);
@@ -1620,17 +1621,116 @@ function obtenerReportes(empleadoId, fechaDesde, fechaHasta, token) {
     if (fechaHasta && inicio > fechaHasta) return;
     var est = String(v.estado || 'pendiente').toLowerCase();
     vacEstado[est] = (vacEstado[est] || 0) + 1;
+    if (est === 'pendiente') vacacionesPendientes++;
   });
   var vacacionesPorEstado = Object.keys(vacEstado).map(function (est) {
     return [est, vacEstado[est]];
   });
+
+  // 6) Nómina: neto total por departamento en el período (join nómina→empleado).
+  var deptoDeEmpleado = {};
+  empleados.forEach(function (e) {
+    deptoDeEmpleado[e.id] = String(e.departamento || '').trim() || 'Sin asignar';
+  });
+  var nominaDepto = {};
+  var netoPeriodo = 0;
+  leerTabla(HOJAS.NOMINA).forEach(function (n) {
+    var mes = String(n.mes);
+    if (!mes) return;
+    if (empleadoId && String(n.empleado_id) !== empleadoId) return;
+    if (mesDesde && mes < mesDesde) return;
+    if (mesHasta && mes > mesHasta) return;
+    var neto = Number(n.neto) || 0;
+    netoPeriodo += neto;
+    var dep = deptoDeEmpleado[n.empleado_id] || 'Sin asignar';
+    nominaDepto[dep] = (nominaDepto[dep] || 0) + neto;
+  });
+  var nominaPorDepartamento = Object.keys(nominaDepto).map(function (dep) {
+    return [dep, Math.round(nominaDepto[dep] * 100) / 100];
+  }).sort(function (a, b) { return b[1] - a[1]; });
+
+  // 7) Horas extra: horas y monto por mes, filtrables.
+  var hexMes = {};
+  var horasExtraHoras = 0, horasExtraMonto = 0;
+  leerTabla(HOJAS.HORAS_EXTRA).forEach(function (h) {
+    if (empleadoId && String(h.empleado_id) !== empleadoId) return;
+    var fecha = formatearFecha(h.fecha);
+    if (fechaDesde && fecha < fechaDesde) return;
+    if (fechaHasta && fecha > fechaHasta) return;
+    var mes = fecha.slice(0, 7);
+    if (!mes) return;
+    var horas = Number(h.horas) || 0;
+    horasExtraHoras += horas;
+    horasExtraMonto += Number(h.monto) || 0;
+    hexMes[mes] = (hexMes[mes] || 0) + horas;
+  });
+  var horasExtraPorMes = Object.keys(hexMes).sort().map(function (mes) {
+    return [mes, Math.round(hexMes[mes] * 100) / 100];
+  });
+
+  // 8) Incapacidades: días por mes (por fecha_desde), filtrables.
+  var incMes = {};
+  var diasIncapacidad = 0;
+  leerTabla(HOJAS.INCAPACIDADES).forEach(function (inc) {
+    if (empleadoId && String(inc.empleado_id) !== empleadoId) return;
+    var fecha = formatearFecha(inc.fecha_desde);
+    if (fechaDesde && fecha < fechaDesde) return;
+    if (fechaHasta && fecha > fechaHasta) return;
+    var mes = fecha.slice(0, 7);
+    if (!mes) return;
+    var dias = Number(inc.dias) || 0;
+    diasIncapacidad += dias;
+    incMes[mes] = (incMes[mes] || 0) + dias;
+  });
+  var incapacidadesPorMes = Object.keys(incMes).sort().map(function (mes) {
+    return [mes, incMes[mes]];
+  });
+
+  // 9) Rotación: contrataciones (fecha_ingreso) vs salidas (fecha_salida de
+  // liquidaciones) por mes. Sin filtro de empleado (es una vista organizacional);
+  // sí respeta el rango de fechas.
+  var altasMes = {}, bajasMes = {};
+  empleados.forEach(function (e) {
+    var fecha = formatearFecha(e.fecha_ingreso);
+    if (!fecha) return;
+    if (fechaDesde && fecha < fechaDesde) return;
+    if (fechaHasta && fecha > fechaHasta) return;
+    var mes = fecha.slice(0, 7);
+    altasMes[mes] = (altasMes[mes] || 0) + 1;
+  });
+  leerTabla(HOJAS.LIQUIDACIONES).forEach(function (l) {
+    var fecha = formatearFecha(l.fecha_salida);
+    if (!fecha) return;
+    if (fechaDesde && fecha < fechaDesde) return;
+    if (fechaHasta && fecha > fechaHasta) return;
+    var mes = fecha.slice(0, 7);
+    bajasMes[mes] = (bajasMes[mes] || 0) + 1;
+  });
+  var mesesRotacion = Object.keys(Object.assign({}, altasMes, bajasMes)).sort();
+  var rotacionPorMes = {
+    meses: mesesRotacion,
+    altas: mesesRotacion.map(function (m) { return altasMes[m] || 0; }),
+    bajas: mesesRotacion.map(function (m) { return bajasMes[m] || 0; })
+  };
 
   return {
     empleadosPorDepartamento: Object.keys(porDepto).map(function (d) { return [d, porDepto[d]]; }),
     empleadosPorEstado: [['Activos', activos], ['Inactivos', inactivos]],
     nominaPorMes: nominaPorMes,
     horasPorEmpleado: horasPorEmpleado,
-    vacacionesPorEstado: vacacionesPorEstado
+    vacacionesPorEstado: vacacionesPorEstado,
+    nominaPorDepartamento: nominaPorDepartamento,
+    horasExtraPorMes: horasExtraPorMes,
+    incapacidadesPorMes: incapacidadesPorMes,
+    rotacionPorMes: rotacionPorMes,
+    kpis: {
+      activos: activos,
+      netoPeriodo: Math.round(netoPeriodo * 100) / 100,
+      horasExtraHoras: Math.round(horasExtraHoras * 100) / 100,
+      horasExtraMonto: Math.round(horasExtraMonto * 100) / 100,
+      diasIncapacidad: diasIncapacidad,
+      vacacionesPendientes: vacacionesPendientes
+    }
   };
 }
 

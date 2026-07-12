@@ -375,6 +375,7 @@
       <div class="barra-acciones">
         <h2 class="titulo-vista">Reportes y gráficos</h2>
         <button class="btn btn-secundario" onclick="cargarReportes()">🔄 Actualizar</button>
+        <button class="btn btn-secundario" onclick="exportarReportesExcel()">⬇ Excel</button>
         <button class="btn btn-secundario" onclick="window.print()">🖨️ Imprimir</button>
         <div class="filtros">
           <select id="filtroEmpReportes" onchange="cargarReportes()" style="max-width:200px">
@@ -383,6 +384,16 @@
           <input type="date" id="filtroDesdeReportes" onchange="cargarReportes()" title="Desde esta fecha">
           <input type="date" id="filtroHastaReportes" onchange="cargarReportes()" title="Hasta esta fecha">
         </div>
+      </div>
+
+      <!-- KPIs del período (respetan los filtros de empleado y fechas) -->
+      <div class="tarjetas" id="kpisReportes">
+        <div class="tarjeta"><div class="num" id="kpiRepActivos">—</div><div class="lbl">Empleados activos</div></div>
+        <div class="tarjeta"><div class="num" id="kpiRepNeto">—</div><div class="lbl">Nómina neta del período</div></div>
+        <div class="tarjeta"><div class="num" id="kpiRepHex">—</div><div class="lbl">Horas extra del período</div></div>
+        <div class="tarjeta"><div class="num" id="kpiRepHexMonto">—</div><div class="lbl">Costo horas extra</div></div>
+        <div class="tarjeta"><div class="num" id="kpiRepIncap">—</div><div class="lbl">Días de incapacidad</div></div>
+        <div class="tarjeta"><div class="num" id="kpiRepVacPend">—</div><div class="lbl">Vacaciones pendientes</div></div>
       </div>
 
       <div class="reportes-grid">
@@ -405,9 +416,33 @@
         </div>
 
         <div class="reporte-card reporte-ancho">
+          <h3>Nómina: neto por departamento (período)</h3>
+          <div id="grafNominaDepto" class="grafico"></div>
+          <p class="grafico-vacio oculto" data-for="grafNominaDepto">Sin datos de nómina aún.</p>
+        </div>
+
+        <div class="reporte-card reporte-ancho">
           <h3>Horas de asistencia por empleado</h3>
           <div id="grafHoras" class="grafico"></div>
           <p class="grafico-vacio oculto" data-for="grafHoras">Sin registros de asistencia aún.</p>
+        </div>
+
+        <div class="reporte-card">
+          <h3>Horas extra por mes</h3>
+          <div id="grafHorasExtra" class="grafico"></div>
+          <p class="grafico-vacio oculto" data-for="grafHorasExtra">Sin horas extra registradas.</p>
+        </div>
+
+        <div class="reporte-card">
+          <h3>Días de incapacidad por mes</h3>
+          <div id="grafIncapacidades" class="grafico"></div>
+          <p class="grafico-vacio oculto" data-for="grafIncapacidades">Sin incapacidades registradas.</p>
+        </div>
+
+        <div class="reporte-card reporte-ancho">
+          <h3>Rotación: contrataciones vs salidas por mes</h3>
+          <div id="grafRotacion" class="grafico"></div>
+          <p class="grafico-vacio oculto" data-for="grafRotacion">Sin datos de contrataciones o salidas.</p>
         </div>
 
         <div class="reporte-card">
