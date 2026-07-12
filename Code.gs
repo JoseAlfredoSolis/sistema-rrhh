@@ -4071,7 +4071,11 @@ function _enviarWhatsAppServidorPropio(telefono, mensaje, cfg) {
     var data = null;
     try { data = JSON.parse(body); } catch (e) {}
 
-    if (code >= 400 || (data && data.ok === false)) {
+    // Exige ok:true explícito (no solo "no vino ok:false") — si el servidor
+    // devuelve un 200 con un cuerpo inesperado (ej. una página de error de
+    // un proxy/CDN intermedio en vez del JSON real), no debe interpretarse
+    // como envío exitoso.
+    if (code >= 400 || !data || data.ok !== true) {
       var detalle = (data && data.mensaje) ? data.mensaje : body.slice(0, 300);
       return { ok: false, mensaje: 'Servidor WhatsApp: ' + detalle };
     }
