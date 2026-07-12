@@ -55,6 +55,17 @@
       '<table class="tabla" style="margin:0"><thead><tr><th>Fecha</th><th>Anterior</th><th>Nuevo</th><th>Notas</th></tr></thead><tbody>'+hsSal+'</tbody></table>'
       : '<p class="sin-datos" style="margin:0">Sin cambios de salario.</p>');
 
+    // Historial de bajas / reactivaciones
+    var hsEst = (res.historialEstados||[]).map(function(h){
+      var cambioIngreso = (h.estado_nuevo === 'activo' && h.fecha_ingreso_anterior !== h.fecha_ingreso_nueva)
+        ? escapar(h.fecha_ingreso_anterior||'—') + ' → ' + escapar(h.fecha_ingreso_nueva||'—')
+        : '—';
+      return '<tr><td>'+escapar(h.fecha)+'</td><td>'+badge(h.estado_anterior||'')+' → '+badge(h.estado_nuevo||'')+'</td><td>'+cambioIngreso+'</td><td>'+escapar(h.usuario||'—')+'</td></tr>';
+    }).join('');
+    html += _expSeccion('🔄 Historial de bajas / reactivaciones', hsEst ?
+      '<table class="tabla" style="margin:0"><thead><tr><th>Fecha</th><th>Cambio de estado</th><th>Fecha de ingreso</th><th>Usuario</th></tr></thead><tbody>'+hsEst+'</tbody></table>'
+      : '<p class="sin-datos" style="margin:0">Sin bajas ni reactivaciones registradas.</p>');
+
     // Vacaciones
     var vacRows = (res.vacaciones||[]).map(function(v){
       return '<tr><td>'+escapar(v.fecha_inicio)+'</td><td>'+escapar(v.fecha_fin)+'</td><td>'+escapar(v.dias)+'</td><td>'+badge(v.estado||'pendiente')+'</td></tr>';

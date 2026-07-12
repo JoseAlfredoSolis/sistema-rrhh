@@ -95,7 +95,8 @@ var PRUEBAS_REGISTRO = [
   { nombre: '_enviarWhatsAppServidorPropio valida URL y secreto antes de llamar al servidor', fn: test_enviarWhatsAppServidorPropio_validaCamposRequeridos },
   { nombre: 'obtenerReportes devuelve todas las series y KPIs con la estructura esperada', fn: test_obtenerReportes_estructuraCompleta },
   { nombre: 'crearLiquidacion y actualizarLiquidacion guardan y preservan los 12 salarios mensuales', fn: test_liquidacion_guardaSalariosMensuales },
-  { nombre: '_asegurarEncabezadosLiquidaciones deja cada encabezado en su columna exacta', fn: test_asegurarEncabezadosLiquidaciones_posicionCorrecta }
+  { nombre: '_asegurarEncabezadosLiquidaciones deja cada encabezado en su columna exacta', fn: test_asegurarEncabezadosLiquidaciones_posicionCorrecta },
+  { nombre: 'cambiarEstadoEmpleado registra historial y actualiza fecha_ingreso al reactivar', fn: test_cambiarEstadoEmpleado_historialYFechaIngreso }
 ];
 
 // ===================================================================
@@ -732,6 +733,54 @@ function test_asegurarEncabezadosLiquidaciones_posicionCorrecta(ctx) {
       'La columna ' + (i + 1) + ' de Liquidaciones debería tener el encabezado "' + nombre +
       '" (regresión: un encabezado faltante hace que leerTabla ignore esa columna aunque tenga datos)');
   });
+}
+
+function test_cambiarEstadoEmpleado_historialYFechaIngreso(ctx) {
+  // Empleado propio (NO ctx.empleadoId): reactivar cambia fecha_ingreso a
+  // hoy, y otras pruebas de esta suite dependen de que el empleado del
+  // setup mantenga su antigüedad de ~2 años sin tocar.
+  var fechaViejaIngreso = '2020-01-15';
+  var creado = crearEmpleado({
+    nombre: PRUEBA_PREFIJO + 'Reactivacion',
+    cedula: '000000099',
+    departamento: ctx.departamentoNombre,
+    puesto: 'Puesto de prueba',
+    fecha_ingreso: fechaViejaIngreso,
+    salario: 500000
+  }, ctx.token);
+  _assertOk(creado, 'No se pudo preparar el empleado de prueba para reactivación');
+  var empId = creado.id;
+
+  try {
+    var baja = cambiarEstadoEmpleado(empId, 'inactivo', ctx.token);
+    _assertOk(baja, 'Debería poder dar de baja al empleado de prueba');
+
+    var reactivacion = cambiarEstadoEmpleado(empId, 'activo', ctx.token);
+    _assertOk(reactivacion, 'Debería poder reactivar al empleado de prueba');
+
+    var empActualizado = obtenerEmpleadoCompleto(empId, ctx.token);
+    _assertIgual(empActualizado.fecha_ingreso, hoy(),
+      'Al reactivar, fecha_ingreso debería actualizarse a la fecha de hoy (regresión: antes quedaba con la fecha de ingreso original)');
+
+    var historial = listarHistorialEstados(empId, ctx.token);
+    _assertIgual(historial.length, 2, 'Debería haber 2 entradas en el historial (baja + reactivación)');
+
+    var entradaBaja = historial.filter(function (h) { return h.estado_nuevo === 'inactivo'; })[0];
+    _assert(!!entradaBaja, 'Debería existir una entrada de baja en el historial');
+    _assertIgual(entradaBaja.estado_anterior, 'activo', 'La baja debería registrar el estado anterior "activo"');
+
+    var entradaReactivacion = historial.filter(function (h) { return h.estado_nuevo === 'activo'; })[0];
+    _assert(!!entradaReactivacion, 'Debería existir una entrada de reactivación en el historial');
+    _assertIgual(entradaReactivacion.fecha_ingreso_anterior, fechaViejaIngreso,
+      'El historial debería conservar la fecha de ingreso original de antes de la reactivación');
+    _assertIgual(entradaReactivacion.fecha_ingreso_nueva, hoy(),
+      'El historial debería registrar la nueva fecha de ingreso');
+  } finally {
+    listarHistorialEstados(empId, ctx.token).forEach(function (h) {
+      eliminarFila(HOJAS.HISTORIAL_ESTADOS, h.id, 'HistorialEstado');
+    });
+    eliminarFila(HOJAS.EMPLEADOS, empId, 'Empleado');
+  }
 }
 
 function test_enviarComunicacionAmbos_exigeAlMenosUnMedio(ctx) {

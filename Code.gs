@@ -24,6 +24,7 @@ var HOJAS = {
   VACACIONES:        'Vacaciones',
   NOMINA:            'Nomina',
   HISTORIAL_SALARIOS:'HistorialSalarios',
+  HISTORIAL_ESTADOS: 'HistorialEstados',
   CAPACITACIONES:    'Capacitaciones',
   EVALUACIONES:      'Evaluaciones',
   BITACORA:          'Bitacora',
@@ -57,6 +58,12 @@ var ENCABEZADOS = {
   Vacaciones:        ['id', 'empleado_id', 'fecha_inicio', 'fecha_fin', 'dias', 'estado', 'notas'],
   Nomina:            ['id', 'empleado_id', 'mes', 'salario_base', 'deducciones', 'neto'],
   HistorialSalarios: ['id', 'empleado_id', 'salario_anterior', 'salario_nuevo', 'fecha', 'notas'],
+  // Historial de bajas/reactivaciones. Al reactivar, fecha_ingreso_nueva
+  // registra la fecha de ingreso actualizada (nueva "antigüedad" para
+  // efectos de vacaciones/cesantía) — fecha_ingreso_anterior queda como
+  // referencia de cuándo había ingresado antes de esa baja.
+  HistorialEstados:  ['id', 'empleado_id', 'fecha', 'estado_anterior', 'estado_nuevo',
+                       'fecha_ingreso_anterior', 'fecha_ingreso_nueva', 'usuario'],
   Capacitaciones:    ['id', 'empleado_id', 'curso', 'institucion', 'fecha_inicio', 'fecha_fin', 'estado', 'certificado_url'],
   Evaluaciones:      ['id', 'empleado_id', 'periodo', 'calificacion', 'comentarios', 'evaluador', 'fecha'],
   Bitacora:          ['id', 'fecha', 'usuario', 'accion', 'entidad', 'entidad_id', 'resumen', 'jsonCambios'],
@@ -79,7 +86,8 @@ var COLS = (function () {
   function col(hoja, campo) { return ENCABEZADOS[hoja].indexOf(campo) + 1; }
   function idx(hoja, campo) { return ENCABEZADOS[hoja].indexOf(campo); }
   return {
-    EMP_ESTADO:      col('Empleados',     'estado'),
+    EMP_ESTADO:        col('Empleados',   'estado'),
+    EMP_FECHA_INGRESO: col('Empleados',   'fecha_ingreso'),
     EMP_SALARIO:     col('Empleados',     'salario'),
     EMP_CEDULA:      col('Empleados',     'cedula'),
     EMP_TELEFONO:    col('Empleados',     'telefono'),
@@ -600,6 +608,11 @@ function actualizarEmpleado(emp, token) {
 
 /**
  * CAMBIAR ESTADO (baja/alta lógica). No borra la fila.
+ * Cada cambio queda registrado en HOJAS.HISTORIAL_ESTADOS. Al reactivar
+ * (inactivo → activo), fecha_ingreso se actualiza a hoy — representa el
+ * inicio de un nuevo período laboral para efectos de antigüedad
+ * (vacaciones, cesantía), no la fecha del primer ingreso histórico. El
+ * historial conserva ambas fechas para no perder el dato original.
  * @param {string} id
  * @param {string} nuevoEstado  'activo' o 'inactivo'.
  * @return {Object} {ok, mensaje}
@@ -617,12 +630,36 @@ function cambiarEstadoEmpleado(id, nuevoEstado, token) {
     return { ok: false, mensaje: 'No se encontró el empleado.' };
   }
   var estadoAnterior = String(hoja.getRange(fila, COLS.EMP_ESTADO).getValue() || 'activo');
+  var fechaIngresoAnterior = formatearFecha(hoja.getRange(fila, COLS.EMP_FECHA_INGRESO).getValue());
+  var reactivando = (nuevoEstado === 'activo' && estadoAnterior.toLowerCase() === 'inactivo');
+  var fechaIngresoNueva = fechaIngresoAnterior;
+
   hoja.getRange(fila, COLS.EMP_ESTADO).setValue(nuevoEstado);
+  if (reactivando) {
+    fechaIngresoNueva = hoy();
+    hoja.getRange(fila, COLS.EMP_FECHA_INGRESO).setValue(fechaIngresoNueva);
+  }
   invalidarCache(HOJAS.EMPLEADOS);
+
+  var usuario = '';
+  try { usuario = Session.getActiveUser().getEmail(); } catch (e) {}
+
+  getHoja(HOJAS.HISTORIAL_ESTADOS).appendRow(sanitizarFilaSheets([
+    generarId('HES'), id, hoy(), estadoAnterior, nuevoEstado,
+    fechaIngresoAnterior, fechaIngresoNueva, usuario
+  ]));
+  invalidarCache(HOJAS.HISTORIAL_ESTADOS);
+
   registrarBitacora('actualizar', 'Empleados', id,
-    'Estado: ' + estadoAnterior + ' → ' + nuevoEstado + ' | Usuario: ' + Session.getActiveUser().getEmail());
+    'Estado: ' + estadoAnterior + ' → ' + nuevoEstado +
+    (reactivando ? ' | Fecha de ingreso actualizada: ' + fechaIngresoAnterior + ' → ' + fechaIngresoNueva : '') +
+    ' | Usuario: ' + usuario);
   var accion = (nuevoEstado === 'activo') ? 'reactivado' : 'dado de baja';
-  return { ok: true, mensaje: 'Empleado ' + accion + ' correctamente.' };
+  return {
+    ok: true,
+    mensaje: 'Empleado ' + accion + ' correctamente.' +
+      (reactivando ? ' Fecha de ingreso actualizada a ' + fechaIngresoNueva + '.' : '')
+  };
 }
 
 /**
@@ -2380,7 +2417,7 @@ function importarDatos(entidad, filas, token) {
  */
 var PREFIJOS_ID = {
   Empleados: 'EMP', Departamentos: 'DEP', Asistencia: 'ASI', Vacaciones: 'VAC',
-  Nomina: 'NOM', HistorialSalarios: 'HSA', Capacitaciones: 'CAP', Evaluaciones: 'EVA',
+  Nomina: 'NOM', HistorialSalarios: 'HSA', HistorialEstados: 'HES', Capacitaciones: 'CAP', Evaluaciones: 'EVA',
   Prestamos: 'PRE', HorasExtra: 'HEX', Activos: 'ACT', Turnos: 'TUR',
   Incapacidades: 'INC', Feriados: 'FER', Liquidaciones: 'LIQ'
 };
@@ -3512,6 +3549,31 @@ function listarHistorialSalario(empleadoId, token) {
     h.salario_nuevo    = Number(h.salario_nuevo) || 0;
   });
   historial.sort(function (a, b) { return b.fecha > a.fecha ? -1 : 1; }).reverse();
+  return historial;
+}
+
+
+// ===================================================================
+// MÓDULO: HISTORIAL DE BAJAS / REACTIVACIONES
+// ===================================================================
+
+/** Lista el historial de cambios de estado (baja/alta) de empleados, más recientes primero. */
+function listarHistorialEstados(empleadoId, token) {
+  var _authErr = requiereEscritura(token);
+  if (_authErr) return _authErr;
+
+  var historial = leerTabla(HOJAS.HISTORIAL_ESTADOS);
+  var nombres = mapaEmpleados();
+  if (empleadoId) {
+    historial = historial.filter(function (h) {
+      return String(h.empleado_id) === String(empleadoId);
+    });
+  }
+  historial.forEach(function (h) {
+    h.empleado_nombre = nombres[h.empleado_id] || h.empleado_id;
+    h.fecha = formatearFecha(h.fecha);
+  });
+  historial.sort(function (a, b) { return b.fecha > a.fecha ? 1 : -1; });
   return historial;
 }
 
@@ -5120,6 +5182,7 @@ function obtenerExpediente(empleadoId, token) {
     ok: true, empleado: emp, balance: balance,
     deducciones: calcularDeduccionesCR(emp.salario),
     historialSalarios: leerTabla(HOJAS.HISTORIAL_SALARIOS).filter(function (h) { return String(h.empleado_id) === String(empleadoId); }),
+    historialEstados:  leerTabla(HOJAS.HISTORIAL_ESTADOS).filter(function (h) { return String(h.empleado_id) === String(empleadoId); }),
     capacitaciones:    leerTabla(HOJAS.CAPACITACIONES).filter(function (c) { return String(c.empleado_id) === String(empleadoId); }),
     evaluaciones:      leerTabla(HOJAS.EVALUACIONES).filter(function (e) { return String(e.empleado_id) === String(empleadoId); }),
     vacaciones:        leerTabla(HOJAS.VACACIONES).filter(function (v) { return String(v.empleado_id) === String(empleadoId); }),
