@@ -99,7 +99,8 @@ var PRUEBAS_REGISTRO = [
   { nombre: 'cambiarEstadoEmpleado registra historial y actualiza fecha_ingreso/fecha_salida', fn: test_cambiarEstadoEmpleado_historialYFechaIngreso },
   { nombre: 'obtenerPuestosCriticos solo incluye empleados activos con cargo_critico=SI', fn: test_obtenerPuestosCriticos_filtraCargoCriticoActivo },
   { nombre: 'listarEmpleados filtra por estado activo/inactivo/todos según filtroEstado', fn: test_listarEmpleados_filtroEstadoInactivo },
-  { nombre: 'actualizarEmpleado marca inactivo automáticamente al agregar fecha de salida', fn: test_actualizarEmpleado_fechaSalidaInactivaAutomaticamente }
+  { nombre: 'actualizarEmpleado marca inactivo automáticamente al agregar fecha de salida', fn: test_actualizarEmpleado_fechaSalidaInactivaAutomaticamente },
+  { nombre: 'obtenerPuestosCriticos incluye solo las alertas de empleados críticos', fn: test_obtenerPuestosCriticos_incluyeAlertasFiltradas }
 ];
 
 // ===================================================================
@@ -845,6 +846,39 @@ function test_obtenerPuestosCriticos_filtraCargoCriticoActivo(ctx) {
 
     var sinSesion = obtenerPuestosCriticos('');
     _assert(sinSesion && sinSesion.ok === false, 'obtenerPuestosCriticos debería bloquear sin sesión válida');
+  } finally {
+    eliminarFila(HOJAS.EMPLEADOS, empId, 'Empleado');
+  }
+}
+
+function test_obtenerPuestosCriticos_incluyeAlertasFiltradas(ctx) {
+  var creado = crearEmpleado({
+    nombre: PRUEBA_PREFIJO + 'PuestoCriticoAlerta',
+    cedula: '000000095',
+    departamento: ctx.departamentoNombre,
+    puesto: 'Puesto de prueba crítico',
+    fecha_ingreso: '2022-01-15',
+    salario: 500000,
+    cargo_critico: 'SI',
+    vencimiento_cedula: '2020-01-01'
+  }, ctx.token);
+  _assertOk(creado, 'No se pudo preparar el empleado crítico de prueba');
+  var empId = creado.id;
+
+  try {
+    var res = obtenerPuestosCriticos(ctx.token);
+    _assertOk(res, 'obtenerPuestosCriticos no debería fallar con una sesión válida');
+    _assert(Array.isArray(res.alertas), 'alertas debería ser un arreglo');
+
+    var alertaCedula = res.alertas.filter(function (a) {
+      return a.empleado_id === empId && a.tipo === 'cedula_vencida';
+    })[0];
+    _assert(!!alertaCedula, 'Debería incluir la alerta de cédula vencida del empleado crítico');
+
+    // Las alertas de empleados que NO son críticos no deberían colarse aquí.
+    _assert(res.alertas.every(function (a) {
+      return res.empleados.some(function (e) { return e.id === a.empleado_id; });
+    }), 'Todas las alertas devueltas deberían pertenecer a empleados de la lista de puestos críticos');
   } finally {
     eliminarFila(HOJAS.EMPLEADOS, empId, 'Empleado');
   }

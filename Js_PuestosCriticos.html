@@ -6,12 +6,38 @@
     llamarBackend('obtenerPuestosCriticos', [], function (r) {
       if (!r || !r.ok) { mostrarMensaje((r && r.mensaje) || 'No se pudo cargar.', 'error'); return; }
       _pintarKpisPuestosCriticos(r);
+      _pintarAlertasPuestosCriticos(r.alertas);
       _pintarTablaPuestosCriticos(r.empleados);
       cargarLibreriaLocal('chart', function () {
         if (typeof Chart === 'undefined') return;
         graficoPastel('grafPuestosCriticos', r.porDepartamento);
       });
     });
+  }
+
+  var _ICONOS_ALERTA_PC = {
+    cedula_vencida: '🆔', cedula_proxima: '⏰', licencia_vencida: '🚗',
+    licencia_proxima: '⏰', evaluacion_proxima: '📊', prueba_proxima: '🆕'
+  };
+  var _COLOR_URGENCIA_PC = { 'crítica': '#dc2626', alta: '#f97316', media: '#d97706', baja: '#4f46e5' };
+
+  function _pintarAlertasPuestosCriticos(alertas) {
+    alertas = alertas || [];
+    var cont = document.getElementById('alertasPuestosCriticos');
+    if (!alertas.length) {
+      cont.innerHTML = '<p class="sin-datos" style="margin:0 0 16px">Sin alertas pendientes para los puestos críticos. ✅</p>';
+      return;
+    }
+    cont.innerHTML = '<h3 style="margin:0 0 8px;font-size:14px">⚠️ Alertas de puestos críticos</h3>' +
+      alertas.map(function (a) {
+        var color = _COLOR_URGENCIA_PC[a.urgencia] || '#6b7280';
+        return '<div style="padding:10px;margin-bottom:8px;background:' + color + '20;' +
+          'border-left:3px solid ' + color + ';border-radius:var(--r);font-size:var(--fs-sm)">' +
+          (_ICONOS_ALERTA_PC[a.tipo] || '⚠️') + ' <strong>' + escapar(a.empleado) + ':</strong> ' +
+          escapar(a.mensaje) + ' <span style="color:var(--txt-3)">(' + escapar(a.fecha) + ')</span>' +
+        '</div>';
+      }).join('') +
+      '<div style="margin-bottom:16px"></div>';
   }
 
   function _pintarKpisPuestosCriticos(r) {

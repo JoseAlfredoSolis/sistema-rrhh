@@ -524,11 +524,20 @@ function obtenerPuestosCriticos(token) {
     };
   }).sort(function (a, b) { return a.departamento.localeCompare(b.departamento) || a.nombre.localeCompare(b.nombre); });
 
+  // Reutiliza el motor de alertas general (cédula/licencia por vencer,
+  // evaluación y período de prueba próximos) filtrado a solo estos
+  // empleados — es la parte que hace útil la pantalla: no basta con saber
+  // quién es crítico, hay que saber a cuáles hay que atender ya.
+  var idsCriticos = {};
+  resultado.forEach(function (e) { idsCriticos[e.id] = true; });
+  var alertas = _obtenerAlertasInterno().filter(function (a) { return idsCriticos[a.empleado_id]; });
+
   return {
     ok: true,
     total: resultado.length,
     porDepartamento: Object.keys(porDepto).sort().map(function (d) { return [d, porDepto[d]]; }),
-    empleados: resultado
+    empleados: resultado,
+    alertas: alertas
   };
 }
 
