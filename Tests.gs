@@ -96,7 +96,7 @@ var PRUEBAS_REGISTRO = [
   { nombre: 'obtenerReportes devuelve todas las series y KPIs con la estructura esperada', fn: test_obtenerReportes_estructuraCompleta },
   { nombre: 'crearLiquidacion y actualizarLiquidacion guardan y preservan los 12 salarios mensuales', fn: test_liquidacion_guardaSalariosMensuales },
   { nombre: '_asegurarEncabezadosLiquidaciones deja cada encabezado en su columna exacta', fn: test_asegurarEncabezadosLiquidaciones_posicionCorrecta },
-  { nombre: 'cambiarEstadoEmpleado registra historial y actualiza fecha_ingreso al reactivar', fn: test_cambiarEstadoEmpleado_historialYFechaIngreso }
+  { nombre: 'cambiarEstadoEmpleado registra historial y actualiza fecha_ingreso/fecha_salida', fn: test_cambiarEstadoEmpleado_historialYFechaIngreso }
 ];
 
 // ===================================================================
@@ -755,12 +755,18 @@ function test_cambiarEstadoEmpleado_historialYFechaIngreso(ctx) {
     var baja = cambiarEstadoEmpleado(empId, 'inactivo', ctx.token);
     _assertOk(baja, 'Debería poder dar de baja al empleado de prueba');
 
+    var empTrasBaja = obtenerEmpleadoCompleto(empId, ctx.token);
+    _assertIgual(empTrasBaja.fecha_salida, hoy(),
+      'Al dar de baja, fecha_salida debería actualizarse a la fecha de hoy');
+
     var reactivacion = cambiarEstadoEmpleado(empId, 'activo', ctx.token);
     _assertOk(reactivacion, 'Debería poder reactivar al empleado de prueba');
 
     var empActualizado = obtenerEmpleadoCompleto(empId, ctx.token);
     _assertIgual(empActualizado.fecha_ingreso, hoy(),
       'Al reactivar, fecha_ingreso debería actualizarse a la fecha de hoy (regresión: antes quedaba con la fecha de ingreso original)');
+    _assertIgual(empActualizado.fecha_salida, '',
+      'Al reactivar, fecha_salida debería limpiarse (ya no aplica estando activo)');
 
     var historial = listarHistorialEstados(empId, ctx.token);
     _assertIgual(historial.length, 2, 'Debería haber 2 entradas en el historial (baja + reactivación)');
@@ -768,6 +774,7 @@ function test_cambiarEstadoEmpleado_historialYFechaIngreso(ctx) {
     var entradaBaja = historial.filter(function (h) { return h.estado_nuevo === 'inactivo'; })[0];
     _assert(!!entradaBaja, 'Debería existir una entrada de baja en el historial');
     _assertIgual(entradaBaja.estado_anterior, 'activo', 'La baja debería registrar el estado anterior "activo"');
+    _assertIgual(entradaBaja.fecha_salida_nueva, hoy(), 'El historial de la baja debería registrar la fecha de salida');
 
     var entradaReactivacion = historial.filter(function (h) { return h.estado_nuevo === 'activo'; })[0];
     _assert(!!entradaReactivacion, 'Debería existir una entrada de reactivación en el historial');
@@ -775,6 +782,20 @@ function test_cambiarEstadoEmpleado_historialYFechaIngreso(ctx) {
       'El historial debería conservar la fecha de ingreso original de antes de la reactivación');
     _assertIgual(entradaReactivacion.fecha_ingreso_nueva, hoy(),
       'El historial debería registrar la nueva fecha de ingreso');
+    _assertIgual(entradaReactivacion.fecha_salida_anterior, hoy(),
+      'El historial de la reactivación debería conservar la fecha de salida que tenía antes de limpiarse');
+
+    // Editar fecha_salida a mano (fuera de cambiarEstadoEmpleado) también debería persistir.
+    var fechaSalidaManual = '2026-03-10';
+    var edicion = actualizarEmpleado({
+      id: empId, nombre: PRUEBA_PREFIJO + 'Reactivacion', cedula: '000000099',
+      departamento: ctx.departamentoNombre, puesto: 'Puesto de prueba',
+      fecha_ingreso: hoy(), salario: 500000, fecha_salida: fechaSalidaManual
+    }, ctx.token);
+    _assertOk(edicion, 'Debería poder editar fecha_salida manualmente');
+    var empEditado = obtenerEmpleadoCompleto(empId, ctx.token);
+    _assertIgual(empEditado.fecha_salida, fechaSalidaManual,
+      'fecha_salida debería poder editarse manualmente desde el formulario de empleado');
   } finally {
     listarHistorialEstados(empId, ctx.token).forEach(function (h) {
       eliminarFila(HOJAS.HISTORIAL_ESTADOS, h.id, 'HistorialEstado');

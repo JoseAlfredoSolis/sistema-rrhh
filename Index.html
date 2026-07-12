@@ -1528,6 +1528,13 @@
           <div class="campo smtp-campo"><label for="salario">Salario *</label><input type="number" id="salario" required min="0" step="0.01" placeholder="0.00"><small class="error" id="errSalario"></small></div>
         </div>
         <div class="smtp-fila">
+          <div class="campo smtp-campo">
+            <label for="fecha_salida">Fecha de salida</label>
+            <input type="date" id="fecha_salida">
+            <small style="color:var(--txt-3);font-size:12px">Se actualiza sola al dar de baja; podés corregirla acá si hace falta.</small>
+          </div>
+        </div>
+        <div class="smtp-fila">
           <div class="campo smtp-campo"><label for="cuenta_iban">N° cuenta IBAN</label><input type="text" id="cuenta_iban" maxlength="30" placeholder="CR00000000000000000000"></div>
           <div class="campo smtp-campo"><label for="carne_ccss">Carné CCSS</label><input type="text" id="carne_ccss" maxlength="20"></div>
         </div>
@@ -1777,7 +1784,7 @@
       <h3 style="margin:16px 4px 8px;font-size:13.5px;color:var(--txt-2)">🔄 Bajas / reactivaciones</h3>
       <div class="tabla-envoltorio" style="padding:0 4px 12px">
         <table class="tabla" id="tablaHistEstados">
-          <thead><tr><th>Fecha</th><th>Cambio de estado</th><th>Fecha de ingreso</th><th>Usuario</th></tr></thead>
+          <thead><tr><th>Fecha</th><th>Cambio de estado</th><th>Fechas</th><th>Usuario</th></tr></thead>
           <tbody id="cuerpoHistEstados"></tbody>
         </table>
         <p id="sinHistEstados" class="sin-datos oculto">No hay bajas ni reactivaciones registradas.</p>

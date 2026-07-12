@@ -119,18 +119,27 @@
         return;
       }
       lista.forEach(function (h) {
-        var cambioIngreso = (h.estado_nuevo === 'activo' && h.fecha_ingreso_anterior !== h.fecha_ingreso_nueva)
-          ? escapar(h.fecha_ingreso_anterior || '—') + ' → ' + escapar(h.fecha_ingreso_nueva || '—')
-          : '—';
         var tr = document.createElement('tr');
         tr.innerHTML =
           '<td>' + escapar(h.fecha) + '</td>' +
           '<td>' + badge(h.estado_anterior || '') + ' → ' + badge(h.estado_nuevo || '') + '</td>' +
-          '<td>' + cambioIngreso + '</td>' +
+          '<td>' + _fechasHistorialEstado(h) + '</td>' +
           '<td>' + escapar(h.usuario || '—') + '</td>';
         cuerpo.appendChild(tr);
       });
     });
+  }
+
+  /** Resume qué fecha cambió en una entrada del historial de estados (ingreso al reactivar, salida al dar de baja). */
+  function _fechasHistorialEstado(h) {
+    var partes = [];
+    if (h.estado_nuevo === 'activo' && h.fecha_ingreso_anterior !== h.fecha_ingreso_nueva) {
+      partes.push('Ingreso: ' + escapar(h.fecha_ingreso_anterior || '—') + ' → ' + escapar(h.fecha_ingreso_nueva || '—'));
+    }
+    if (h.estado_nuevo === 'inactivo' && h.fecha_salida_nueva) {
+      partes.push('Salida: ' + escapar(h.fecha_salida_nueva));
+    }
+    return partes.length ? partes.join('<br>') : '—';
   }
 
   function cerrarModalHistorial() {
@@ -151,7 +160,7 @@
   var CAMPOS_EXTRA_EMP = ['correo', 'direccion', 'genero', 'estado_civil', 'nacionalidad',
     'sede', 'tipo_nomina', 'cuenta_iban', 'carne_ccss', 'vencimiento_cedula',
     'licencia_conducir', 'vencimiento_licencia', 'jefe_inmediato', 'cargo_critico',
-    'actividad', 'padre_madre'];
+    'actividad', 'padre_madre', 'fecha_salida'];
 
   function editarEmpleado(id) {
     if (!puedeEditar()) { mostrarMensaje('Necesitas rol RRHH o Admin para editar.', 'error'); return; }

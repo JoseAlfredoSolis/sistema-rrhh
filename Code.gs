@@ -52,18 +52,25 @@ var ENCABEZADOS = {
   // - padre_madre (string): nombre de beneficiario o contacto de emergencia para pensión/seguro
   Empleados:         ['id', 'nombre', 'cedula', 'departamento', 'puesto', 'fecha_ingreso', 'salario', 'estado', 'fecha_nacimiento', 'telefono',
                       'correo', 'direccion', 'genero', 'estado_civil', 'nacionalidad', 'sede', 'tipo_nomina', 'cuenta_iban', 'carne_ccss',
-                      'vencimiento_cedula', 'licencia_conducir', 'vencimiento_licencia', 'jefe_inmediato', 'cargo_critico', 'actividad', 'padre_madre'],
+                      'vencimiento_cedula', 'licencia_conducir', 'vencimiento_licencia', 'jefe_inmediato', 'cargo_critico', 'actividad', 'padre_madre',
+                      'fecha_salida'],
   Departamentos:     ['id', 'nombre', 'responsable'],
   Asistencia:        ['id', 'empleado_id', 'fecha', 'hora_entrada', 'hora_salida', 'horas'],
   Vacaciones:        ['id', 'empleado_id', 'fecha_inicio', 'fecha_fin', 'dias', 'estado', 'notas'],
   Nomina:            ['id', 'empleado_id', 'mes', 'salario_base', 'deducciones', 'neto'],
   HistorialSalarios: ['id', 'empleado_id', 'salario_anterior', 'salario_nuevo', 'fecha', 'notas'],
-  // Historial de bajas/reactivaciones. Al reactivar, fecha_ingreso_nueva
-  // registra la fecha de ingreso actualizada (nueva "antigüedad" para
-  // efectos de vacaciones/cesantía) — fecha_ingreso_anterior queda como
-  // referencia de cuándo había ingresado antes de esa baja.
+  // Historial de bajas/reactivaciones. Al dar de baja, fecha_salida_nueva
+  // registra cuándo salió. Al reactivar, fecha_ingreso_nueva registra la
+  // fecha de ingreso actualizada (nueva "antigüedad" para efectos de
+  // vacaciones/cesantía) y fecha_salida se limpia (ya no aplica estando
+  // activo). Las columnas "_anterior" quedan como referencia del valor
+  // previo al cambio.
+  // 'usuario' queda antes de las columnas de fecha_salida (agregadas después
+  // del primer deploy de esta hoja) para no desalinear filas ya escritas —
+  // ver _asegurarEncabezados().
   HistorialEstados:  ['id', 'empleado_id', 'fecha', 'estado_anterior', 'estado_nuevo',
-                       'fecha_ingreso_anterior', 'fecha_ingreso_nueva', 'usuario'],
+                       'fecha_ingreso_anterior', 'fecha_ingreso_nueva', 'usuario',
+                       'fecha_salida_anterior', 'fecha_salida_nueva'],
   Capacitaciones:    ['id', 'empleado_id', 'curso', 'institucion', 'fecha_inicio', 'fecha_fin', 'estado', 'certificado_url'],
   Evaluaciones:      ['id', 'empleado_id', 'periodo', 'calificacion', 'comentarios', 'evaluador', 'fecha'],
   Bitacora:          ['id', 'fecha', 'usuario', 'accion', 'entidad', 'entidad_id', 'resumen', 'jsonCambios'],
@@ -88,6 +95,7 @@ var COLS = (function () {
   return {
     EMP_ESTADO:        col('Empleados',   'estado'),
     EMP_FECHA_INGRESO: col('Empleados',   'fecha_ingreso'),
+    EMP_FECHA_SALIDA:  col('Empleados',   'fecha_salida'),
     EMP_SALARIO:     col('Empleados',     'salario'),
     EMP_CEDULA:      col('Empleados',     'cedula'),
     EMP_TELEFONO:    col('Empleados',     'telefono'),
@@ -408,6 +416,7 @@ function listarEmpleados(soloActivos, token) {
   var _authErr = requiereSesion(token);
   if (_authErr) return _authErr;
 
+  _asegurarEncabezados(HOJAS.EMPLEADOS);
   var puedeVerSalario = !requiereEscritura(token);
   var empleados = leerTabla(HOJAS.EMPLEADOS);
 
@@ -415,6 +424,7 @@ function listarEmpleados(soloActivos, token) {
   // en el frontend (Sheets a veces devuelve objetos Date).
   empleados.forEach(function (emp) {
     emp.fecha_ingreso        = formatearFecha(emp.fecha_ingreso);
+    emp.fecha_salida         = emp.fecha_salida ? formatearFecha(emp.fecha_salida) : '';
     emp.fecha_nacimiento     = emp.fecha_nacimiento ? formatearFecha(emp.fecha_nacimiento) : '';
     emp.vencimiento_cedula   = emp.vencimiento_cedula ? formatearFecha(emp.vencimiento_cedula) : '';
     emp.vencimiento_licencia = emp.vencimiento_licencia ? formatearFecha(emp.vencimiento_licencia) : '';
@@ -478,6 +488,7 @@ function crearEmpleado(emp, token) {
     return { ok: false, mensaje: error };
   }
 
+  _asegurarEncabezados(HOJAS.EMPLEADOS);
   return conLock(function () {
     if (cedulaDuplicada(emp.cedula, null)) {
       return { ok: false, mensaje: 'Ya existe un empleado con esa cédula.' };
@@ -510,24 +521,25 @@ function crearEmpleado(emp, token) {
 }
 
 /**
- * Campos adicionales del expediente (columnas 11-26 de la hoja Empleados).
- * Devuelve los 16 valores en el orden de ENCABEZADOS.Empleados.
+ * Campos adicionales del expediente (columnas 11-27 de la hoja Empleados).
+ * Devuelve los 17 valores en el orden de ENCABEZADOS.Empleados.
  * Si un campo no viene en el payload y hay fila actual, conserva el valor existente.
  *
  * @param {Object} emp        datos recibidos del frontend/importación.
  * @param {Array|null} filaActual  valores actuales de la fila (o null al crear).
- * @return {Array} 16 valores.
+ * @return {Array} 17 valores.
  */
 /**
  * Extrae campos opcionales de empleado (después de los 10 básicos: id, nombre, cédula, ..., teléfono).
  * Si el campo viene en `emp`, usa ese valor; sino, toma de la fila actual (al actualizar).
- * Formatea fechas (vencimiento_cedula, vencimiento_licencia).
+ * Formatea fechas (vencimiento_cedula, vencimiento_licencia, fecha_salida).
  */
 function _camposExtraEmpleado(emp, filaActual) {
   var campos = ['correo', 'direccion', 'genero', 'estado_civil', 'nacionalidad', 'sede',
     'tipo_nomina', 'cuenta_iban', 'carne_ccss', 'vencimiento_cedula', 'licencia_conducir',
-    'vencimiento_licencia', 'jefe_inmediato', 'cargo_critico', 'actividad', 'padre_madre'];
-  var fechas = { vencimiento_cedula: true, vencimiento_licencia: true };
+    'vencimiento_licencia', 'jefe_inmediato', 'cargo_critico', 'actividad', 'padre_madre',
+    'fecha_salida'];
+  var fechas = { vencimiento_cedula: true, vencimiento_licencia: true, fecha_salida: true };
   return campos.map(function (campo, i) {
     var valor = emp[campo];
     if (valor === undefined && filaActual) valor = filaActual[10 + i];  // Columnas A-J son básicos, K+ son extras
@@ -554,6 +566,7 @@ function actualizarEmpleado(emp, token) {
     return { ok: false, mensaje: error };
   }
 
+  _asegurarEncabezados(HOJAS.EMPLEADOS);
   // El chequeo de cédula duplicada y la escritura deben quedar dentro del
   // mismo lock: si no, dos ediciones concurrentes con la misma cédula nueva
   // podrían pasar ambas la validación antes de que cualquiera escriba.
@@ -608,11 +621,12 @@ function actualizarEmpleado(emp, token) {
 
 /**
  * CAMBIAR ESTADO (baja/alta lógica). No borra la fila.
- * Cada cambio queda registrado en HOJAS.HISTORIAL_ESTADOS. Al reactivar
- * (inactivo → activo), fecha_ingreso se actualiza a hoy — representa el
- * inicio de un nuevo período laboral para efectos de antigüedad
- * (vacaciones, cesantía), no la fecha del primer ingreso histórico. El
- * historial conserva ambas fechas para no perder el dato original.
+ * Cada cambio queda registrado en HOJAS.HISTORIAL_ESTADOS.
+ * - Al dar de baja (activo → inactivo): fecha_salida se actualiza a hoy.
+ * - Al reactivar (inactivo → activo): fecha_ingreso se actualiza a hoy
+ *   (inicio de un nuevo período laboral para antigüedad — vacaciones,
+ *   cesantía) y fecha_salida se limpia (ya no aplica estando activo).
+ * El historial conserva los valores anteriores para no perder el dato.
  * @param {string} id
  * @param {string} nuevoEstado  'activo' o 'inactivo'.
  * @return {Object} {ok, mensaje}
@@ -624,6 +638,7 @@ function cambiarEstadoEmpleado(id, nuevoEstado, token) {
   if (nuevoEstado !== 'activo' && nuevoEstado !== 'inactivo') {
     return { ok: false, mensaje: 'Estado no válido.' };
   }
+  _asegurarEncabezados(HOJAS.EMPLEADOS);
   var hoja = getHoja(HOJAS.EMPLEADOS);
   var fila = buscarFilaPorId(hoja, id);
   if (fila === -1) {
@@ -631,34 +646,46 @@ function cambiarEstadoEmpleado(id, nuevoEstado, token) {
   }
   var estadoAnterior = String(hoja.getRange(fila, COLS.EMP_ESTADO).getValue() || 'activo');
   var fechaIngresoAnterior = formatearFecha(hoja.getRange(fila, COLS.EMP_FECHA_INGRESO).getValue());
+  var fechaSalidaAnterior  = formatearFecha(hoja.getRange(fila, COLS.EMP_FECHA_SALIDA).getValue());
   var reactivando = (nuevoEstado === 'activo' && estadoAnterior.toLowerCase() === 'inactivo');
+  var dandoBaja    = (nuevoEstado === 'inactivo' && estadoAnterior.toLowerCase() !== 'inactivo');
   var fechaIngresoNueva = fechaIngresoAnterior;
+  var fechaSalidaNueva  = fechaSalidaAnterior;
 
   hoja.getRange(fila, COLS.EMP_ESTADO).setValue(nuevoEstado);
   if (reactivando) {
     fechaIngresoNueva = hoy();
+    fechaSalidaNueva = '';
     hoja.getRange(fila, COLS.EMP_FECHA_INGRESO).setValue(fechaIngresoNueva);
+    hoja.getRange(fila, COLS.EMP_FECHA_SALIDA).setValue(fechaSalidaNueva);
+  } else if (dandoBaja) {
+    fechaSalidaNueva = hoy();
+    hoja.getRange(fila, COLS.EMP_FECHA_SALIDA).setValue(fechaSalidaNueva);
   }
   invalidarCache(HOJAS.EMPLEADOS);
 
   var usuario = '';
   try { usuario = Session.getActiveUser().getEmail(); } catch (e) {}
 
+  _asegurarEncabezados(HOJAS.HISTORIAL_ESTADOS);
   getHoja(HOJAS.HISTORIAL_ESTADOS).appendRow(sanitizarFilaSheets([
     generarId('HES'), id, hoy(), estadoAnterior, nuevoEstado,
-    fechaIngresoAnterior, fechaIngresoNueva, usuario
+    fechaIngresoAnterior, fechaIngresoNueva, usuario, fechaSalidaAnterior, fechaSalidaNueva
   ]));
   invalidarCache(HOJAS.HISTORIAL_ESTADOS);
 
+  var detalleFechas = '';
+  if (reactivando) detalleFechas = ' | Fecha de ingreso actualizada: ' + fechaIngresoAnterior + ' → ' + fechaIngresoNueva;
+  else if (dandoBaja) detalleFechas = ' | Fecha de salida registrada: ' + (fechaSalidaAnterior || '—') + ' → ' + fechaSalidaNueva;
+
   registrarBitacora('actualizar', 'Empleados', id,
-    'Estado: ' + estadoAnterior + ' → ' + nuevoEstado +
-    (reactivando ? ' | Fecha de ingreso actualizada: ' + fechaIngresoAnterior + ' → ' + fechaIngresoNueva : '') +
-    ' | Usuario: ' + usuario);
+    'Estado: ' + estadoAnterior + ' → ' + nuevoEstado + detalleFechas + ' | Usuario: ' + usuario);
   var accion = (nuevoEstado === 'activo') ? 'reactivado' : 'dado de baja';
+  var mensajeFecha = reactivando ? ' Fecha de ingreso actualizada a ' + fechaIngresoNueva + '.'
+    : (dandoBaja ? ' Fecha de salida registrada: ' + fechaSalidaNueva + '.' : '');
   return {
     ok: true,
-    mensaje: 'Empleado ' + accion + ' correctamente.' +
-      (reactivando ? ' Fecha de ingreso actualizada a ' + fechaIngresoNueva + '.' : '')
+    mensaje: 'Empleado ' + accion + ' correctamente.' + mensajeFecha
   };
 }
 
@@ -3562,6 +3589,7 @@ function listarHistorialEstados(empleadoId, token) {
   var _authErr = requiereEscritura(token);
   if (_authErr) return _authErr;
 
+  _asegurarEncabezados(HOJAS.HISTORIAL_ESTADOS);
   var historial = leerTabla(HOJAS.HISTORIAL_ESTADOS);
   var nombres = mapaEmpleados();
   if (empleadoId) {
@@ -3607,6 +3635,7 @@ function calcularSalarioDiario(salarioBase, tipoNomina) {
  * abajo es el único punto de entrada autorizado desde el frontend.
  */
 function _obtenerEmpleadoCompletoInterno(empleadoId) {
+  _asegurarEncabezados(HOJAS.EMPLEADOS);
   var emp = leerTabla(HOJAS.EMPLEADOS).filter(function (e) {
     return String(e.id) === String(empleadoId);
   })[0];
@@ -3623,6 +3652,7 @@ function _obtenerEmpleadoCompletoInterno(empleadoId) {
     dias_periodo: diasPeriodo,
     salario_diario: calcularSalarioDiario(emp.salario, tipo),
     fecha_ingreso: emp.fecha_ingreso,
+    fecha_salida: emp.fecha_salida ? formatearFecha(emp.fecha_salida) : '',
     estado: emp.estado
   };
 }
@@ -5178,6 +5208,7 @@ function obtenerExpediente(empleadoId, token) {
   var emp = leerTabla(HOJAS.EMPLEADOS).filter(function (e) { return String(e.id) === String(empleadoId); })[0];
   if (!emp) return { ok: false, mensaje: 'Empleado no encontrado.' };
   var balance = _obtenerBalanceVacacionesInterno(empleadoId);
+  _asegurarEncabezados(HOJAS.HISTORIAL_ESTADOS);
   return {
     ok: true, empleado: emp, balance: balance,
     deducciones: calcularDeduccionesCR(emp.salario),
@@ -5384,26 +5415,29 @@ function eliminarFeriado(id, token) {
 // ===================================================================
 
 /**
- * Agrega el encabezado 'salariosMensuales' a la hoja de Liquidaciones si
- * falta — hojas creadas antes de este campo solo tienen 8 columnas en la
- * fila 1, y leerTabla() arma cada fila leyendo SOLO los encabezados que
- * encuentra ahí (no los del código), así que sin este encabezado el dato
- * de la columna 9 queda invisible aunque sí se haya escrito.
+ * Agrega a la fila 1 de una hoja cualquier encabezado de ENCABEZADOS[nombreHoja]
+ * que falte o no coincida — necesario cuando un campo se agrega al código
+ * DESPUÉS de que la hoja ya existía en producción: leerTabla() arma cada
+ * fila leyendo SOLO los encabezados que encuentra en la hoja real (no los
+ * del código), así que sin el encabezado correspondiente el dato de esa
+ * columna queda invisible aunque sí se haya escrito.
  *
  * A propósito NO usa migrarColumnas() genérico: ese agrega columnas
  * faltantes al final según cuántos encabezados YA tiene la fila 1 — pero
- * si ya se escribieron filas con una 9na columna de datos (como pasó acá)
- * antes de que existiera su encabezado, getDataRange() ya cuenta esa
- * columna como parte de la hoja aunque el encabezado esté vacío, y
- * migrarColumnas terminaría escribiendo el nombre en la columna 10 en vez
- * de rellenar el encabezado vacío de la columna 9. Esta versión escribe
- * cada encabezado exactamente en SU posición esperada (por índice), que es
- * la misma posición en la que crearLiquidacion/actualizarLiquidacion ya
- * escriben los valores.
+ * si ya se escribieron filas con datos en una columna antes de que
+ * existiera su encabezado (como pasó con Liquidaciones.salariosMensuales),
+ * getDataRange() ya cuenta esa columna como parte de la hoja aunque el
+ * encabezado esté vacío, y migrarColumnas terminaría escribiendo el
+ * nombre una columna más allá en vez de rellenar el encabezado vacío en su
+ * lugar real. Esta versión escribe cada encabezado exactamente en SU
+ * posición esperada (por índice), la misma posición en la que el código
+ * ya escribe los valores — por eso es fundamental que los campos nuevos
+ * siempre se agreguen al FINAL de la lista en ENCABEZADOS, nunca en medio
+ * (insertar en medio desalinearía las filas ya escritas).
  */
-function _asegurarEncabezadosLiquidaciones() {
-  var hoja = getHoja(HOJAS.LIQUIDACIONES);
-  var esperados = ENCABEZADOS.Liquidaciones;
+function _asegurarEncabezados(nombreHoja) {
+  var hoja = getHoja(nombreHoja);
+  var esperados = ENCABEZADOS[nombreHoja] || [];
   var ultimaCol = Math.max(hoja.getLastColumn(), esperados.length);
   var actuales = hoja.getRange(1, 1, 1, ultimaCol).getValues()[0];
   esperados.forEach(function (nombre, i) {
@@ -5417,7 +5451,7 @@ function listarLiquidaciones(empleadoId, estado, token) {
   var _authErr = requiereEscritura(token);
   if (_authErr) return _authErr;
 
-  _asegurarEncabezadosLiquidaciones();
+  _asegurarEncabezados(HOJAS.LIQUIDACIONES);
   var rows  = leerTabla(HOJAS.LIQUIDACIONES);
   var empls = leerTabla(HOJAS.EMPLEADOS);
   if (empleadoId) rows = rows.filter(function (r) { return String(r.empleado_id) === String(empleadoId); });
@@ -5749,7 +5783,7 @@ function crearLiquidacion(datos, token) {
   var _authErr = requiereEscritura(token);
   if (_authErr) return _authErr;
 
-  _asegurarEncabezadosLiquidaciones();
+  _asegurarEncabezados(HOJAS.LIQUIDACIONES);
   if (!datos || !datos.empleado_id) return { ok: false, mensaje: 'Selecciona un empleado.' };
   if (!datos.fecha_salida || isNaN(new Date(datos.fecha_salida).getTime())) {
     return { ok: false, mensaje: 'La fecha de salida no es válida.' };
@@ -5794,7 +5828,7 @@ function actualizarLiquidacion(datos, token) {
   var _authErr = requiereEscritura(token);
   if (_authErr) return _authErr;
 
-  _asegurarEncabezadosLiquidaciones();
+  _asegurarEncabezados(HOJAS.LIQUIDACIONES);
   var hoja = getHoja(HOJAS.LIQUIDACIONES);
   var rows = hoja.getDataRange().getValues();
   for (var i = 1; i < rows.length; i++) {

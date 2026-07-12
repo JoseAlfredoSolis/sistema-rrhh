@@ -57,13 +57,18 @@
 
     // Historial de bajas / reactivaciones
     var hsEst = (res.historialEstados||[]).map(function(h){
-      var cambioIngreso = (h.estado_nuevo === 'activo' && h.fecha_ingreso_anterior !== h.fecha_ingreso_nueva)
-        ? escapar(h.fecha_ingreso_anterior||'—') + ' → ' + escapar(h.fecha_ingreso_nueva||'—')
-        : '—';
-      return '<tr><td>'+escapar(h.fecha)+'</td><td>'+badge(h.estado_anterior||'')+' → '+badge(h.estado_nuevo||'')+'</td><td>'+cambioIngreso+'</td><td>'+escapar(h.usuario||'—')+'</td></tr>';
+      var partes = [];
+      if (h.estado_nuevo === 'activo' && h.fecha_ingreso_anterior !== h.fecha_ingreso_nueva) {
+        partes.push('Ingreso: ' + escapar(h.fecha_ingreso_anterior||'—') + ' → ' + escapar(h.fecha_ingreso_nueva||'—'));
+      }
+      if (h.estado_nuevo === 'inactivo' && h.fecha_salida_nueva) {
+        partes.push('Salida: ' + escapar(h.fecha_salida_nueva));
+      }
+      var fechas = partes.length ? partes.join('<br>') : '—';
+      return '<tr><td>'+escapar(h.fecha)+'</td><td>'+badge(h.estado_anterior||'')+' → '+badge(h.estado_nuevo||'')+'</td><td>'+fechas+'</td><td>'+escapar(h.usuario||'—')+'</td></tr>';
     }).join('');
     html += _expSeccion('🔄 Historial de bajas / reactivaciones', hsEst ?
-      '<table class="tabla" style="margin:0"><thead><tr><th>Fecha</th><th>Cambio de estado</th><th>Fecha de ingreso</th><th>Usuario</th></tr></thead><tbody>'+hsEst+'</tbody></table>'
+      '<table class="tabla" style="margin:0"><thead><tr><th>Fecha</th><th>Cambio de estado</th><th>Fechas</th><th>Usuario</th></tr></thead><tbody>'+hsEst+'</tbody></table>'
       : '<p class="sin-datos" style="margin:0">Sin bajas ni reactivaciones registradas.</p>');
 
     // Vacaciones
