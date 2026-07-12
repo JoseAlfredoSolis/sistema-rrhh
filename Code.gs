@@ -5493,6 +5493,12 @@ function eliminarFeriado(id, token) {
 function _asegurarEncabezados(nombreHoja) {
   var hoja = getHoja(nombreHoja);
   var esperados = ENCABEZADOS[nombreHoja] || [];
+  // Si la hoja fue recortada manualmente a menos columnas de las que ahora
+  // necesitamos, getRange más abajo lanzaría "range outside sheet bounds".
+  // Ampliamos la cuadrícula primero para que ese caso nunca rompa el guardado.
+  if (esperados.length > hoja.getMaxColumns()) {
+    hoja.insertColumnsAfter(hoja.getMaxColumns(), esperados.length - hoja.getMaxColumns());
+  }
   var ultimaCol = Math.max(hoja.getLastColumn(), esperados.length);
   var actuales = hoja.getRange(1, 1, 1, ultimaCol).getValues()[0];
   esperados.forEach(function (nombre, i) {

@@ -87,12 +87,19 @@
     document.getElementById('modalHistTitulo').textContent = 'Historial — ' + nombre;
     document.getElementById('cuerpoHistSal').innerHTML = '';
     document.getElementById('sinHistSal').classList.add('oculto');
+    document.getElementById('sinHistSal').textContent = 'No hay cambios de salario registrados.';
     document.getElementById('cuerpoHistEstados').innerHTML = '';
     document.getElementById('sinHistEstados').classList.add('oculto');
+    document.getElementById('sinHistEstados').textContent = 'No hay bajas ni reactivaciones registradas.';
     document.getElementById('modalHistorialSal').classList.remove('oculto');
 
     llamarBackend('listarHistorialSalario', [id], function (lista) {
       var cuerpo = document.getElementById('cuerpoHistSal');
+      if (lista && lista.ok === false) {
+        document.getElementById('sinHistSal').classList.remove('oculto');
+        document.getElementById('sinHistSal').textContent = lista.mensaje || 'No se pudo cargar el historial de salarios.';
+        return;
+      }
       if (!lista || !lista.length) {
         document.getElementById('sinHistSal').classList.remove('oculto');
         return;
@@ -114,6 +121,11 @@
 
     llamarBackend('listarHistorialEstados', [id], function (lista) {
       var cuerpo = document.getElementById('cuerpoHistEstados');
+      if (lista && lista.ok === false) {
+        document.getElementById('sinHistEstados').classList.remove('oculto');
+        document.getElementById('sinHistEstados').textContent = lista.mensaje || 'No se pudo cargar el historial de bajas/reactivaciones.';
+        return;
+      }
       if (!lista || !lista.length) {
         document.getElementById('sinHistEstados').classList.remove('oculto');
         return;
