@@ -90,7 +90,9 @@ var PRUEBAS_REGISTRO = [
   { nombre: 'paquete de plantillas minimalistas tiene datos válidos',                     fn: test_paquetePlantillasMinimalistas_esValido },
   { nombre: '_enviarOutlook valida campos requeridos antes de llamar a Microsoft Graph', fn: test_enviarOutlook_validaCamposRequeridos },
   { nombre: 'reenviarComunicacion solo permite reintentar registros con estado error', fn: test_reenviarComunicacion_soloPermiteRegistrosFallidos },
-  { nombre: '_normalizarTelefonoWhatsApp antepone +506 a números nacionales de 8 dígitos', fn: test_normalizarTelefonoWhatsApp_anteponeCodigoPaisCR }
+  { nombre: '_normalizarTelefonoWhatsApp antepone +506 a números nacionales de 8 dígitos', fn: test_normalizarTelefonoWhatsApp_anteponeCodigoPaisCR },
+  { nombre: '_whatsappCredencialesListas distingue CallMeBot de servidor propio', fn: test_whatsappCredencialesListas_porProveedor },
+  { nombre: '_enviarWhatsAppServidorPropio valida URL y secreto antes de llamar al servidor', fn: test_enviarWhatsAppServidorPropio_validaCamposRequeridos }
 ];
 
 // ===================================================================
@@ -619,6 +621,28 @@ function test_normalizarTelefonoWhatsApp_anteponeCodigoPaisCR(ctx) {
   _assertIgual(_normalizarTelefonoWhatsApp('+1 555-123-4567'), '+15551234567',
     'Un número internacional con otro código de país no debería tratarse como nacional de CR');
   _assertIgual(_normalizarTelefonoWhatsApp(''), '', 'Un valor vacío debería devolver string vacío');
+}
+
+function test_whatsappCredencialesListas_porProveedor(ctx) {
+  _assert(!_whatsappCredencialesListas(null), 'Sin config debería ser false');
+  _assert(!_whatsappCredencialesListas({ proveedor: 'callmebot' }), 'CallMeBot sin apikey debería ser false');
+  _assert(_whatsappCredencialesListas({ proveedor: 'callmebot', apikey: '123456' }), 'CallMeBot con apikey debería ser true');
+  _assert(!_whatsappCredencialesListas({ proveedor: 'servidor_propio', apikey: '123456' }),
+    'Servidor propio con solo apikey (sin URL/secreto) debería ser false — son credenciales distintas');
+  _assert(!_whatsappCredencialesListas({ proveedor: 'servidor_propio', servidorUrl: 'https://x.com' }),
+    'Servidor propio sin secreto debería ser false');
+  _assert(_whatsappCredencialesListas({ proveedor: 'servidor_propio', servidorUrl: 'https://x.com', servidorSecreto: 'shh' }),
+    'Servidor propio con URL y secreto debería ser true');
+}
+
+function test_enviarWhatsAppServidorPropio_validaCamposRequeridos(ctx) {
+  var res1 = _enviarWhatsAppServidorPropio('+50688887777', 'hola', {});
+  _assertFalla(res1, 'Debería fallar sin servidorUrl ni servidorSecreto');
+  _assert(res1.mensaje.toLowerCase().indexOf('url') !== -1 || res1.mensaje.toLowerCase().indexOf('secreto') !== -1,
+    'El mensaje debería mencionar qué falta (URL o secreto) — recibido: ' + res1.mensaje);
+
+  var res2 = _enviarWhatsAppServidorPropio('+50688887777', 'hola', { servidorUrl: 'https://x.com' });
+  _assertFalla(res2, 'Debería fallar con URL pero sin secreto');
 }
 
 function test_enviarComunicacionAmbos_exigeAlMenosUnMedio(ctx) {

@@ -70,7 +70,10 @@
     llamarBackend('obtenerConfigWhatsApp', [], function (cfg) {
       document.getElementById('wpActivo').checked         = !!cfg.activo;
       document.getElementById('wpTelefono').value         = cfg.telefono || '';
+      document.getElementById('wpProveedor').value        = cfg.proveedor || 'callmebot';
       document.getElementById('wpApiKey').value           = '';
+      document.getElementById('wpServidorUrl').value      = cfg.servidorUrl || '';
+      document.getElementById('wpServidorSecreto').value  = '';
       document.getElementById('wpAlertaVac').checked      = cfg.alertaVacaciones !== false;
       document.getElementById('wpAlertaNom').checked      = cfg.alertaNomina !== false;
       document.getElementById('wpAlertaResumen').checked  = !!cfg.alertaResumen;
@@ -80,15 +83,26 @@
       document.getElementById('wpNotifNominaGen').checked  = !!cfg.notificarNominaGenerada;
       document.getElementById('wpApiKey').placeholder =
         cfg.apikey ? '••••••••  (ya configurada)' : 'Tu API Key de CallMeBot';
+      document.getElementById('wpServidorSecreto').placeholder =
+        cfg.servidorSecreto ? '••••••••  (ya configurado)' : 'Secreto compartido (WEBHOOK_SECRET)';
+      cambiarProveedorWhatsApp();
     });
   }
 
+  function cambiarProveedorWhatsApp() {
+    var prv = document.getElementById('wpProveedor').value;
+    document.getElementById('wpBloqueCallMeBot').classList.toggle('oculto', prv !== 'callmebot');
+    document.getElementById('wpBloqueServidorPropio').classList.toggle('oculto', prv !== 'servidor_propio');
+  }
+
   function _leerConfigWhatsAppUI() {
-    var apikey = document.getElementById('wpApiKey').value.trim();
     return {
       activo:   document.getElementById('wpActivo').checked,
       telefono: document.getElementById('wpTelefono').value.trim(),
-      apikey:   apikey,
+      proveedor: document.getElementById('wpProveedor').value,
+      apikey:   document.getElementById('wpApiKey').value.trim(),
+      servidorUrl:     document.getElementById('wpServidorUrl').value.trim(),
+      servidorSecreto: document.getElementById('wpServidorSecreto').value.trim(),
       alertaVacaciones:      document.getElementById('wpAlertaVac').checked,
       alertaNomina:          document.getElementById('wpAlertaNom').checked,
       alertaResumen:         document.getElementById('wpAlertaResumen').checked,
@@ -101,6 +115,12 @@
 
   function guardarConfigWhatsApp() {
     var cfg = _leerConfigWhatsAppUI();
+    if (cfg.proveedor === 'servidor_propio' && !cfg.servidorUrl) {
+      var el0 = document.getElementById('wpEstado');
+      el0.style.color = 'var(--err)';
+      el0.textContent = '❌ Introduce la URL del servidor propio.';
+      return;
+    }
     llamarBackend('guardarConfigWhatsApp', [cfg], function (res) {
       var el = document.getElementById('wpEstado');
       el.style.color = res.ok ? 'var(--ok)' : 'var(--err)';

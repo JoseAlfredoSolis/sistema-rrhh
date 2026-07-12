@@ -9,3 +9,8 @@
 node_modules/**
 package.json
 package-lock.json
+
+# whatsapp-server/ es un proyecto Node.js aparte (servidor Baileys), no
+# forma parte del proyecto de Apps Script — se despliega por separado
+# (ver whatsapp-server/README.md).
+whatsapp-server/**

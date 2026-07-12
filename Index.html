@@ -487,21 +487,57 @@
 
       <!-- WhatsApp -->
       <div class="config-bloque">
-        <h3>📱 Notificaciones por WhatsApp (CallMeBot)</h3>
-        <p class="config-ayuda">Recibe alertas en WhatsApp usando <strong>CallMeBot</strong> (gratuito). Pasos: (1) Envía <code>I allow callmebot to send me messages</code> al <strong>+34 644 60 99 76</strong> por WhatsApp. (2) Guarda la API Key que te responde el bot. (3) Configura tu número con código de país.</p>
+        <h3>📱 Notificaciones por WhatsApp</h3>
+        <p class="config-ayuda">
+          <strong>CallMeBot</strong> es gratis pero su API Key solo funciona para mandarte mensajes a VOS
+          (el número que la activó) — no sirve para enviarle WhatsApp a otros empleados individualmente
+          (ver Comunicaciones). Para eso, usa un <strong>servidor propio</strong>
+          (<a href="https://github.com/JoseAlfredoSolis/sistema-rrhh/tree/main/whatsapp-server" target="_blank" rel="noopener">ver whatsapp-server/ en el repo</a>),
+          que sí puede mandarle mensajes a cualquier número con un solo secreto.
+        </p>
         <label class="toggle" style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
           <input type="checkbox" id="wpActivo">
           <span class="toggle-pista"></span>
           <span style="font-size:13px">Activar notificaciones WhatsApp</span>
         </label>
+
+        <div class="campo">
+          <label for="wpProveedor">Proveedor</label>
+          <select id="wpProveedor" onchange="cambiarProveedorWhatsApp()">
+            <option value="callmebot">CallMeBot (gratis, solo te avisa a vos)</option>
+            <option value="servidor_propio">Servidor propio (manda a cualquier empleado)</option>
+          </select>
+        </div>
+
         <div class="smtp-fila">
           <div class="campo smtp-campo">
             <label for="wpTelefono">Tu número (con código de país)</label>
             <input type="text" id="wpTelefono" placeholder="+50688887777">
           </div>
-          <div class="campo smtp-campo">
+        </div>
+
+        <div id="wpBloqueCallMeBot">
+          <p class="config-ayuda" style="margin:8px 0">Pasos: (1) Envía <code>I allow callmebot to send me messages</code> al <strong>+34 644 60 99 76</strong> por WhatsApp. (2) Guarda la API Key que te responde el bot.</p>
+          <div class="campo">
             <label for="wpApiKey">API Key de CallMeBot</label>
             <input type="password" id="wpApiKey" placeholder="••••••••">
+          </div>
+        </div>
+
+        <div id="wpBloqueServidorPropio" class="oculto">
+          <p class="config-ayuda" style="margin:8px 0">
+            Poné acá la URL pública de tu servidor <code>whatsapp-server</code> ya desplegado
+            (ej. Railway, Render o tu propia VPS) y el <code>WEBHOOK_SECRET</code> que configuraste ahí.
+          </p>
+          <div class="smtp-fila">
+            <div class="campo smtp-campo">
+              <label for="wpServidorUrl">URL del servidor</label>
+              <input type="text" id="wpServidorUrl" placeholder="https://tu-servidor.up.railway.app">
+            </div>
+            <div class="campo smtp-campo">
+              <label for="wpServidorSecreto">Secreto compartido (WEBHOOK_SECRET)</label>
+              <input type="password" id="wpServidorSecreto" placeholder="••••••••">
+            </div>
           </div>
         </div>
 

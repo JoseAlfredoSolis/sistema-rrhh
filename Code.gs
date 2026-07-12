@@ -1815,7 +1815,7 @@ function verificarAlertas() {
   var cfg    = obtenerConfigAlertasInterno();
   var emails = cfg.destinatarios.split(',').map(function (e) { return e.trim(); }).filter(Boolean);
   var waCfg  = obtenerConfigWhatsAppInterno();
-  var waListo = waCfg.activo && waCfg.telefono && waCfg.apikey;
+  var waListo = waCfg.activo && waCfg.telefono && _whatsappCredencialesListas(waCfg);
 
   if (!emails.length && !waListo) return;
 
@@ -2991,11 +2991,6 @@ function enviarWhatsappPlantilla(datos, token) {
   var _authErr = requiereEscritura(token);
   if (_authErr) return _authErr;
 
-  var cfgWhatsApp = obtenerConfigWhatsAppInterno();
-  if (!cfgWhatsApp.apikey) {
-    return { ok: false, mensaje: 'Configura primero la API Key de CallMeBot en Configuración > Notificaciones por WhatsApp.' };
-  }
-
   if (!datos || !datos.empleado_id) return { ok: false, mensaje: 'Selecciona un empleado.' };
   var emp = _buscarEmpleadoRaw(datos.empleado_id);
   if (!emp) return { ok: false, mensaje: 'Empleado no encontrado.' };
@@ -3016,7 +3011,8 @@ function enviarWhatsappPlantilla(datos, token) {
 
   // Reutiliza el envío/normalización de teléfono/truncado ya probados del
   // módulo de Alertas — solo cambia el teléfono destino por el del empleado.
-  var res = _enviarWhatsApp(mensaje, { telefono: telefono, apikey: cfgWhatsApp.apikey }, { forzar: true });
+  // El proveedor y sus credenciales salen de la config global (ver _enviarWhatsApp).
+  var res = _enviarWhatsApp(mensaje, { telefono: telefono }, { forzar: true });
 
   _registrarComunicacion('whatsapp', emp.id, telefono, '', mensaje, res.ok ? 'enviado' : 'error', res.mensaje, token);
   if (!res.ok) registrarErrorSistema('enviarWhatsappPlantilla', res.mensaje, JSON.stringify(datos), token);
@@ -3384,11 +3380,7 @@ function reenviarComunicacion(id, token) {
   }
 
   if (com.tipo === 'whatsapp') {
-    var cfgWhatsApp = obtenerConfigWhatsAppInterno();
-    if (!cfgWhatsApp.apikey) {
-      return { ok: false, mensaje: 'Configura primero la API Key de CallMeBot en Configuración > Notificaciones por WhatsApp.' };
-    }
-    var res = _enviarWhatsApp(com.cuerpo, { telefono: com.destinatario, apikey: cfgWhatsApp.apikey }, { forzar: true });
+    var res = _enviarWhatsApp(com.cuerpo, { telefono: com.destinatario }, { forzar: true });
     _registrarComunicacion('whatsapp', com.empleado_id, com.destinatario, '', com.cuerpo, res.ok ? 'enviado' : 'error', res.mensaje, token);
     if (!res.ok) registrarErrorSistema('reenviarComunicacion', res.mensaje, id, token);
     return res;
@@ -3905,10 +3897,21 @@ function estadoRespaldo() {
 var CLAVE_CONFIG_WHATSAPP = 'CONFIG_WHATSAPP';
 var MAX_CHARS_WHATSAPP = 1500;
 
+/**
+ * Proveedores soportados: 'callmebot' | 'servidor_propio'
+ * 'callmebot': gratis, pero la API Key queda ligada a UN SOLO número (el
+ *   que hizo la activación) — no sirve para mandar a números arbitrarios.
+ * 'servidor_propio': servidor propio (Baileys/whatsapp-web.js/Venom/
+ *   WPPConnect, ver carpeta whatsapp-server/) que sí manda a cualquier
+ *   número con un solo secreto compartido.
+ */
 function _defConfigWhatsApp() {
   return {
     telefono: '',
     apikey: '',
+    proveedor: 'callmebot',
+    servidorUrl: '',
+    servidorSecreto: '',
     activo: false,
     alertaVacaciones: true,
     alertaNomina: true,
@@ -3933,6 +3936,7 @@ function obtenerConfigWhatsApp(token) {
 
   var cfg = obtenerConfigWhatsAppInterno();
   cfg.apikey = enmascararSecreto(cfg.apikey);
+  cfg.servidorSecreto = enmascararSecreto(cfg.servidorSecreto);
   return cfg;
 }
 
@@ -3942,6 +3946,7 @@ function guardarConfigWhatsApp(cfg, token) {
 
   var actual = obtenerConfigWhatsAppInterno();
   if (!cfg.apikey) cfg.apikey = actual.apikey;
+  if (!cfg.servidorSecreto) cfg.servidorSecreto = actual.servidorSecreto;
   var merged = Object.assign(_defConfigWhatsApp(), actual, cfg);
   PropertiesService.getScriptProperties().setProperty(CLAVE_CONFIG_WHATSAPP, JSON.stringify(merged));
   return { ok: true, mensaje: 'Configuración de WhatsApp guardada.' };
@@ -3970,21 +3975,30 @@ function _truncarWhatsApp(texto) {
   return s.slice(0, MAX_CHARS_WHATSAPP - 3) + '...';
 }
 
+/** Indica si hay credenciales guardadas para el proveedor de WhatsApp activo. */
+function _whatsappCredencialesListas(cfg) {
+  if (!cfg) return false;
+  if (cfg.proveedor === 'servidor_propio') return !!(cfg.servidorUrl && cfg.servidorSecreto);
+  return !!cfg.apikey;
+}
+
 /**
- * Envía un mensaje vía CallMeBot.
+ * Envía un mensaje de WhatsApp usando el proveedor configurado
+ * ('callmebot' o 'servidor_propio' — ver _defConfigWhatsApp).
  * @param {string} mensaje
- * @param {Object} cfg  Configuración con telefono y apikey.
+ * @param {Object} [cfgOverride] - permite sobreescribir 'telefono' (el
+ *   destino) sin tocar el resto; el proveedor y sus credenciales siempre
+ *   se toman de la configuración global guardada (para no tener que
+ *   repetirlas en cada llamador).
  * @param {Object} [opciones]  { forzar: true } omite la validación de activo.
  */
-function _enviarWhatsApp(mensaje, cfg, opciones) {
+function _enviarWhatsApp(mensaje, cfgOverride, opciones) {
   opciones = opciones || {};
-  if (!cfg) cfg = obtenerConfigWhatsAppInterno();
-  if (!cfg || !cfg.telefono || !cfg.apikey) {
-    return { ok: false, mensaje: 'WhatsApp no configurado (teléfono o API Key faltante).' };
+  var cfg = Object.assign({}, obtenerConfigWhatsAppInterno(), cfgOverride || {});
+
+  if (!cfg.telefono) {
+    return { ok: false, mensaje: 'WhatsApp no configurado (falta el teléfono destino).' };
   }
-  // Nota: las API Keys de CallMeBot son números cortos (normalmente 6-7
-  // dígitos) — no hay un largo mínimo fijo que validar aquí. La respuesta
-  // real de la API (más abajo) ya detecta si la key es inválida.
   if (!opciones.forzar && !cfg.activo) {
     return { ok: false, mensaje: 'Las notificaciones WhatsApp están desactivadas.' };
   }
@@ -3994,6 +4008,20 @@ function _enviarWhatsApp(mensaje, cfg, opciones) {
     return { ok: false, mensaje: 'Número inválido. Usa formato internacional, ej: +50688887777' };
   }
 
+  if (cfg.proveedor === 'servidor_propio') {
+    return _enviarWhatsAppServidorPropio(telefono, mensaje, cfg);
+  }
+  return _enviarWhatsAppCallMeBot(telefono, mensaje, cfg);
+}
+
+/** Envía vía CallMeBot — la API Key solo sirve para el número que la activó. */
+function _enviarWhatsAppCallMeBot(telefono, mensaje, cfg) {
+  if (!cfg.apikey) {
+    return { ok: false, mensaje: 'WhatsApp (CallMeBot) no configurado: falta la API Key.' };
+  }
+  // Nota: las API Keys de CallMeBot son números cortos (normalmente 6-7
+  // dígitos) — no hay un largo mínimo fijo que validar aquí. La respuesta
+  // real de la API (más abajo) ya detecta si la key es inválida.
   try {
     var texto = _truncarWhatsApp(mensaje);
     var url = 'https://api.callmebot.com/whatsapp.php' +
@@ -4016,6 +4044,40 @@ function _enviarWhatsApp(mensaje, cfg, opciones) {
     return { ok: true, mensaje: 'Mensaje WhatsApp enviado a ' + telefono + '.' };
   } catch (e) {
     return { ok: false, mensaje: 'Error WhatsApp: ' + e.message };
+  }
+}
+
+/**
+ * Envía vía un servidor propio (Baileys/whatsapp-web.js/Venom/WPPConnect —
+ * ver carpeta whatsapp-server/ del repo). A diferencia de CallMeBot, un solo
+ * secreto compartido sirve para mandar a cualquier número.
+ */
+function _enviarWhatsAppServidorPropio(telefono, mensaje, cfg) {
+  if (!cfg.servidorUrl || !cfg.servidorSecreto) {
+    return { ok: false, mensaje: 'Servidor propio de WhatsApp no configurado: falta la URL o el secreto.' };
+  }
+  try {
+    var texto = _truncarWhatsApp(mensaje);
+    var base = String(cfg.servidorUrl).replace(/\/+$/, '');
+    var res = UrlFetchApp.fetch(base + '/enviar', {
+      method:      'post',
+      contentType: 'application/json',
+      headers:     { Authorization: 'Bearer ' + cfg.servidorSecreto },
+      payload:     JSON.stringify({ telefono: telefono, mensaje: texto }),
+      muteHttpExceptions: true
+    });
+    var code = res.getResponseCode();
+    var body = res.getContentText();
+    var data = null;
+    try { data = JSON.parse(body); } catch (e) {}
+
+    if (code >= 400 || (data && data.ok === false)) {
+      var detalle = (data && data.mensaje) ? data.mensaje : body.slice(0, 300);
+      return { ok: false, mensaje: 'Servidor WhatsApp: ' + detalle };
+    }
+    return { ok: true, mensaje: (data && data.mensaje) || ('Mensaje WhatsApp enviado a ' + telefono + '.') };
+  } catch (e) {
+    return { ok: false, mensaje: 'Error conectando al servidor de WhatsApp: ' + e.message };
   }
 }
 
@@ -4117,7 +4179,7 @@ function _enviarAlertasWhatsApp(cfgAlertas, waCfg) {
 }
 
 function _whatsappEventoActivo(cfg, flag) {
-  if (!cfg || !cfg.activo || !cfg.telefono || !cfg.apikey) return false;
+  if (!cfg || !cfg.activo || !cfg.telefono || !_whatsappCredencialesListas(cfg)) return false;
   return cfg[flag] !== false;
 }
 
@@ -4169,8 +4231,10 @@ function probarWhatsApp(tipo, token) {
   if (_authErr) return _authErr;
 
   var cfg = obtenerConfigWhatsAppInterno();
-  if (!cfg.telefono || !cfg.apikey) {
-    return { ok: false, mensaje: 'Configura el teléfono y la API Key de CallMeBot primero.' };
+  if (!cfg.telefono || !_whatsappCredencialesListas(cfg)) {
+    return { ok: false, mensaje: cfg.proveedor === 'servidor_propio'
+      ? 'Configura el teléfono, la URL y el secreto del servidor propio primero.'
+      : 'Configura el teléfono y la API Key de CallMeBot primero.' };
   }
 
   var mensaje;
@@ -4187,7 +4251,8 @@ function probarWhatsApp(tipo, token) {
   } else if (tipo === 'nomina_generada') {
     mensaje = '💰 *Nómina generada*\nEmpleado: (ejemplo)\nMes: 2026-06\nSalario base: ₡500,000\nDeducciones: ₡80,000\nNeto: ₡420,000';
   } else {
-    mensaje = '🧪 Prueba del Sistema RRHH\nWhatsApp configurado correctamente via CallMeBot.';
+    mensaje = '🧪 Prueba del Sistema RRHH\nWhatsApp configurado correctamente vía ' +
+      (cfg.proveedor === 'servidor_propio' ? 'servidor propio.' : 'CallMeBot.');
   }
 
   return _enviarWhatsApp('🧪 [PRUEBA]\n' + mensaje, cfg, { forzar: true });
