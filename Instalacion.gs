@@ -60,3 +60,22 @@ function estadoAutorizacionGoogle() {
     urlAutorizacion: requiere ? (auth.getAuthorizationUrl() || '') : ''
   };
 }
+
+/**
+ * Avisa por correo que hay una nueva implementación publicada. Se ejecuta a
+ * mano (`clasp run notificarNuevaImplementacion`) justo después de cada
+ * `clasp deploy`, nunca automáticamente desde la web app.
+ * @param {string} urlExec  URL pública del web app (termina en /exec).
+ * @param {string} [notas]  Resumen breve de qué cambió en este deploy.
+ */
+function notificarNuevaImplementacion(urlExec, notas) {
+  var destinatarios = ['jose.solisa@gmail.com', 'k.gamboa.calero@gmail.com'];
+  var asunto = 'Sistema RRHH — nueva implementación disponible';
+  var cuerpo = 'Se publicó una nueva implementación del Sistema RRHH.\n\n' +
+    'URL: ' + urlExec + '\n' +
+    (notas ? '\nCambios: ' + notas + '\n' : '') +
+    '\nFecha: ' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm');
+  destinatarios.forEach(function (to) {
+    MailApp.sendEmail({ to: to, subject: asunto, body: cuerpo, name: 'Sistema RRHH' });
+  });
+}

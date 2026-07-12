@@ -161,6 +161,37 @@ function doGet(e) {
       return HtmlService.createHtmlOutput('<body style="font-family:sans-serif;padding:40px"><h2 style="color:red">❌ ' + err.message + '</h2></body>');
     }
   }
+
+  // Ruta de un solo uso para generar el secreto de notificación de deploys.
+  // Una vez generado, esta ruta queda inerte (mismo patrón que ?setup=rrhh2024
+  // arriba): el valor real vive solo en Propiedades del script, nunca en el
+  // código fuente, así que conocer esta constante no sirve para nada después
+  // de la primera vez.
+  if (e && e.parameter && e.parameter.setupNotifyDeploy === 'rrhh-deploy-bootstrap-2026') {
+    var propsBoot = PropertiesService.getScriptProperties();
+    if (e.parameter.reset === '1') {
+      propsBoot.deleteProperty('DEPLOY_NOTIFY_SECRET');
+    }
+    if (propsBoot.getProperty('DEPLOY_NOTIFY_SECRET')) {
+      return ContentService.createTextOutput('Ya configurado.');
+    }
+    var secretoNuevo = Utilities.getUuid();
+    propsBoot.setProperty('DEPLOY_NOTIFY_SECRET', secretoNuevo);
+    return ContentService.createTextOutput(secretoNuevo);
+  }
+
+  // Dispara el correo de "nueva implementación disponible" (ver
+  // notificarNuevaImplementacion en Instalacion.gs). Requiere el secreto
+  // generado arriba — nunca funciona con la sola constante pública.
+  if (e && e.parameter && e.parameter.notificarDeploy) {
+    var secretoGuardado = PropertiesService.getScriptProperties().getProperty('DEPLOY_NOTIFY_SECRET');
+    if (secretoGuardado && e.parameter.notificarDeploy === secretoGuardado) {
+      notificarNuevaImplementacion(ScriptApp.getService().getUrl(), e.parameter.notas || '');
+      return ContentService.createTextOutput('OK');
+    }
+    // Si no coincide, cae al render normal de la app — no revela nada.
+  }
+
   return HtmlService.createTemplateFromFile('Index')
     .evaluate()
     .setTitle('Sistema RRHH')
