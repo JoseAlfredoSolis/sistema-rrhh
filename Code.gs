@@ -3716,6 +3716,10 @@ function listarHistorialEstados(empleadoId, token) {
   historial.forEach(function (h) {
     h.empleado_nombre = nombres[h.empleado_id] || h.empleado_id;
     h.fecha = formatearFecha(h.fecha);
+    h.fecha_ingreso_anterior = h.fecha_ingreso_anterior ? formatearFecha(h.fecha_ingreso_anterior) : '';
+    h.fecha_ingreso_nueva    = h.fecha_ingreso_nueva    ? formatearFecha(h.fecha_ingreso_nueva)    : '';
+    h.fecha_salida_anterior  = h.fecha_salida_anterior  ? formatearFecha(h.fecha_salida_anterior)  : '';
+    h.fecha_salida_nueva     = h.fecha_salida_nueva     ? formatearFecha(h.fecha_salida_nueva)     : '';
   });
   historial.sort(function (a, b) { return b.fecha > a.fecha ? 1 : -1; });
   return historial;
