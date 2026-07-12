@@ -66,7 +66,7 @@ var ENCABEZADOS = {
   Turnos:            ['id', 'empleado_id', 'semana', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'],
   Incapacidades:     ['id', 'empleado_id', 'fecha_desde', 'fecha_hasta', 'dias', 'entidad', 'especialidad', 'notas'],
   Feriados:          ['id', 'fecha', 'nombre', 'tipo'],
-  Liquidaciones:     ['id', 'empleado_id', 'fecha_salida', 'motivo', 'fecha_calculo', 'monto', 'estado', 'notas'],
+  Liquidaciones:     ['id', 'empleado_id', 'fecha_salida', 'motivo', 'fecha_calculo', 'monto', 'estado', 'notas', 'salariosMensuales'],
   Permisos:          ['id', 'empleado_id', 'tipo', 'fecha_inicio', 'fecha_fin', 'estado', 'motivo', 'notas'],
   Errores:           ['id', 'fecha', 'origen', 'mensaje', 'usuario', 'contexto'],
   Plantillas:        ['id', 'nombre', 'tipo', 'asunto', 'cuerpo'],
@@ -5680,7 +5680,7 @@ function crearLiquidacion(datos, token) {
 
   hoja.appendRow(sanitizarFilaSheets([id, datos.empleado_id, formatearFecha(datos.fecha_salida),
     datos.motivo || '', formatearFecha(datos.fecha_calculo || hoy()), monto,
-    datos.estado || 'pendiente', notasCompletas]));
+    datos.estado || 'pendiente', notasCompletas, datos.salariosMensuales || '']));
   invalidarCache(HOJAS.LIQUIDACIONES);
 
   registrarBitacora('crear', 'Liquidacion', id, 'Liquidación de ' + monto + ' para ' + datos.empleado_id);
@@ -5703,10 +5703,15 @@ function actualizarLiquidacion(datos, token) {
   var rows = hoja.getDataRange().getValues();
   for (var i = 1; i < rows.length; i++) {
     if (String(rows[i][0]) === String(datos.id)) {
-      hoja.getRange(i+1, 1, 1, 8).setValues([sanitizarFilaSheets([datos.id, datos.empleado_id,
+      // Si no llega salariosMensuales en esta llamada, conserva el valor ya
+      // guardado (ej. "Guardar cambios sin recalcular" no vuelve a mandar
+      // los 12 salarios si el usuario no los tocó).
+      var salariosMensuales = (datos.salariosMensuales !== undefined && datos.salariosMensuales !== null)
+        ? datos.salariosMensuales : (rows[i][8] || '');
+      hoja.getRange(i+1, 1, 1, 9).setValues([sanitizarFilaSheets([datos.id, datos.empleado_id,
         formatearFecha(datos.fecha_salida), datos.motivo || '',
         formatearFecha(datos.fecha_calculo || hoy()), Number(datos.monto) || 0,
-        datos.estado || 'pendiente', datos.notas || ''])]);
+        datos.estado || 'pendiente', datos.notas || '', salariosMensuales])]);
       invalidarCache(HOJAS.LIQUIDACIONES);
       registrarBitacora('actualizar', 'Liquidacion', datos.id, 'Estado: ' + (datos.estado || 'pendiente'));
       return { ok: true, mensaje: 'Liquidación actualizada.' };

@@ -218,15 +218,25 @@
     _abrirCalculadoraLiquidacion(null);
   }
 
+  var MESES_AGUINALDO = ['Diciembre', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo',
+    'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre'];
+
+  /** Lee los 12 campos de salario mensual del formulario. */
+  function _leerSalariosMensualesUI() {
+    var out = {};
+    MESES_AGUINALDO.forEach(function (mes) {
+      out[mes] = Number(document.getElementById('sal' + mes).value) || 0;
+    });
+    return out;
+  }
+
   /**
    * Abre la calculadora, en modo creación (liqExistente=null) o edición
-   * (liqExistente = registro de LIQUIDACIONES). En edición no se puede
-   * reconstruir con certeza el desglose de salarios mensuales que se usó
-   * originalmente (no se guarda), así que esos campos quedan vacíos y el
-   * usuario puede: (a) recalcular con datos nuevos y guardar el monto
-   * recalculado, o (b) solo editar empleado/fechas/motivo/estado/notas y
-   * guardar sin tocar el monto ya guardado (botón "Guardar cambios sin
-   * recalcular").
+   * (liqExistente = registro de LIQUIDACIONES). Si la liquidación guardó
+   * sus 12 salarios mensuales (registros nuevos), se restauran acá para
+   * que recalcular dé el mismo resultado que el original. Los registros
+   * viejos (de antes de este cambio) no tienen ese dato guardado, así que
+   * quedan en blanco — ver el aviso que se muestra en ese caso.
    */
   function _abrirCalculadoraLiquidacion(liqExistente) {
     if (!puedeEditar()) { mostrarMensaje('Sin permisos.', 'error'); return; }
@@ -242,14 +252,16 @@
     document.getElementById('calcNotas').value = EDITANDO_LIQ ? (EDITANDO_LIQ.notas || '') : '';
     document.getElementById('calcDiasVac').value = 5;
 
-    // Limpiar campos de salarios (no se guardan, no se pueden reconstruir al editar)
-    ['Diciembre', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo',
-     'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre'].forEach(function(mes) {
-      document.getElementById('sal' + mes).value = '';
+    var salariosGuardados = null;
+    if (EDITANDO_LIQ && EDITANDO_LIQ.salariosMensuales) {
+      try { salariosGuardados = JSON.parse(EDITANDO_LIQ.salariosMensuales); } catch (e) { salariosGuardados = null; }
+    }
+    MESES_AGUINALDO.forEach(function(mes) {
+      document.getElementById('sal' + mes).value = salariosGuardados ? (salariosGuardados[mes] || '') : '';
     });
 
     calcularMesesLaborados();
-    recalcularAguinaldo(); // Mostrar 0 inicialmente
+    recalcularAguinaldo();
     document.getElementById('calcResultado').classList.add('oculto');
     document.getElementById('btnGuardarLiqCalc').classList.add('oculto');
 
@@ -257,8 +269,9 @@
     var btnSinRecalcular = document.getElementById('btnGuardarLiqSinRecalcular');
     if (EDITANDO_LIQ) {
       aviso.textContent = 'Editando liquidación existente. Monto actualmente guardado: ' +
-        formatoDinero(EDITANDO_LIQ.monto) + '. Los salarios mensuales no se guardaron en su momento — ' +
-        'si recalculás sin completarlos, el aguinaldo dará distinto al original.';
+        formatoDinero(EDITANDO_LIQ.monto) + '. ' + (salariosGuardados
+          ? 'Se restauraron los 12 salarios mensuales originales — podés recalcular sin perder precisión.'
+          : 'Esta liquidación es de antes de guardar los salarios mensuales — si recalculás sin completarlos, el aguinaldo dará distinto al original.');
       aviso.classList.remove('oculto');
       btnSinRecalcular.classList.remove('oculto');
     } else {
@@ -270,10 +283,7 @@
   }
 
   function recalcularAguinaldo() {
-    var meses = ['Diciembre', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo',
-                 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre'];
-
-    var valores = meses.map(function(mes) {
+    var valores = MESES_AGUINALDO.map(function(mes) {
       return Number(document.getElementById('sal' + mes).value) || 0;
     });
 
@@ -465,7 +475,8 @@
       monto: CALCULO_ACTUAL.totalNeto,
       estado: document.getElementById('calcEstado').value,
       tipoNomina: (document.querySelector('input[name="calcTipoNomina"]:checked') || {}).value || 'Semanal',
-      notas: notas
+      notas: notas,
+      salariosMensuales: JSON.stringify(_leerSalariosMensualesUI())
     };
 
     _ejecutarGuardadoLiquidacion(datos, 'btnGuardarLiqCalc', '💾 Guardar Liquidación');
@@ -491,7 +502,10 @@
       fecha_calculo: EDITANDO_LIQ.fecha_calculo || new Date().toISOString().slice(0,10),
       monto: EDITANDO_LIQ.monto,
       estado: document.getElementById('calcEstado').value,
-      notas: document.getElementById('calcNotas').value.trim()
+      notas: document.getElementById('calcNotas').value.trim(),
+      // No se tocó el cálculo — conserva los salarios tal como estaban (ya
+      // sea los originales restaurados, o vacíos si el registro es viejo).
+      salariosMensuales: JSON.stringify(_leerSalariosMensualesUI())
     };
 
     _ejecutarGuardadoLiquidacion(datos, 'btnGuardarLiqSinRecalcular', '💾 Guardar cambios sin recalcular');

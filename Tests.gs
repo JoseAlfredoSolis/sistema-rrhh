@@ -93,7 +93,8 @@ var PRUEBAS_REGISTRO = [
   { nombre: '_normalizarTelefonoWhatsApp antepone +506 a números nacionales de 8 dígitos', fn: test_normalizarTelefonoWhatsApp_anteponeCodigoPaisCR },
   { nombre: '_whatsappCredencialesListas distingue CallMeBot de servidor propio', fn: test_whatsappCredencialesListas_porProveedor },
   { nombre: '_enviarWhatsAppServidorPropio valida URL y secreto antes de llamar al servidor', fn: test_enviarWhatsAppServidorPropio_validaCamposRequeridos },
-  { nombre: 'obtenerReportes devuelve todas las series y KPIs con la estructura esperada', fn: test_obtenerReportes_estructuraCompleta }
+  { nombre: 'obtenerReportes devuelve todas las series y KPIs con la estructura esperada', fn: test_obtenerReportes_estructuraCompleta },
+  { nombre: 'crearLiquidacion y actualizarLiquidacion guardan y preservan los 12 salarios mensuales', fn: test_liquidacion_guardaSalariosMensuales }
 ];
 
 // ===================================================================
@@ -676,6 +677,48 @@ function test_obtenerReportes_estructuraCompleta(ctx) {
 
   var sinSesion = obtenerReportes('', '', '', '');
   _assert(sinSesion && sinSesion.ok === false, 'obtenerReportes debería bloquear sin sesión válida');
+}
+
+function test_liquidacion_guardaSalariosMensuales(ctx) {
+  var fechaSalida = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  var salariosOriginales = JSON.stringify({ Diciembre: 550000, Enero: 550000, Febrero: 550000 });
+
+  var res = crearLiquidacion({
+    empleado_id: ctx.empleadoId,
+    fecha_salida: fechaSalida,
+    motivo: 'renuncia',
+    monto: 100000,
+    salariosMensuales: salariosOriginales
+  }, ctx.token);
+  _assertOk(res, 'crearLiquidacion debería aceptar salariosMensuales');
+
+  try {
+    var lista1 = listarLiquidaciones(ctx.empleadoId, null, ctx.token);
+    var creada = lista1.filter(function (l) { return String(l.id) === String(res.id); })[0];
+    _assert(!!creada, 'La liquidación recién creada debería aparecer en listarLiquidaciones');
+    _assertIgual(creada.salariosMensuales, salariosOriginales,
+      'salariosMensuales debería guardarse tal como se envió al crear');
+
+    // actualizarLiquidacion SIN mandar salariosMensuales debería conservar el valor guardado
+    // (regresión: "Guardar cambios sin recalcular" no debe borrar los salarios ya guardados).
+    var resUpd = actualizarLiquidacion({
+      id: res.id,
+      empleado_id: ctx.empleadoId,
+      fecha_salida: fechaSalida,
+      motivo: 'renuncia',
+      monto: 100000,
+      estado: 'pagada'
+    }, ctx.token);
+    _assertOk(resUpd, 'actualizarLiquidacion debería aceptar la actualización sin salariosMensuales');
+
+    var lista2 = listarLiquidaciones(ctx.empleadoId, null, ctx.token);
+    var actualizada = lista2.filter(function (l) { return String(l.id) === String(res.id); })[0];
+    _assertIgual(actualizada.salariosMensuales, salariosOriginales,
+      'salariosMensuales debería conservarse si actualizarLiquidacion no lo manda explícitamente');
+    _assertIgual(actualizada.estado, 'pagada', 'El resto de los campos sí debería actualizarse normalmente');
+  } finally {
+    eliminarFila(HOJAS.LIQUIDACIONES, res.id, 'Liquidacion');
+  }
 }
 
 function test_enviarComunicacionAmbos_exigeAlMenosUnMedio(ctx) {
