@@ -37,6 +37,8 @@
   function _pintarExpSecciones(res) {
     var html = '';
 
+    html += _pintarExpInfoGeneral(res.empleado);
+
     // Deducciones (calculadas en el backend — calcularDeduccionesCR en Code.gs
     // es la única fuente de verdad de los tramos, ver obtenerExpediente).
     var d = res.deducciones || { ccss: 0, renta: 0, neto: res.empleado.salario };
@@ -117,5 +119,39 @@
 
   function _expSeccion(titulo, contenido) {
     return '<div class="exp-seccion"><h3 class="exp-sec-titulo">'+titulo+'</h3>'+contenido+'</div>';
+  }
+
+  /** Datos del empleado que no caben en el encabezado — todo lo demás de la ficha. */
+  function _pintarExpInfoGeneral(e) {
+    e = e || {};
+    var filas = [
+      ['Estado', badge(e.estado || '—')],
+      ['Fecha de nacimiento', escapar(e.fecha_nacimiento || '—')],
+      ['Género', escapar(e.genero || '—')],
+      ['Estado civil', escapar(e.estado_civil || '—')],
+      ['Nacionalidad', escapar(e.nacionalidad || '—')],
+      ['¿Padre / Madre?', escapar(e.padre_madre || '—')],
+      ['Dirección', escapar(e.direccion || '—')],
+      ['Tipo de nómina', escapar(e.tipo_nomina || '—')],
+      ['Cuenta IBAN', escapar(e.cuenta_iban || '—')],
+      ['Carné CCSS', escapar(e.carne_ccss || '—')],
+      ['Vencimiento de cédula', escapar(e.vencimiento_cedula || '—')],
+      ['Licencia de conducir', escapar(e.licencia_conducir || '—')],
+      ['Vencimiento de licencia', escapar(e.vencimiento_licencia || '—')],
+      ['Actividad', escapar(e.actividad || '—')],
+      ['Cargo crítico', String(e.cargo_critico || '').toUpperCase() === 'SI' ? '⚠️ Sí' : 'No'],
+      ['Fecha de salida', escapar(e.fecha_salida || '—')],
+      ['Motivo de salida', escapar(e.motivo_salida || '—')]
+    ];
+    var html = '<div class="ded-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px 24px">' +
+      filas.map(function (f) {
+        return '<div class="ded-item"><span class="ded-lbl">' + f[0] + '</span><span class="ded-val">' + f[1] + '</span></div>';
+      }).join('') +
+    '</div>';
+    if (e.observaciones) {
+      html += '<div style="padding:0 16px 14px"><span class="ded-lbl">Observaciones</span>' +
+        '<p style="margin:4px 0 0;font-size:13px;color:var(--txt-1);white-space:pre-wrap">' + escapar(e.observaciones) + '</p></div>';
+    }
+    return _expSeccion('ℹ️ Información general', html);
   }
 </script>

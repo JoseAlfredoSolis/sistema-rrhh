@@ -408,6 +408,25 @@ function cedulaDuplicada(cedula, idExcluir) {
 }
 
 /**
+ * Normaliza a texto (yyyy-mm-dd) los campos de fecha de un empleado leído
+ * de Sheets (que a veces devuelve objetos Date) y fuerza los campos que
+ * deben viajar como texto (teléfono, carné CCSS) para no perder ceros
+ * a la izquierda. Muta y devuelve el mismo objeto.
+ * @param {Object} emp
+ * @return {Object}
+ */
+function _normalizarFechasEmpleado(emp) {
+  emp.fecha_ingreso        = formatearFecha(emp.fecha_ingreso);
+  emp.fecha_salida         = emp.fecha_salida ? formatearFecha(emp.fecha_salida) : '';
+  emp.fecha_nacimiento     = emp.fecha_nacimiento ? formatearFecha(emp.fecha_nacimiento) : '';
+  emp.vencimiento_cedula   = emp.vencimiento_cedula ? formatearFecha(emp.vencimiento_cedula) : '';
+  emp.vencimiento_licencia = emp.vencimiento_licencia ? formatearFecha(emp.vencimiento_licencia) : '';
+  emp.telefono             = emp.telefono ? String(emp.telefono) : '';
+  emp.carne_ccss           = emp.carne_ccss ? String(emp.carne_ccss) : '';
+  return emp;
+}
+
+/**
  * Lista empleados, opcionalmente filtrados por estado.
  * @param {boolean|string} filtroEstado - true o 'activo' → solo activos;
  *   'inactivo' → solo inactivos; false/''/undefined → todos.
@@ -421,16 +440,8 @@ function listarEmpleados(filtroEstado, token) {
   var puedeVerSalario = !requiereEscritura(token);
   var empleados = leerTabla(HOJAS.EMPLEADOS);
 
-  // Normalizamos la fecha a texto yyyy-mm-dd para mostrarla bien
-  // en el frontend (Sheets a veces devuelve objetos Date).
   empleados.forEach(function (emp) {
-    emp.fecha_ingreso        = formatearFecha(emp.fecha_ingreso);
-    emp.fecha_salida         = emp.fecha_salida ? formatearFecha(emp.fecha_salida) : '';
-    emp.fecha_nacimiento     = emp.fecha_nacimiento ? formatearFecha(emp.fecha_nacimiento) : '';
-    emp.vencimiento_cedula   = emp.vencimiento_cedula ? formatearFecha(emp.vencimiento_cedula) : '';
-    emp.vencimiento_licencia = emp.vencimiento_licencia ? formatearFecha(emp.vencimiento_licencia) : '';
-    emp.telefono             = emp.telefono ? String(emp.telefono) : '';
-    emp.carne_ccss           = emp.carne_ccss ? String(emp.carne_ccss) : '';
+    _normalizarFechasEmpleado(emp);
     if (puedeVerSalario) {
       emp.salario = Number(emp.salario) || 0;
     } else {
@@ -5250,6 +5261,7 @@ function obtenerExpediente(empleadoId, token) {
 
   var emp = leerTabla(HOJAS.EMPLEADOS).filter(function (e) { return String(e.id) === String(empleadoId); })[0];
   if (!emp) return { ok: false, mensaje: 'Empleado no encontrado.' };
+  _normalizarFechasEmpleado(emp);
   var balance = _obtenerBalanceVacacionesInterno(empleadoId);
   _asegurarEncabezados(HOJAS.HISTORIAL_ESTADOS);
   return {
