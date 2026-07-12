@@ -98,7 +98,8 @@ var PRUEBAS_REGISTRO = [
   { nombre: '_asegurarEncabezadosLiquidaciones deja cada encabezado en su columna exacta', fn: test_asegurarEncabezadosLiquidaciones_posicionCorrecta },
   { nombre: 'cambiarEstadoEmpleado registra historial y actualiza fecha_ingreso/fecha_salida', fn: test_cambiarEstadoEmpleado_historialYFechaIngreso },
   { nombre: 'obtenerPuestosCriticos solo incluye empleados activos con cargo_critico=SI', fn: test_obtenerPuestosCriticos_filtraCargoCriticoActivo },
-  { nombre: 'listarEmpleados filtra por estado activo/inactivo/todos según filtroEstado', fn: test_listarEmpleados_filtroEstadoInactivo }
+  { nombre: 'listarEmpleados filtra por estado activo/inactivo/todos según filtroEstado', fn: test_listarEmpleados_filtroEstadoInactivo },
+  { nombre: 'actualizarEmpleado marca inactivo automáticamente al agregar fecha de salida', fn: test_actualizarEmpleado_fechaSalidaInactivaAutomaticamente }
 ];
 
 // ===================================================================
@@ -880,6 +881,62 @@ function test_listarEmpleados_filtroEstadoInactivo(ctx) {
     var todos = listarEmpleados('', ctx.token);
     _assert(todos.some(function (e) { return e.id === empId; }) && todos.some(function (e) { return e.id === ctx.empleadoId; }),
       'listarEmpleados("") debería incluir tanto activos como inactivos');
+  } finally {
+    listarHistorialEstados(empId, ctx.token).forEach(function (h) {
+      eliminarFila(HOJAS.HISTORIAL_ESTADOS, h.id, 'HistorialEstado');
+    });
+    eliminarFila(HOJAS.EMPLEADOS, empId, 'Empleado');
+  }
+}
+
+function test_actualizarEmpleado_fechaSalidaInactivaAutomaticamente(ctx) {
+  var creado = crearEmpleado({
+    nombre: PRUEBA_PREFIJO + 'FechaSalidaAuto',
+    cedula: '000000096',
+    departamento: ctx.departamentoNombre,
+    puesto: 'Puesto de prueba',
+    fecha_ingreso: '2023-02-01',
+    salario: 500000
+  }, ctx.token);
+  _assertOk(creado, 'No se pudo preparar el empleado de prueba');
+  var empId = creado.id;
+
+  try {
+    var previo = obtenerEmpleadoCompleto(empId, ctx.token);
+    _assertIgual(previo.estado, 'activo', 'El empleado de prueba debería iniciar activo');
+
+    var fechaSalida = '2026-05-15';
+    var edicion = actualizarEmpleado({
+      id: empId, nombre: PRUEBA_PREFIJO + 'FechaSalidaAuto', cedula: '000000096',
+      departamento: ctx.departamentoNombre, puesto: 'Puesto de prueba',
+      fecha_ingreso: '2023-02-01', salario: 500000, fecha_salida: fechaSalida
+    }, ctx.token);
+    _assertOk(edicion, 'Debería poder editar la fecha de salida');
+    _assert(edicion.mensaje.indexOf('inactivo') !== -1,
+      'El mensaje debería indicar que el empleado quedó inactivo');
+
+    var actualizado = obtenerEmpleadoCompleto(empId, ctx.token);
+    _assertIgual(actualizado.estado, 'inactivo',
+      'Agregar una fecha de salida a un empleado activo debería marcarlo inactivo automáticamente');
+    _assertIgual(actualizado.fecha_salida, fechaSalida, 'Debería conservar la fecha de salida ingresada');
+
+    var historial = listarHistorialEstados(empId, ctx.token);
+    _assertIgual(historial.length, 1, 'Debería registrar una entrada en el historial de estados');
+    _assertIgual(historial[0].estado_anterior, 'activo', 'El historial debería registrar el estado anterior');
+    _assertIgual(historial[0].estado_nuevo, 'inactivo', 'El historial debería registrar el nuevo estado');
+    _assertIgual(historial[0].fecha_salida_nueva, fechaSalida, 'El historial debería registrar la fecha de salida ingresada');
+
+    // Editar de nuevo sin tocar fecha_salida no debería reactivarlo ni duplicar el historial.
+    var segundaEdicion = actualizarEmpleado({
+      id: empId, nombre: PRUEBA_PREFIJO + 'FechaSalidaAuto', cedula: '000000096',
+      departamento: ctx.departamentoNombre, puesto: 'Puesto reasignado', fecha_ingreso: '2023-02-01',
+      salario: 500000, fecha_salida: fechaSalida
+    }, ctx.token);
+    _assertOk(segundaEdicion, 'Debería poder volver a editar sin problemas');
+    var trasSegundaEdicion = obtenerEmpleadoCompleto(empId, ctx.token);
+    _assertIgual(trasSegundaEdicion.estado, 'inactivo', 'Debería seguir inactivo (ya no estaba activo)');
+    _assertIgual(listarHistorialEstados(empId, ctx.token).length, 1,
+      'No debería agregar una nueva entrada de historial si el empleado ya estaba inactivo');
   } finally {
     listarHistorialEstados(empId, ctx.token).forEach(function (h) {
       eliminarFila(HOJAS.HISTORIAL_ESTADOS, h.id, 'HistorialEstado');

@@ -102,8 +102,10 @@ var COLS = (function () {
     EMP_CUENTA_IBAN: col('Empleados',     'cuenta_iban'),
     EMP_CARNE_CCSS:  col('Empleados',     'carne_ccss'),
     EMP_LICENCIA:    col('Empleados',     'licencia_conducir'),
-    EMP_ESTADO_IDX:  idx('Empleados',     'estado'),
-    EMP_SALARIO_IDX: idx('Empleados',     'salario'),
+    EMP_ESTADO_IDX:        idx('Empleados', 'estado'),
+    EMP_SALARIO_IDX:       idx('Empleados', 'salario'),
+    EMP_FECHA_INGRESO_IDX: idx('Empleados', 'fecha_ingreso'),
+    EMP_FECHA_SALIDA_IDX:  idx('Empleados', 'fecha_salida'),
     VAC_ESTADO:      col('Vacaciones',    'estado'),
     LIQ_ESTADO:      col('Liquidaciones', 'estado'),
     PRM_ESTADO:      col('Permisos',      'estado')
@@ -641,6 +643,17 @@ function actualizarEmpleado(emp, token) {
     var estadoActual    = filaActual[COLS.EMP_ESTADO_IDX]  || 'activo';
     var salarioAnterior = Number(filaActual[COLS.EMP_SALARIO_IDX]) || 0;
     var salarioNuevo    = Number(emp.salario);
+    var usuario = '';
+    try { usuario = Session.getActiveUser().getEmail(); } catch (e) {}
+
+    // Si se ingresa una fecha de salida para un empleado activo (por ejemplo,
+    // corrigiendo el expediente en vez de usar el botón "Dar de baja"), se
+    // marca inactivo automáticamente, respetando la fecha exacta escrita
+    // (no se fuerza a "hoy" como sí hace cambiarEstadoEmpleado).
+    var fechaSalidaAnterior    = formatearFecha(filaActual[COLS.EMP_FECHA_SALIDA_IDX]);
+    var fechaSalidaNueva       = emp.fecha_salida ? formatearFecha(emp.fecha_salida) : '';
+    var pasaAInactivoPorSalida = !!fechaSalidaNueva && String(estadoActual).toLowerCase() === 'activo';
+    var estadoNuevo            = pasaAInactivoPorSalida ? 'inactivo' : estadoActual;
 
     var valores = [
       emp.id,
@@ -650,7 +663,7 @@ function actualizarEmpleado(emp, token) {
       emp.puesto || '',
       formatearFecha(emp.fecha_ingreso),
       salarioNuevo,
-      estadoActual,
+      estadoNuevo,
       emp.fecha_nacimiento ? formatearFecha(emp.fecha_nacimiento) : (String(filaActual[8] || '')),
       emp.telefono ? String(emp.telefono).trim() : (String(filaActual[9] || ''))
     ].concat(_camposExtraEmpleado(emp, filaActual));
@@ -659,17 +672,35 @@ function actualizarEmpleado(emp, token) {
     hoja.getRange(fila, 1, 1, valores.length).setValues([sanitizarFilaSheets(valores)]);
     invalidarCache(HOJAS.EMPLEADOS);
 
+    if (pasaAInactivoPorSalida) {
+      _asegurarEncabezados(HOJAS.HISTORIAL_ESTADOS);
+      var fechaIngresoActual = formatearFecha(filaActual[COLS.EMP_FECHA_INGRESO_IDX]);
+      getHoja(HOJAS.HISTORIAL_ESTADOS).appendRow(sanitizarFilaSheets([
+        generarId('HES'), emp.id, hoy(), estadoActual, 'inactivo',
+        fechaIngresoActual, fechaIngresoActual, usuario,
+        fechaSalidaAnterior, fechaSalidaNueva
+      ]));
+      invalidarCache(HOJAS.HISTORIAL_ESTADOS);
+      registrarBitacora('actualizar', 'Empleados', emp.id,
+        'Estado: ' + estadoActual + ' → inactivo (fecha de salida agregada: ' + fechaSalidaNueva + ') | Usuario: ' + usuario);
+    }
+
     if (salarioAnterior !== salarioNuevo) {
       var hojaHist = getHoja(HOJAS.HISTORIAL_SALARIOS);
       hojaHist.appendRow(sanitizarFilaSheets([generarId('HSA'), emp.id, salarioAnterior, salarioNuevo,
         formatearFecha(new Date()), emp.notasSalario || '']));
       invalidarCache(HOJAS.HISTORIAL_SALARIOS);
       registrarBitacora('actualizar', 'Empleados', emp.id,
-        'Salario: ' + salarioAnterior + ' → ' + salarioNuevo + ' | Usuario: ' + Session.getActiveUser().getEmail());
-    } else {
+        'Salario: ' + salarioAnterior + ' → ' + salarioNuevo + ' | Usuario: ' + usuario);
+    }
+
+    if (!pasaAInactivoPorSalida && salarioAnterior === salarioNuevo) {
       registrarBitacora('actualizar', 'Empleados', emp.id, String(emp.nombre).trim());
     }
-    return { ok: true, mensaje: 'Empleado actualizado correctamente.' };
+
+    var mensaje = 'Empleado actualizado correctamente.';
+    if (pasaAInactivoPorSalida) mensaje += ' Se marcó como inactivo por la fecha de salida ingresada.';
+    return { ok: true, mensaje: mensaje };
   });
 }
 
