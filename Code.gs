@@ -5402,9 +5402,25 @@ function obtenerExpediente(empleadoId, token) {
   _normalizarFechasEmpleado(emp);
   var balance = _obtenerBalanceVacacionesInterno(empleadoId);
   _asegurarEncabezados(HOJAS.HISTORIAL_ESTADOS);
+
+  // Alertas propias del empleado: el motor general (cédula/licencia por
+  // vencer, evaluación y período de prueba próximos) más, si es cargo
+  // crítico, los ítems del checklist de cumplimiento sin fecha registrada.
+  var alertasEmp = _obtenerAlertasInterno().filter(function (a) { return String(a.empleado_id) === String(empleadoId); });
+  if (String(emp.cargo_critico || '').trim().toUpperCase() === 'SI') {
+    ITEMS_CUMPLIMIENTO_CRITICO.forEach(function (item) {
+      if (!emp[item[0]]) {
+        alertasEmp.push({ tipo: 'cumplimiento_' + item[0], empleado: emp.nombre, empleado_id: emp.id, mensaje: item[1], fecha: '', urgencia: 'alta' });
+      }
+    });
+  }
+  var ordenAlerta = { 'crítica': 0, alta: 1, media: 2, baja: 3 };
+  alertasEmp.sort(function (a, b) { return ordenAlerta[a.urgencia] - ordenAlerta[b.urgencia]; });
+
   return {
     ok: true, empleado: emp, balance: balance,
     deducciones: calcularDeduccionesCR(emp.salario),
+    alertas:           alertasEmp,
     historialSalarios: leerTabla(HOJAS.HISTORIAL_SALARIOS).filter(function (h) { return String(h.empleado_id) === String(empleadoId); }),
     historialEstados:  leerTabla(HOJAS.HISTORIAL_ESTADOS).filter(function (h) { return String(h.empleado_id) === String(empleadoId); }),
     capacitaciones:    leerTabla(HOJAS.CAPACITACIONES).filter(function (c) { return String(c.empleado_id) === String(empleadoId); }),
@@ -5412,7 +5428,13 @@ function obtenerExpediente(empleadoId, token) {
     vacaciones:        leerTabla(HOJAS.VACACIONES).filter(function (v) { return String(v.empleado_id) === String(empleadoId); }),
     prestamos:         leerTabla(HOJAS.PRESTAMOS).filter(function (p) { return String(p.empleado_id) === String(empleadoId); }),
     activos:           leerTabla(HOJAS.ACTIVOS).filter(function (a) { return String(a.empleado_id) === String(empleadoId); }),
-    horasExtra:        leerTabla(HOJAS.HORAS_EXTRA).filter(function (h) { return String(h.empleado_id) === String(empleadoId); })
+    horasExtra:        leerTabla(HOJAS.HORAS_EXTRA).filter(function (h) { return String(h.empleado_id) === String(empleadoId); }),
+    liquidaciones:     leerTabla(HOJAS.LIQUIDACIONES).filter(function (l) { return String(l.empleado_id) === String(empleadoId); }),
+    incapacidades:     leerTabla(HOJAS.INCAPACIDADES).filter(function (i) { return String(i.empleado_id) === String(empleadoId); }),
+    permisos:          leerTabla(HOJAS.PERMISOS).filter(function (p) { return String(p.empleado_id) === String(empleadoId); }),
+    comunicaciones:    leerTabla(HOJAS.COMUNICACIONES).filter(function (c) { return String(c.empleado_id) === String(empleadoId); }),
+    turnos:            leerTabla(HOJAS.TURNOS).filter(function (t) { return String(t.empleado_id) === String(empleadoId); }),
+    nomina:            leerTabla(HOJAS.NOMINA).filter(function (n) { return String(n.empleado_id) === String(empleadoId); })
   };
 }
 

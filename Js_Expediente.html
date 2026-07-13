@@ -38,6 +38,7 @@
     var html = '';
 
     html += _pintarExpInfoGeneral(res.empleado);
+    html += _pintarExpAlertas(res.alertas);
 
     // Deducciones (calculadas en el backend — calcularDeduccionesCR en Code.gs
     // es la única fuente de verdad de los tramos, ver obtenerExpediente).
@@ -114,7 +115,86 @@
       '<table class="tabla" style="margin:0"><thead><tr><th>Activo</th><th>Categoría</th><th>Estado</th></tr></thead><tbody>'+actRows+'</tbody></table>'
       : '<p class="sin-datos" style="margin:0">Sin activos asignados.</p>');
 
+    // Horas extra
+    var hexRows = (res.horasExtra||[]).map(function(h){
+      return '<tr><td>'+escapar(h.fecha)+'</td><td>'+escapar(h.horas)+'</td><td>'+escapar(h.tipo||'—')+'</td><td>'+badge(h.aprobado ? 'aprobado' : 'pendiente')+'</td><td>'+formatoDinero(h.monto)+'</td></tr>';
+    }).join('');
+    html += _expSeccion('⏱️ Horas extra ('+(res.horasExtra||[]).length+')', hexRows ?
+      '<table class="tabla" style="margin:0"><thead><tr><th>Fecha</th><th>Horas</th><th>Tipo</th><th>Estado</th><th>Monto</th></tr></thead><tbody>'+hexRows+'</tbody></table>'
+      : '<p class="sin-datos" style="margin:0">Sin horas extra registradas.</p>');
+
+    // Incapacidades
+    var incRows = (res.incapacidades||[]).map(function(i){
+      return '<tr><td>'+escapar(i.fecha_desde)+'</td><td>'+escapar(i.fecha_hasta)+'</td><td>'+escapar(i.dias)+'</td><td>'+escapar(i.entidad||'—')+'</td><td>'+escapar(i.especialidad||'—')+'</td></tr>';
+    }).join('');
+    html += _expSeccion('🏥 Incapacidades ('+(res.incapacidades||[]).length+')', incRows ?
+      '<table class="tabla" style="margin:0"><thead><tr><th>Desde</th><th>Hasta</th><th>Días</th><th>Entidad</th><th>Especialidad</th></tr></thead><tbody>'+incRows+'</tbody></table>'
+      : '<p class="sin-datos" style="margin:0">Sin incapacidades registradas.</p>');
+
+    // Permisos
+    var perRows = (res.permisos||[]).map(function(p){
+      return '<tr><td>'+escapar(p.tipo||'—')+'</td><td>'+escapar(p.fecha_inicio)+'</td><td>'+escapar(p.fecha_fin)+'</td><td>'+badge(p.estado||'pendiente')+'</td><td>'+escapar(p.motivo||'—')+'</td></tr>';
+    }).join('');
+    html += _expSeccion('📝 Permisos ('+(res.permisos||[]).length+')', perRows ?
+      '<table class="tabla" style="margin:0"><thead><tr><th>Tipo</th><th>Inicio</th><th>Fin</th><th>Estado</th><th>Motivo</th></tr></thead><tbody>'+perRows+'</tbody></table>'
+      : '<p class="sin-datos" style="margin:0">Sin permisos registrados.</p>');
+
+    // Turnos
+    var turRows = (res.turnos||[]).map(function(t){
+      return '<tr><td>'+escapar(t.semana)+'</td><td>'+escapar(t.lunes||'—')+'</td><td>'+escapar(t.martes||'—')+'</td><td>'+escapar(t.miercoles||'—')+'</td>'+
+        '<td>'+escapar(t.jueves||'—')+'</td><td>'+escapar(t.viernes||'—')+'</td><td>'+escapar(t.sabado||'—')+'</td><td>'+escapar(t.domingo||'—')+'</td></tr>';
+    }).join('');
+    html += _expSeccion('🗓️ Turnos asignados ('+(res.turnos||[]).length+')', turRows ?
+      '<table class="tabla" style="margin:0"><thead><tr><th>Semana</th><th>Lun</th><th>Mar</th><th>Mié</th><th>Jue</th><th>Vie</th><th>Sáb</th><th>Dom</th></tr></thead><tbody>'+turRows+'</tbody></table>'
+      : '<p class="sin-datos" style="margin:0">Sin turnos asignados.</p>');
+
+    // Nómina (pagos mensuales generados)
+    var nomRows = (res.nomina||[]).map(function(n){
+      return '<tr><td>'+escapar(n.mes)+'</td><td>'+formatoDinero(n.salario_base)+'</td><td>'+formatoDinero(n.deducciones)+'</td><td>'+formatoDinero(n.neto)+'</td></tr>';
+    }).join('');
+    html += _expSeccion('📋 Nómina ('+(res.nomina||[]).length+')', nomRows ?
+      '<table class="tabla" style="margin:0"><thead><tr><th>Mes</th><th>Salario base</th><th>Deducciones</th><th>Neto</th></tr></thead><tbody>'+nomRows+'</tbody></table>'
+      : '<p class="sin-datos" style="margin:0">Sin nóminas generadas.</p>');
+
+    // Liquidaciones
+    var liqRows = (res.liquidaciones||[]).map(function(l){
+      return '<tr><td>'+escapar(l.fecha_calculo||'—')+'</td><td>'+escapar(l.motivo||'—')+'</td><td>'+formatoDinero(l.monto)+'</td><td>'+badge(l.estado||'calculada')+'</td></tr>';
+    }).join('');
+    html += _expSeccion('🧾 Liquidaciones ('+(res.liquidaciones||[]).length+')', liqRows ?
+      '<table class="tabla" style="margin:0"><thead><tr><th>Fecha cálculo</th><th>Motivo</th><th>Monto</th><th>Estado</th></tr></thead><tbody>'+liqRows+'</tbody></table>'
+      : '<p class="sin-datos" style="margin:0">Sin liquidaciones registradas.</p>');
+
+    // Comunicaciones enviadas
+    var comRows = (res.comunicaciones||[]).map(function(c){
+      return '<tr><td>'+escapar(c.fecha)+'</td><td>'+escapar(c.tipo||'—')+'</td><td>'+escapar(c.asunto||'—')+'</td><td>'+badge(c.estado||'enviado')+'</td></tr>';
+    }).join('');
+    html += _expSeccion('✉️ Comunicaciones ('+(res.comunicaciones||[]).length+')', comRows ?
+      '<table class="tabla" style="margin:0"><thead><tr><th>Fecha</th><th>Tipo</th><th>Asunto</th><th>Estado</th></tr></thead><tbody>'+comRows+'</tbody></table>'
+      : '<p class="sin-datos" style="margin:0">Sin comunicaciones enviadas.</p>');
+
     document.getElementById('expSecciones').innerHTML = html;
+  }
+
+  var _ICONOS_ALERTA_EXP = {
+    cedula_vencida: '🆔', cedula_proxima: '⏰', licencia_vencida: '🚗',
+    licencia_proxima: '⏰', evaluacion_proxima: '📊', prueba_proxima: '🆕'
+  };
+  var _COLOR_URGENCIA_EXP = { 'crítica': '#dc2626', alta: '#f97316', media: '#d97706', baja: '#4f46e5' };
+
+  function _pintarExpAlertas(alertas) {
+    alertas = alertas || [];
+    if (!alertas.length) {
+      return _expSeccion('⚠️ Alertas', '<p class="sin-datos" style="margin:0">Sin alertas pendientes. ✅</p>');
+    }
+    var html = alertas.map(function (a) {
+      var color = _COLOR_URGENCIA_EXP[a.urgencia] || '#6b7280';
+      var icono = _ICONOS_ALERTA_EXP[a.tipo] || '⚠️';
+      return '<div style="padding:10px;margin-bottom:8px;background:' + color + '20;' +
+        'border-left:3px solid ' + color + ';border-radius:var(--r);font-size:var(--fs-sm)">' +
+        icono + ' ' + escapar(a.mensaje) + (a.fecha ? ' <span style="color:var(--txt-3)">(' + escapar(a.fecha) + ')</span>' : '') +
+      '</div>';
+    }).join('');
+    return _expSeccion('⚠️ Alertas (' + alertas.length + ')', html);
   }
 
   function _expSeccion(titulo, contenido) {
@@ -143,6 +223,16 @@
       ['Fecha de salida', escapar(e.fecha_salida || '—')],
       ['Motivo de salida', escapar(e.motivo_salida || '—')]
     ];
+    if (String(e.cargo_critico || '').toUpperCase() === 'SI') {
+      filas.push(
+        ['Datos del personal', escapar(e.datos_personal || '— pendiente')],
+        ['Antecedentes del personal', escapar(e.antecedentes_personal || '— pendiente')],
+        ['Archivo fotográfico', escapar(e.archivo_fotografico || '— pendiente')],
+        ['Prueba de doping', escapar(e.prueba_doping || '— pendiente')],
+        ['Prueba de confiabilidad', escapar(e.prueba_confiabilidad || '— pendiente')],
+        ['Prueba de alcoholímetro', escapar(e.prueba_alcoholimetro || '— pendiente')]
+      );
+    }
     var html = '<div class="ded-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px 24px">' +
       filas.map(function (f) {
         return '<div class="ded-item"><span class="ded-lbl">' + f[0] + '</span><span class="ded-val">' + f[1] + '</span></div>';

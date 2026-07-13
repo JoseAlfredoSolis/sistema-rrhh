@@ -102,7 +102,8 @@ var PRUEBAS_REGISTRO = [
   { nombre: 'actualizarEmpleado marca inactivo automáticamente al agregar fecha de salida', fn: test_actualizarEmpleado_fechaSalidaInactivaAutomaticamente },
   { nombre: 'obtenerPuestosCriticos incluye solo las alertas de empleados críticos', fn: test_obtenerPuestosCriticos_incluyeAlertasFiltradas },
   { nombre: 'obtenerPuestosCriticos alerta ítems de cumplimiento sin marcar y el Dashboard los incluye', fn: test_obtenerPuestosCriticos_alertaChecklistCumplimiento },
-  { nombre: 'listarEmpleados formatea las fechas de cumplimiento crítico (regresión input type=date)', fn: test_listarEmpleados_formateaFechasCumplimientoCritico }
+  { nombre: 'listarEmpleados formatea las fechas de cumplimiento crítico (regresión input type=date)', fn: test_listarEmpleados_formateaFechasCumplimientoCritico },
+  { nombre: 'obtenerExpediente incluye alertas, liquidaciones, incapacidades y el resto de módulos del empleado', fn: test_obtenerExpediente_incluyeTodosLosDatos }
 ];
 
 // ===================================================================
@@ -1001,6 +1002,63 @@ function test_listarEmpleados_filtroEstadoInactivo(ctx) {
     listarHistorialEstados(empId, ctx.token).forEach(function (h) {
       eliminarFila(HOJAS.HISTORIAL_ESTADOS, h.id, 'HistorialEstado');
     });
+    eliminarFila(HOJAS.EMPLEADOS, empId, 'Empleado');
+  }
+}
+
+function test_obtenerExpediente_incluyeTodosLosDatos(ctx) {
+  var creado = crearEmpleado({
+    nombre: PRUEBA_PREFIJO + 'ExpedienteCompleto',
+    cedula: '000000091',
+    departamento: ctx.departamentoNombre,
+    puesto: 'Puesto de prueba crítico',
+    fecha_ingreso: '2022-01-15',
+    salario: 550000,
+    cargo_critico: 'SI',
+    vencimiento_cedula: '2020-01-01'
+    // Ningún ítem del checklist de cumplimiento tiene fecha: deben salir como alertas.
+  }, ctx.token);
+  _assertOk(creado, 'No se pudo preparar el empleado de prueba');
+  var empId = creado.id;
+  var incapacidadId = null;
+  var liquidacionId = null;
+
+  try {
+    var incap = crearIncapacidad({
+      empleado_id: empId, fecha_desde: '2026-01-10', fecha_hasta: '2026-01-12', entidad: 'CCSS'
+    }, ctx.token);
+    _assertOk(incap, 'No se pudo preparar la incapacidad de prueba');
+    incapacidadId = incap.id;
+
+    var liq = crearLiquidacion({
+      empleado_id: empId, fecha_salida: hoy(), motivo: 'renuncia', calcular_automatico: true
+    }, ctx.token);
+    _assertOk(liq, 'No se pudo preparar la liquidación de prueba');
+    liquidacionId = liq.id;
+
+    var exp = obtenerExpediente(empId, ctx.token);
+    _assertOk(exp, 'obtenerExpediente no debería fallar con una sesión válida');
+
+    ['alertas', 'liquidaciones', 'incapacidades', 'permisos', 'comunicaciones', 'turnos', 'nomina', 'horasExtra']
+      .forEach(function (clave) {
+        _assert(Array.isArray(exp[clave]), 'El expediente debería incluir "' + clave + '" como arreglo');
+      });
+
+    _assert(exp.alertas.some(function (a) { return a.tipo === 'cedula_vencida'; }),
+      'Debería incluir la alerta de cédula vencida en el expediente');
+    _assert(exp.alertas.some(function (a) { return a.tipo === 'cumplimiento_prueba_alcoholimetro'; }),
+      'Debería incluir alertas de cumplimiento de puesto crítico en el expediente');
+
+    _assert(exp.incapacidades.some(function (i) { return i.id === incapacidadId; }),
+      'Debería incluir la incapacidad recién creada');
+    _assert(exp.liquidaciones.some(function (l) { return l.id === liquidacionId; }),
+      'Debería incluir la liquidación recién creada');
+
+    var sinSesion = obtenerExpediente(empId, '');
+    _assert(sinSesion && sinSesion.ok === false, 'obtenerExpediente debería bloquear sin sesión válida');
+  } finally {
+    if (incapacidadId) eliminarFila(HOJAS.INCAPACIDADES, incapacidadId, 'Incapacidad');
+    if (liquidacionId) eliminarFila(HOJAS.LIQUIDACIONES, liquidacionId, 'Liquidacion');
     eliminarFila(HOJAS.EMPLEADOS, empId, 'Empleado');
   }
 }
