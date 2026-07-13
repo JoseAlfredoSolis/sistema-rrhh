@@ -1549,6 +1549,11 @@
           <div class="campo smtp-campo"><label for="telefono">Teléfono</label><input type="text" id="telefono" placeholder="+506 8888-7777" maxlength="25"></div>
           <div class="campo smtp-campo"><label for="correo">Correo electrónico</label><input type="email" id="correo" maxlength="80" placeholder="nombre@correo.com"></div>
         </div>
+        <div class="campo">
+          <label for="callmebot_apikey">API Key de CallMeBot (personal)</label>
+          <input type="text" id="callmebot_apikey" maxlength="20" placeholder="Ej. 123456">
+          <small style="color:var(--txt-3);font-size:12px">Cada API Key de CallMeBot solo funciona para el número que la activó. Si este empleado le escribió al número de CallMeBot y aceptó recibir mensajes, pegá aquí la key que le devolvieron — así el sistema le puede enviar WhatsApp directo a él. Si la dejás vacía, se usa la API Key global de Configuración (solo funciona si ese número es el suyo).</small>
+        </div>
         <div class="campo"><label for="direccion">Dirección domiciliar</label><input type="text" id="direccion" maxlength="150" placeholder="Provincia / Cantón / Distrito"></div>
 
         <div class="smtp-fila">

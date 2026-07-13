@@ -182,7 +182,8 @@
     'licencia_conducir', 'vencimiento_licencia', 'jefe_inmediato', 'cargo_critico',
     'actividad', 'padre_madre', 'fecha_salida', 'motivo_salida', 'observaciones',
     'datos_personal', 'antecedentes_personal', 'archivo_fotografico',
-    'prueba_doping', 'prueba_confiabilidad', 'prueba_alcoholimetro'];
+    'prueba_doping', 'prueba_confiabilidad', 'prueba_alcoholimetro',
+    'callmebot_apikey'];
 
   function editarEmpleado(id) {
     if (!puedeEditar()) { mostrarMensaje('Necesitas rol RRHH o Admin para editar.', 'error'); return; }

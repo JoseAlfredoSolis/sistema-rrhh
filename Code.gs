@@ -55,7 +55,8 @@ var ENCABEZADOS = {
                       'vencimiento_cedula', 'licencia_conducir', 'vencimiento_licencia', 'jefe_inmediato', 'cargo_critico', 'actividad', 'padre_madre',
                       'fecha_salida', 'motivo_salida', 'observaciones',
                       'datos_personal', 'antecedentes_personal', 'archivo_fotografico',
-                      'prueba_doping', 'prueba_confiabilidad', 'prueba_alcoholimetro'],
+                      'prueba_doping', 'prueba_confiabilidad', 'prueba_alcoholimetro',
+                      'callmebot_apikey'],
   Departamentos:     ['id', 'nombre', 'responsable'],
   Asistencia:        ['id', 'empleado_id', 'fecha', 'hora_entrada', 'hora_salida', 'horas'],
   Vacaciones:        ['id', 'empleado_id', 'fecha_inicio', 'fecha_fin', 'dias', 'estado', 'notas'],
@@ -689,7 +690,8 @@ function _camposExtraEmpleado(emp, filaActual) {
     'vencimiento_licencia', 'jefe_inmediato', 'cargo_critico', 'actividad', 'padre_madre',
     'fecha_salida', 'motivo_salida', 'observaciones',
     'datos_personal', 'antecedentes_personal', 'archivo_fotografico',
-    'prueba_doping', 'prueba_confiabilidad', 'prueba_alcoholimetro'];
+    'prueba_doping', 'prueba_confiabilidad', 'prueba_alcoholimetro',
+    'callmebot_apikey'];
   var fechas = {
     vencimiento_cedula: true, vencimiento_licencia: true, fecha_salida: true,
     datos_personal: true, antecedentes_personal: true, archivo_fotografico: true,
@@ -3272,6 +3274,20 @@ function _buscarEmpleadoRaw(empleadoId) {
   })[0] || null;
 }
 
+/**
+ * Override de _enviarWhatsApp para mandarle un mensaje a un empleado
+ * específico: su teléfono y, si el propio empleado activó su CallMeBot y
+ * guardó su API Key personal, esa key en vez de la global — cada API Key
+ * de CallMeBot solo funciona para el número que la activó, así que la
+ * global (pensada para el teléfono del admin) no sirve para mandarle a
+ * otro número salvo que sea el suyo propio.
+ */
+function _overrideWhatsAppEmpleado(telefono, emp) {
+  var override = { telefono: telefono };
+  if (emp && emp.callmebot_apikey) override.apikey = emp.callmebot_apikey;
+  return override;
+}
+
 /** Registra una comunicación enviada (correo o WhatsApp) en el historial. */
 function _registrarComunicacion(tipo, empleadoId, destinatario, asunto, cuerpo, estado, detalle, token) {
   try {
@@ -3363,8 +3379,9 @@ function enviarWhatsappPlantilla(datos, token) {
 
   // Reutiliza el envío/normalización de teléfono/truncado ya probados del
   // módulo de Alertas — solo cambia el teléfono destino por el del empleado.
-  // El proveedor y sus credenciales salen de la config global (ver _enviarWhatsApp).
-  var res = _enviarWhatsApp(mensaje, { telefono: telefono }, { forzar: true });
+  // El proveedor sale de la config global; el apikey usa el del empleado si
+  // lo tiene guardado, si no cae al global (ver _overrideWhatsAppEmpleado).
+  var res = _enviarWhatsApp(mensaje, _overrideWhatsAppEmpleado(telefono, emp), { forzar: true });
 
   _registrarComunicacion('whatsapp', emp.id, telefono, '', mensaje, res.ok ? 'enviado' : 'error', res.mensaje, token);
   if (!res.ok) registrarErrorSistema('enviarWhatsappPlantilla', res.mensaje, JSON.stringify(datos), token);
@@ -3732,7 +3749,8 @@ function reenviarComunicacion(id, token) {
   }
 
   if (com.tipo === 'whatsapp') {
-    var res = _enviarWhatsApp(com.cuerpo, { telefono: com.destinatario }, { forzar: true });
+    var empRe = _buscarEmpleadoRaw(com.empleado_id);
+    var res = _enviarWhatsApp(com.cuerpo, _overrideWhatsAppEmpleado(com.destinatario, empRe), { forzar: true });
     _registrarComunicacion('whatsapp', com.empleado_id, com.destinatario, '', com.cuerpo, res.ok ? 'enviado' : 'error', res.mensaje, token);
     if (!res.ok) registrarErrorSistema('reenviarComunicacion', res.mensaje, id, token);
     return res;

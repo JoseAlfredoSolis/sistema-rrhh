@@ -103,7 +103,9 @@ var PRUEBAS_REGISTRO = [
   { nombre: 'obtenerPuestosCriticos incluye solo las alertas de empleados críticos', fn: test_obtenerPuestosCriticos_incluyeAlertasFiltradas },
   { nombre: 'obtenerPuestosCriticos alerta ítems de cumplimiento sin marcar y el Dashboard los incluye', fn: test_obtenerPuestosCriticos_alertaChecklistCumplimiento },
   { nombre: 'listarEmpleados formatea las fechas de cumplimiento crítico (regresión input type=date)', fn: test_listarEmpleados_formateaFechasCumplimientoCritico },
-  { nombre: 'obtenerExpediente incluye alertas, liquidaciones, incapacidades y el resto de módulos del empleado', fn: test_obtenerExpediente_incluyeTodosLosDatos }
+  { nombre: 'obtenerExpediente incluye alertas, liquidaciones, incapacidades y el resto de módulos del empleado', fn: test_obtenerExpediente_incluyeTodosLosDatos },
+  { nombre: '_overrideWhatsAppEmpleado usa la API Key de CallMeBot propia del empleado cuando existe', fn: test_overrideWhatsAppEmpleado_usaApikeyPropiaSiExiste },
+  { nombre: 'crearEmpleado guarda y devuelve la API Key de CallMeBot propia del empleado', fn: test_crearEmpleado_guardaApikeyCallMeBotPropia }
 ];
 
 // ===================================================================
@@ -1002,6 +1004,42 @@ function test_listarEmpleados_filtroEstadoInactivo(ctx) {
     listarHistorialEstados(empId, ctx.token).forEach(function (h) {
       eliminarFila(HOJAS.HISTORIAL_ESTADOS, h.id, 'HistorialEstado');
     });
+    eliminarFila(HOJAS.EMPLEADOS, empId, 'Empleado');
+  }
+}
+
+function test_overrideWhatsAppEmpleado_usaApikeyPropiaSiExiste(ctx) {
+  var sinKey = _overrideWhatsAppEmpleado('+50688887777', { id: 'EMP-X', nombre: 'Prueba' });
+  _assertIgual(sinKey.telefono, '+50688887777', 'Debería incluir el teléfono destino');
+  _assert(!('apikey' in sinKey), 'Sin API Key propia no debería incluir apikey (para caer al global)');
+
+  var conKey = _overrideWhatsAppEmpleado('+50688887777', { id: 'EMP-X', nombre: 'Prueba', callmebot_apikey: '123456' });
+  _assertIgual(conKey.apikey, '123456', 'Con API Key propia debería incluirla en el override');
+
+  var sinEmp = _overrideWhatsAppEmpleado('+50688887777', null);
+  _assertIgual(sinEmp.telefono, '+50688887777', 'Sin empleado (ej. registro histórico) no debería fallar');
+  _assert(!('apikey' in sinEmp), 'Sin empleado no debería incluir apikey');
+}
+
+function test_crearEmpleado_guardaApikeyCallMeBotPropia(ctx) {
+  var creado = crearEmpleado({
+    nombre: PRUEBA_PREFIJO + 'ApikeyPropia',
+    cedula: '000000090',
+    departamento: ctx.departamentoNombre,
+    puesto: 'Puesto de prueba',
+    fecha_ingreso: '2022-01-15',
+    salario: 550000,
+    callmebot_apikey: '987654'
+  }, ctx.token);
+  _assertOk(creado, 'No se pudo preparar el empleado de prueba');
+  var empId = creado.id;
+
+  try {
+    var lista = listarEmpleados('', ctx.token);
+    var encontrado = lista.filter(function (e) { return e.id === empId; })[0];
+    _assert(!!encontrado, 'El empleado de prueba debería aparecer en listarEmpleados');
+    _assertIgual(encontrado.callmebot_apikey, '987654', 'Debería guardar y devolver la API Key de CallMeBot propia del empleado');
+  } finally {
     eliminarFila(HOJAS.EMPLEADOS, empId, 'Empleado');
   }
 }
