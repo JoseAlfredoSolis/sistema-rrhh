@@ -59,9 +59,30 @@
         '<td>' + escapar(e.telefono || '—') + '</td>' +
         '<td>' + escapar(e.correo || '—') + '</td>' +
         '<td>' + escapar(e.fecha_ingreso || '—') + '</td>' +
+        '<td class="no-print"><button class="btn-mini" onclick="editarPuestoCritico(\'' + escaparAttr(e.id) + '\')">Editar</button></td>' +
       '</tr>';
     }).join('');
     document.getElementById('tablaPuestosCriticos').classList.toggle('oculto', lista.length === 0);
     document.getElementById('sinPuestosCriticos').classList.toggle('oculto', lista.length > 0);
+  }
+
+  /** Reutiliza el formulario completo de Empleados — asegura que EMPLEADOS
+   *  esté cargado aunque el usuario nunca haya visitado esa pantalla. */
+  function editarPuestoCritico(id) {
+    if (EMPLEADOS && EMPLEADOS.length) {
+      editarEmpleado(id);
+    } else {
+      llamarBackend('listarEmpleados', [''], function (lista) {
+        EMPLEADOS = lista || [];
+        editarEmpleado(id);
+      });
+    }
+  }
+
+  /** Abre el formulario de "Nuevo empleado" con cargo_critico pre-marcado. */
+  function abrirNuevoPuestoCritico() {
+    abrirFormularioNuevo();
+    var sel = document.getElementById('cargo_critico');
+    if (sel) { sel.value = 'SI'; alternarBloqueCumplimientoCritico(); }
   }
 </script>

@@ -165,14 +165,24 @@
     document.getElementById('id').value = '';
     document.getElementById('modalTitulo').textContent = 'Nuevo empleado';
     limpiarErroresEmp();
+    alternarBloqueCumplimientoCritico();
     document.getElementById('modal').classList.remove('oculto');
+  }
+
+  /** Muestra el bloque de cumplimiento de puesto crítico solo si cargo_critico = SI. */
+  function alternarBloqueCumplimientoCritico() {
+    var sel = document.getElementById('cargo_critico');
+    var bloque = document.getElementById('bloqueCumplimientoCritico');
+    if (bloque) bloque.classList.toggle('oculto', !sel || sel.value !== 'SI');
   }
 
   // Campos adicionales del expediente (mismo id de elemento = nombre de campo).
   var CAMPOS_EXTRA_EMP = ['correo', 'direccion', 'genero', 'estado_civil', 'nacionalidad',
     'sede', 'tipo_nomina', 'cuenta_iban', 'carne_ccss', 'vencimiento_cedula',
     'licencia_conducir', 'vencimiento_licencia', 'jefe_inmediato', 'cargo_critico',
-    'actividad', 'padre_madre', 'fecha_salida', 'motivo_salida', 'observaciones'];
+    'actividad', 'padre_madre', 'fecha_salida', 'motivo_salida', 'observaciones',
+    'datos_personal', 'antecedentes_personal', 'archivo_fotografico',
+    'prueba_doping', 'prueba_confiabilidad', 'prueba_alcoholimetro'];
 
   function editarEmpleado(id) {
     if (!puedeEditar()) { mostrarMensaje('Necesitas rol RRHH o Admin para editar.', 'error'); return; }
@@ -193,6 +203,7 @@
     });
     document.getElementById('modalTitulo').textContent = 'Editar empleado';
     limpiarErroresEmp();
+    alternarBloqueCumplimientoCritico();
     document.getElementById('modal').classList.remove('oculto');
   }
 
@@ -247,6 +258,8 @@
         cargarEmpleados();
         refrescarEmpleadosSelect();
         actualizarBadge();
+        var vistaPC = document.getElementById('vista-puestoscriticos');
+        if (vistaPC && !vistaPC.classList.contains('oculto')) { cargarPuestosCriticos(); }
       } else { mostrarMensaje(res.mensaje, 'error'); }
     });
   }

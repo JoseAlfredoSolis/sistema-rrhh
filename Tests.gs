@@ -100,7 +100,8 @@ var PRUEBAS_REGISTRO = [
   { nombre: 'obtenerPuestosCriticos solo incluye empleados activos con cargo_critico=SI', fn: test_obtenerPuestosCriticos_filtraCargoCriticoActivo },
   { nombre: 'listarEmpleados filtra por estado activo/inactivo/todos según filtroEstado', fn: test_listarEmpleados_filtroEstadoInactivo },
   { nombre: 'actualizarEmpleado marca inactivo automáticamente al agregar fecha de salida', fn: test_actualizarEmpleado_fechaSalidaInactivaAutomaticamente },
-  { nombre: 'obtenerPuestosCriticos incluye solo las alertas de empleados críticos', fn: test_obtenerPuestosCriticos_incluyeAlertasFiltradas }
+  { nombre: 'obtenerPuestosCriticos incluye solo las alertas de empleados críticos', fn: test_obtenerPuestosCriticos_incluyeAlertasFiltradas },
+  { nombre: 'obtenerPuestosCriticos alerta ítems de cumplimiento sin marcar y el Dashboard los incluye', fn: test_obtenerPuestosCriticos_alertaChecklistCumplimiento }
 ];
 
 // ===================================================================
@@ -879,6 +880,51 @@ function test_obtenerPuestosCriticos_incluyeAlertasFiltradas(ctx) {
     _assert(res.alertas.every(function (a) {
       return res.empleados.some(function (e) { return e.id === a.empleado_id; });
     }), 'Todas las alertas devueltas deberían pertenecer a empleados de la lista de puestos críticos');
+  } finally {
+    eliminarFila(HOJAS.EMPLEADOS, empId, 'Empleado');
+  }
+}
+
+function test_obtenerPuestosCriticos_alertaChecklistCumplimiento(ctx) {
+  var creado = crearEmpleado({
+    nombre: PRUEBA_PREFIJO + 'PuestoCriticoChecklist',
+    cedula: '000000094',
+    departamento: ctx.departamentoNombre,
+    puesto: 'Puesto de prueba crítico',
+    fecha_ingreso: '2022-01-15',
+    salario: 500000,
+    cargo_critico: 'SI',
+    datos_personal: 'SI',
+    antecedentes_personal: 'SI',
+    archivo_fotografico: 'SI',
+    prueba_doping: 'SI',
+    prueba_confiabilidad: 'SI'
+    // prueba_alcoholimetro queda sin marcar a propósito.
+  }, ctx.token);
+  _assertOk(creado, 'No se pudo preparar el empleado crítico de prueba');
+  var empId = creado.id;
+
+  try {
+    var res = obtenerPuestosCriticos(ctx.token);
+    _assertOk(res, 'obtenerPuestosCriticos no debería fallar con una sesión válida');
+
+    var alertaFaltante = res.alertas.filter(function (a) {
+      return a.empleado_id === empId && a.tipo === 'cumplimiento_prueba_alcoholimetro';
+    })[0];
+    _assert(!!alertaFaltante, 'Debería alertar el ítem de cumplimiento sin marcar (prueba de alcoholímetro)');
+
+    ['cumplimiento_datos_personal', 'cumplimiento_antecedentes_personal', 'cumplimiento_archivo_fotografico',
+     'cumplimiento_prueba_doping', 'cumplimiento_prueba_confiabilidad'].forEach(function (tipo) {
+      _assert(!res.alertas.some(function (a) { return a.empleado_id === empId && a.tipo === tipo; }),
+        'No debería alertar "' + tipo + '" porque ya está marcado SI');
+    });
+
+    var dash = obtenerDashboard(ctx.token);
+    _assertIgual(typeof dash.totalPuestosCriticos, 'number', 'obtenerDashboard debería incluir totalPuestosCriticos');
+    _assert(dash.totalPuestosCriticos >= 1, 'totalPuestosCriticos debería contar al menos el empleado de prueba');
+    _assert(Array.isArray(dash.alertasPuestosCriticos), 'obtenerDashboard debería incluir alertasPuestosCriticos como arreglo');
+    _assert(dash.alertasPuestosCriticos.some(function (a) { return a.empleado_id === empId; }),
+      'El dashboard debería incluir las alertas del puesto crítico de prueba');
   } finally {
     eliminarFila(HOJAS.EMPLEADOS, empId, 'Empleado');
   }

@@ -464,6 +464,7 @@
     <section id="vista-puestoscriticos" class="vista oculto">
       <div class="barra-acciones">
         <h2 class="titulo-vista">Puestos críticos</h2>
+        <button class="btn btn-primario" onclick="abrirNuevoPuestoCritico()">+ Nuevo puesto crítico</button>
         <button class="btn btn-secundario" onclick="cargarPuestosCriticos()">🔄 Actualizar</button>
         <button class="btn btn-secundario" onclick="exportarTabla('tablaPuestosCriticos','PuestosCriticos')">⬇ Excel</button>
       </div>
@@ -487,7 +488,7 @@
 
       <div class="tabla-envoltorio">
         <table class="tabla" id="tablaPuestosCriticos">
-          <thead><tr><th>Nombre</th><th>Cédula</th><th>Departamento</th><th>Puesto</th><th>Actividad</th><th>Jefe inmediato</th><th>Teléfono</th><th>Correo</th><th>Fecha ingreso</th></tr></thead>
+          <thead><tr><th>Nombre</th><th>Cédula</th><th>Departamento</th><th>Puesto</th><th>Actividad</th><th>Jefe inmediato</th><th>Teléfono</th><th>Correo</th><th>Fecha ingreso</th><th class="no-print">Acciones</th></tr></thead>
           <tbody id="cuerpoPuestosCriticos"></tbody>
         </table>
         <p id="sinPuestosCriticos" class="sin-datos oculto">No hay puestos marcados como críticos.</p>
@@ -1601,10 +1602,38 @@
         </div>
         <div class="smtp-fila">
           <div class="campo smtp-campo"><label for="cargo_critico">Cargo crítico</label>
-            <select id="cargo_critico"><option value="">—</option><option value="SI">Sí</option><option value="NO">No</option></select>
+            <select id="cargo_critico" onchange="alternarBloqueCumplimientoCritico()"><option value="">—</option><option value="SI">Sí</option><option value="NO">No</option></select>
           </div>
           <div class="campo smtp-campo"><label for="padre_madre">¿Padre / Madre?</label>
             <select id="padre_madre"><option value="">—</option><option value="Si">Sí</option><option value="No">No</option></select>
+          </div>
+        </div>
+
+        <div id="bloqueCumplimientoCritico" class="config-bloque oculto" style="margin:0 0 14px">
+          <h3 style="margin-top:0">🔒 Cumplimiento de puesto crítico</h3>
+          <div class="smtp-fila">
+            <div class="campo smtp-campo"><label for="datos_personal">Datos del personal</label>
+              <select id="datos_personal"><option value="">—</option><option value="SI">Completo</option><option value="NO">Pendiente</option></select>
+            </div>
+            <div class="campo smtp-campo"><label for="antecedentes_personal">Antecedentes del personal</label>
+              <select id="antecedentes_personal"><option value="">—</option><option value="SI">Completo</option><option value="NO">Pendiente</option></select>
+            </div>
+          </div>
+          <div class="smtp-fila">
+            <div class="campo smtp-campo"><label for="archivo_fotografico">Archivo fotográfico</label>
+              <select id="archivo_fotografico"><option value="">—</option><option value="SI">Completo</option><option value="NO">Pendiente</option></select>
+            </div>
+            <div class="campo smtp-campo"><label for="prueba_doping">Prueba de doping</label>
+              <select id="prueba_doping"><option value="">—</option><option value="SI">Completo</option><option value="NO">Pendiente</option></select>
+            </div>
+          </div>
+          <div class="smtp-fila">
+            <div class="campo smtp-campo"><label for="prueba_confiabilidad">Prueba de confiabilidad</label>
+              <select id="prueba_confiabilidad"><option value="">—</option><option value="SI">Completo</option><option value="NO">Pendiente</option></select>
+            </div>
+            <div class="campo smtp-campo"><label for="prueba_alcoholimetro">Prueba de alcoholímetro</label>
+              <select id="prueba_alcoholimetro"><option value="">—</option><option value="SI">Completo</option><option value="NO">Pendiente</option></select>
+            </div>
           </div>
         </div>
 

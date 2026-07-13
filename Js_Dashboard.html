@@ -30,6 +30,7 @@
       if (d.alertas && d.alertas.length > 0) {
         _mostrarAlertas(d.alertas);
       }
+      _mostrarAlertasPuestosCriticosDashboard(d.alertasPuestosCriticos || []);
 
       var tarjetas = [
         { num: d.empleadosActivos,            lbl: 'Empleados activos',      icono: '👤' },
@@ -86,6 +87,36 @@
         escapar(a.mensaje) + ' <span style="color:var(--txt-3)">('+escapar(a.fecha)+')</span>';
       divAlertas.appendChild(div);
     });
+  }
+
+  /** Alertas de puestos críticos (cédula/licencia/evaluación/prueba +
+   *  checklist de cumplimiento) — mismos datos que la pantalla Puestos
+   *  Críticos, resumidos aquí para que salten a la vista sin navegar. */
+  function _mostrarAlertasPuestosCriticosDashboard(alertas) {
+    var cont = document.getElementById('tarjetasDashboard');
+    if (!cont) return;
+
+    var div = document.getElementById('dashAlertasPC');
+    if (!alertas.length) {
+      if (div) div.remove();
+      return;
+    }
+    if (!div) {
+      div = document.createElement('div');
+      div.id = 'dashAlertasPC';
+      cont.parentNode.insertBefore(div, cont);
+    }
+
+    div.innerHTML = '<h3 style="margin-top:0;color:var(--txt-1)">🎯 Alertas de puestos críticos</h3>' +
+      alertas.map(function (a) {
+        var color = (typeof _COLOR_URGENCIA_PC !== 'undefined' && _COLOR_URGENCIA_PC[a.urgencia]) || '#6b7280';
+        var icono = (typeof _ICONOS_ALERTA_PC !== 'undefined' && _ICONOS_ALERTA_PC[a.tipo]) || '⚠️';
+        return '<div style="padding:10px;margin-bottom:8px;background:' + color + '20;' +
+          'border-left:3px solid ' + color + ';border-radius:var(--r);font-size:var(--fs-sm)">' +
+          icono + ' <strong>' + escapar(a.empleado) + ':</strong> ' + escapar(a.mensaje) +
+          (a.fecha ? ' <span style="color:var(--txt-3)">(' + escapar(a.fecha) + ')</span>' : '') +
+        '</div>';
+      }).join('');
   }
 
   function _dibujarGraficasDashboard(d) {

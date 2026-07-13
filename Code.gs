@@ -53,7 +53,9 @@ var ENCABEZADOS = {
   Empleados:         ['id', 'nombre', 'cedula', 'departamento', 'puesto', 'fecha_ingreso', 'salario', 'estado', 'fecha_nacimiento', 'telefono',
                       'correo', 'direccion', 'genero', 'estado_civil', 'nacionalidad', 'sede', 'tipo_nomina', 'cuenta_iban', 'carne_ccss',
                       'vencimiento_cedula', 'licencia_conducir', 'vencimiento_licencia', 'jefe_inmediato', 'cargo_critico', 'actividad', 'padre_madre',
-                      'fecha_salida', 'motivo_salida', 'observaciones'],
+                      'fecha_salida', 'motivo_salida', 'observaciones',
+                      'datos_personal', 'antecedentes_personal', 'archivo_fotografico',
+                      'prueba_doping', 'prueba_confiabilidad', 'prueba_alcoholimetro'],
   Departamentos:     ['id', 'nombre', 'responsable'],
   Asistencia:        ['id', 'empleado_id', 'fecha', 'hora_entrada', 'hora_salida', 'horas'],
   Vacaciones:        ['id', 'empleado_id', 'fecha_inicio', 'fecha_fin', 'dias', 'estado', 'notas'],
@@ -490,16 +492,25 @@ function listarEmpleados(filtroEstado, token) {
   return empleados;
 }
 
-/**
- * Lista los puestos marcados como críticos (empleados activos con
- * cargo_critico = 'SI') — personal cuya ausencia afecta directamente la
- * operación y que por lo tanto necesita un plan de respaldo/cobertura.
- * @return {Object} {ok, total, porDepartamento, empleados}
- */
-function obtenerPuestosCriticos(token) {
-  var _authErr = requiereSesion(token);
-  if (_authErr) return _authErr;
+// Checklist de cumplimiento para puestos críticos: [campo, etiqueta para la alerta].
+var ITEMS_CUMPLIMIENTO_CRITICO = [
+  ['datos_personal', 'Datos del personal incompletos'],
+  ['antecedentes_personal', 'Falta antecedentes del personal'],
+  ['archivo_fotografico', 'Falta archivo fotográfico'],
+  ['prueba_doping', 'Falta prueba de doping'],
+  ['prueba_confiabilidad', 'Falta prueba de confiabilidad'],
+  ['prueba_alcoholimetro', 'Falta prueba de alcoholímetro']
+];
 
+/**
+ * Calcula los puestos críticos (empleados activos con cargo_critico='SI') y
+ * sus alertas: el motor general (cédula/licencia por vencer, evaluación y
+ * período de prueba próximos) filtrado a estos empleados, más una alerta por
+ * cada ítem del checklist de cumplimiento que no esté marcado 'SI'.
+ * Compartida por obtenerPuestosCriticos y el Dashboard.
+ * @return {Object} {empleados, porDepartamento, alertas}
+ */
+function _puestosCriticosInterno() {
   _asegurarEncabezados(HOJAS.EMPLEADOS);
   var empleados = leerTabla(HOJAS.EMPLEADOS).filter(function (e) {
     return String(e.cargo_critico || '').trim().toUpperCase() === 'SI' &&
@@ -510,7 +521,7 @@ function obtenerPuestosCriticos(token) {
   var resultado = empleados.map(function (e) {
     var dep = String(e.departamento || '').trim() || 'Sin asignar';
     porDepto[dep] = (porDepto[dep] || 0) + 1;
-    return {
+    var obj = {
       id: e.id,
       nombre: e.nombre,
       cedula: e.cedula,
@@ -522,22 +533,61 @@ function obtenerPuestosCriticos(token) {
       correo: e.correo || '',
       fecha_ingreso: formatearFecha(e.fecha_ingreso)
     };
+    ITEMS_CUMPLIMIENTO_CRITICO.forEach(function (item) {
+      obj[item[0]] = String(e[item[0]] || '').trim().toUpperCase();
+    });
+    return obj;
   }).sort(function (a, b) { return a.departamento.localeCompare(b.departamento) || a.nombre.localeCompare(b.nombre); });
 
-  // Reutiliza el motor de alertas general (cédula/licencia por vencer,
-  // evaluación y período de prueba próximos) filtrado a solo estos
-  // empleados — es la parte que hace útil la pantalla: no basta con saber
-  // quién es crítico, hay que saber a cuáles hay que atender ya.
+  // Motor de alertas general, filtrado a solo estos empleados — no basta
+  // con saber quién es crítico, hay que saber a cuáles hay que atender ya.
   var idsCriticos = {};
   resultado.forEach(function (e) { idsCriticos[e.id] = true; });
   var alertas = _obtenerAlertasInterno().filter(function (a) { return idsCriticos[a.empleado_id]; });
 
+  // Alertas de cumplimiento: un ítem del checklist sin marcar 'SI'.
+  resultado.forEach(function (e) {
+    ITEMS_CUMPLIMIENTO_CRITICO.forEach(function (item) {
+      if (e[item[0]] !== 'SI') {
+        alertas.push({
+          tipo: 'cumplimiento_' + item[0],
+          empleado: e.nombre,
+          empleado_id: e.id,
+          mensaje: item[1],
+          fecha: '',
+          urgencia: 'alta'
+        });
+      }
+    });
+  });
+
+  var orden = { 'crítica': 0, alta: 1, media: 2, baja: 3 };
+  alertas.sort(function (a, b) { return orden[a.urgencia] - orden[b.urgencia]; });
+
+  return {
+    empleados: resultado,
+    porDepartamento: Object.keys(porDepto).sort().map(function (d) { return [d, porDepto[d]]; }),
+    alertas: alertas
+  };
+}
+
+/**
+ * Lista los puestos marcados como críticos (empleados activos con
+ * cargo_critico = 'SI') — personal cuya ausencia afecta directamente la
+ * operación y que por lo tanto necesita un plan de respaldo/cobertura.
+ * @return {Object} {ok, total, porDepartamento, empleados, alertas}
+ */
+function obtenerPuestosCriticos(token) {
+  var _authErr = requiereSesion(token);
+  if (_authErr) return _authErr;
+
+  var r = _puestosCriticosInterno();
   return {
     ok: true,
-    total: resultado.length,
-    porDepartamento: Object.keys(porDepto).sort().map(function (d) { return [d, porDepto[d]]; }),
-    empleados: resultado,
-    alertas: alertas
+    total: r.empleados.length,
+    porDepartamento: r.porDepartamento,
+    empleados: r.empleados,
+    alertas: r.alertas
   };
 }
 
@@ -634,7 +684,9 @@ function _camposExtraEmpleado(emp, filaActual) {
   var campos = ['correo', 'direccion', 'genero', 'estado_civil', 'nacionalidad', 'sede',
     'tipo_nomina', 'cuenta_iban', 'carne_ccss', 'vencimiento_cedula', 'licencia_conducir',
     'vencimiento_licencia', 'jefe_inmediato', 'cargo_critico', 'actividad', 'padre_madre',
-    'fecha_salida', 'motivo_salida', 'observaciones'];
+    'fecha_salida', 'motivo_salida', 'observaciones',
+    'datos_personal', 'antecedentes_personal', 'archivo_fotografico',
+    'prueba_doping', 'prueba_confiabilidad', 'prueba_alcoholimetro'];
   var fechas = { vencimiento_cedula: true, vencimiento_licencia: true, fecha_salida: true };
   return campos.map(function (campo, i) {
     var valor = emp[campo];
@@ -1619,6 +1671,7 @@ function _obtenerDashboardInterno() {
 
   // Obtener alertas
   var alertas = _obtenerAlertasInterno();
+  var puestosCriticos = _puestosCriticosInterno();
 
   var porDepto = {};
   activos.forEach(function (e) {
@@ -1680,7 +1733,10 @@ function _obtenerDashboardInterno() {
     alertasAltas: alertas.filter(function (a) { return a.urgencia === 'alta'; }).length,
     empleadosPorDepto: empleadosPorDepto,
     depotosConCosto: depotosConCosto,
-    nominaHistorica: nominaHistorica
+    nominaHistorica: nominaHistorica,
+
+    totalPuestosCriticos: puestosCriticos.empleados.length,
+    alertasPuestosCriticos: puestosCriticos.alertas
   };
 }
 
