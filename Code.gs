@@ -534,7 +534,7 @@ function _puestosCriticosInterno() {
       fecha_ingreso: formatearFecha(e.fecha_ingreso)
     };
     ITEMS_CUMPLIMIENTO_CRITICO.forEach(function (item) {
-      obj[item[0]] = String(e[item[0]] || '').trim().toUpperCase();
+      obj[item[0]] = e[item[0]] ? formatearFecha(e[item[0]]) : '';
     });
     return obj;
   }).sort(function (a, b) { return a.departamento.localeCompare(b.departamento) || a.nombre.localeCompare(b.nombre); });
@@ -545,10 +545,10 @@ function _puestosCriticosInterno() {
   resultado.forEach(function (e) { idsCriticos[e.id] = true; });
   var alertas = _obtenerAlertasInterno().filter(function (a) { return idsCriticos[a.empleado_id]; });
 
-  // Alertas de cumplimiento: un ítem del checklist sin marcar 'SI'.
+  // Alertas de cumplimiento: un ítem del checklist sin fecha registrada.
   resultado.forEach(function (e) {
     ITEMS_CUMPLIMIENTO_CRITICO.forEach(function (item) {
-      if (e[item[0]] !== 'SI') {
+      if (!e[item[0]]) {
         alertas.push({
           tipo: 'cumplimiento_' + item[0],
           empleado: e.nombre,
@@ -687,7 +687,11 @@ function _camposExtraEmpleado(emp, filaActual) {
     'fecha_salida', 'motivo_salida', 'observaciones',
     'datos_personal', 'antecedentes_personal', 'archivo_fotografico',
     'prueba_doping', 'prueba_confiabilidad', 'prueba_alcoholimetro'];
-  var fechas = { vencimiento_cedula: true, vencimiento_licencia: true, fecha_salida: true };
+  var fechas = {
+    vencimiento_cedula: true, vencimiento_licencia: true, fecha_salida: true,
+    datos_personal: true, antecedentes_personal: true, archivo_fotografico: true,
+    prueba_doping: true, prueba_confiabilidad: true, prueba_alcoholimetro: true
+  };
   return campos.map(function (campo, i) {
     var valor = emp[campo];
     if (valor === undefined && filaActual) valor = filaActual[10 + i];  // Columnas A-J son básicos, K+ son extras

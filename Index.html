@@ -1611,28 +1611,29 @@
 
         <div id="bloqueCumplimientoCritico" class="config-bloque oculto" style="margin:0 0 14px">
           <h3 style="margin-top:0">🔒 Cumplimiento de puesto crítico</h3>
+          <p class="config-ayuda">Fecha en que se completó cada requisito. Vacío = pendiente.</p>
           <div class="smtp-fila">
             <div class="campo smtp-campo"><label for="datos_personal">Datos del personal</label>
-              <select id="datos_personal"><option value="">—</option><option value="SI">Completo</option><option value="NO">Pendiente</option></select>
+              <input type="date" id="datos_personal">
             </div>
             <div class="campo smtp-campo"><label for="antecedentes_personal">Antecedentes del personal</label>
-              <select id="antecedentes_personal"><option value="">—</option><option value="SI">Completo</option><option value="NO">Pendiente</option></select>
+              <input type="date" id="antecedentes_personal">
             </div>
           </div>
           <div class="smtp-fila">
             <div class="campo smtp-campo"><label for="archivo_fotografico">Archivo fotográfico</label>
-              <select id="archivo_fotografico"><option value="">—</option><option value="SI">Completo</option><option value="NO">Pendiente</option></select>
+              <input type="date" id="archivo_fotografico">
             </div>
             <div class="campo smtp-campo"><label for="prueba_doping">Prueba de doping</label>
-              <select id="prueba_doping"><option value="">—</option><option value="SI">Completo</option><option value="NO">Pendiente</option></select>
+              <input type="date" id="prueba_doping">
             </div>
           </div>
           <div class="smtp-fila">
             <div class="campo smtp-campo"><label for="prueba_confiabilidad">Prueba de confiabilidad</label>
-              <select id="prueba_confiabilidad"><option value="">—</option><option value="SI">Completo</option><option value="NO">Pendiente</option></select>
+              <input type="date" id="prueba_confiabilidad">
             </div>
             <div class="campo smtp-campo"><label for="prueba_alcoholimetro">Prueba de alcoholímetro</label>
-              <select id="prueba_alcoholimetro"><option value="">—</option><option value="SI">Completo</option><option value="NO">Pendiente</option></select>
+              <input type="date" id="prueba_alcoholimetro">
             </div>
           </div>
         </div>

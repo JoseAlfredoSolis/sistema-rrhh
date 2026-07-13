@@ -894,12 +894,12 @@ function test_obtenerPuestosCriticos_alertaChecklistCumplimiento(ctx) {
     fecha_ingreso: '2022-01-15',
     salario: 500000,
     cargo_critico: 'SI',
-    datos_personal: 'SI',
-    antecedentes_personal: 'SI',
-    archivo_fotografico: 'SI',
-    prueba_doping: 'SI',
-    prueba_confiabilidad: 'SI'
-    // prueba_alcoholimetro queda sin marcar a propósito.
+    datos_personal: '2025-01-10',
+    antecedentes_personal: '2025-01-10',
+    archivo_fotografico: '2025-01-10',
+    prueba_doping: '2025-01-10',
+    prueba_confiabilidad: '2025-01-10'
+    // prueba_alcoholimetro queda sin fecha a propósito.
   }, ctx.token);
   _assertOk(creado, 'No se pudo preparar el empleado crítico de prueba');
   var empId = creado.id;
@@ -908,15 +908,20 @@ function test_obtenerPuestosCriticos_alertaChecklistCumplimiento(ctx) {
     var res = obtenerPuestosCriticos(ctx.token);
     _assertOk(res, 'obtenerPuestosCriticos no debería fallar con una sesión válida');
 
+    var encontrado = res.empleados.filter(function (e) { return e.id === empId; })[0];
+    _assert(!!encontrado, 'El empleado crítico debería aparecer en el listado');
+    _assertIgual(encontrado.datos_personal, '2025-01-10', 'Debería conservar la fecha de datos_personal');
+    _assertIgual(encontrado.prueba_alcoholimetro, '', 'prueba_alcoholimetro debería quedar vacía');
+
     var alertaFaltante = res.alertas.filter(function (a) {
       return a.empleado_id === empId && a.tipo === 'cumplimiento_prueba_alcoholimetro';
     })[0];
-    _assert(!!alertaFaltante, 'Debería alertar el ítem de cumplimiento sin marcar (prueba de alcoholímetro)');
+    _assert(!!alertaFaltante, 'Debería alertar el ítem de cumplimiento sin fecha (prueba de alcoholímetro)');
 
     ['cumplimiento_datos_personal', 'cumplimiento_antecedentes_personal', 'cumplimiento_archivo_fotografico',
      'cumplimiento_prueba_doping', 'cumplimiento_prueba_confiabilidad'].forEach(function (tipo) {
       _assert(!res.alertas.some(function (a) { return a.empleado_id === empId && a.tipo === tipo; }),
-        'No debería alertar "' + tipo + '" porque ya está marcado SI');
+        'No debería alertar "' + tipo + '" porque ya tiene fecha registrada');
     });
 
     var dash = obtenerDashboard(ctx.token);
