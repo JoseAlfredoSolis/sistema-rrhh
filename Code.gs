@@ -458,6 +458,9 @@ function _normalizarFechasEmpleado(emp) {
   emp.vencimiento_licencia = emp.vencimiento_licencia ? formatearFecha(emp.vencimiento_licencia) : '';
   emp.telefono             = emp.telefono ? String(emp.telefono) : '';
   emp.carne_ccss           = emp.carne_ccss ? String(emp.carne_ccss) : '';
+  ITEMS_CUMPLIMIENTO_CRITICO.forEach(function (item) {
+    emp[item[0]] = emp[item[0]] ? formatearFecha(emp[item[0]]) : '';
+  });
   return emp;
 }
 

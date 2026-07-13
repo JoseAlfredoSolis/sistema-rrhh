@@ -101,7 +101,8 @@ var PRUEBAS_REGISTRO = [
   { nombre: 'listarEmpleados filtra por estado activo/inactivo/todos según filtroEstado', fn: test_listarEmpleados_filtroEstadoInactivo },
   { nombre: 'actualizarEmpleado marca inactivo automáticamente al agregar fecha de salida', fn: test_actualizarEmpleado_fechaSalidaInactivaAutomaticamente },
   { nombre: 'obtenerPuestosCriticos incluye solo las alertas de empleados críticos', fn: test_obtenerPuestosCriticos_incluyeAlertasFiltradas },
-  { nombre: 'obtenerPuestosCriticos alerta ítems de cumplimiento sin marcar y el Dashboard los incluye', fn: test_obtenerPuestosCriticos_alertaChecklistCumplimiento }
+  { nombre: 'obtenerPuestosCriticos alerta ítems de cumplimiento sin marcar y el Dashboard los incluye', fn: test_obtenerPuestosCriticos_alertaChecklistCumplimiento },
+  { nombre: 'listarEmpleados formatea las fechas de cumplimiento crítico (regresión input type=date)', fn: test_listarEmpleados_formateaFechasCumplimientoCritico }
 ];
 
 // ===================================================================
@@ -930,6 +931,36 @@ function test_obtenerPuestosCriticos_alertaChecklistCumplimiento(ctx) {
     _assert(Array.isArray(dash.alertasPuestosCriticos), 'obtenerDashboard debería incluir alertasPuestosCriticos como arreglo');
     _assert(dash.alertasPuestosCriticos.some(function (a) { return a.empleado_id === empId; }),
       'El dashboard debería incluir las alertas del puesto crítico de prueba');
+  } finally {
+    eliminarFila(HOJAS.EMPLEADOS, empId, 'Empleado');
+  }
+}
+
+function test_listarEmpleados_formateaFechasCumplimientoCritico(ctx) {
+  // Regresión: listarEmpleados devolvía estos campos como objeto Date crudo
+  // (Sheets convierte automáticamente los strings 'yyyy-mm-dd' guardados),
+  // lo que hacía que <input type="date"> los mostrara vacíos al reabrir el
+  // formulario — parecía que "no guardaba" aunque el dato sí estaba en la hoja.
+  var creado = crearEmpleado({
+    nombre: PRUEBA_PREFIJO + 'FechaCumplimiento',
+    cedula: '000000093',
+    departamento: ctx.departamentoNombre,
+    puesto: 'Puesto de prueba crítico',
+    fecha_ingreso: '2022-01-15',
+    salario: 500000,
+    cargo_critico: 'SI',
+    datos_personal: '2025-01-10'
+  }, ctx.token);
+  _assertOk(creado, 'No se pudo preparar el empleado de prueba');
+  var empId = creado.id;
+
+  try {
+    var lista = listarEmpleados('', ctx.token);
+    var encontrado = lista.filter(function (e) { return e.id === empId; })[0];
+    _assert(!!encontrado, 'El empleado de prueba debería aparecer en listarEmpleados');
+    _assertIgual(encontrado.datos_personal, '2025-01-10',
+      'listarEmpleados debería devolver datos_personal formateado como yyyy-mm-dd, no un objeto Date crudo');
+    _assertIgual(encontrado.antecedentes_personal, '', 'Un campo de cumplimiento sin fecha debería quedar como texto vacío');
   } finally {
     eliminarFila(HOJAS.EMPLEADOS, empId, 'Empleado');
   }
