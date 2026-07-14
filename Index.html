@@ -1067,6 +1067,20 @@
         <button class="btn btn-primario" onclick="guardarModulosConfig()" style="margin-top:8px">Guardar módulos visibles</button>
       </div>
 
+      <!-- Salario mínimo -->
+      <div class="config-bloque">
+        <h3>💵 Salario mínimo</h3>
+        <p class="config-ayuda">
+          Al crear o editar un empleado, el sistema rechaza salarios por debajo de este monto.
+          Ajústalo cuando cambie el mínimo legal, o ponlo en <strong>0</strong> para desactivar la validación
+          (por ejemplo, si tienes plazas de medio tiempo o convenios especiales por debajo del mínimo general).
+        </p>
+        <div class="config-fila">
+          <input type="number" id="cfgSalarioMinimo" min="0" step="1000" style="max-width:200px" placeholder="500000">
+          <button class="btn btn-primario" onclick="guardarConfigSalarioUI()">Guardar</button>
+        </div>
+      </div>
+
       <!-- ──────────── Carga completa desde Excel ──────────── -->
       <div class="config-bloque" id="bloqueCargarExcel">
         <h3>📥 Cargar datos de la empresa desde Excel</h3>

@@ -403,14 +403,17 @@ function validarEmpleado(emp) {
   if (!/^[0-9\-]{5,20}$/.test(String(emp.cedula).trim())) {
     return 'La cédula solo puede contener números y guiones (5 a 20 caracteres).';
   }
-  // Salario: debe ser un número > 0 y >= salario mínimo CR (~500,000 en 2025).
+  // Salario: debe ser un número > 0 y >= salario mínimo configurado en
+  // Configuración (ver _obtenerSalarioMinimoInterno) — antes era una
+  // constante fija en el código, había que editar y desplegar para
+  // actualizarlo cada vez que cambiaba el mínimo legal.
   var salario = Number(emp.salario);
-  var SALARIO_MINIMO_CR = 500000; // Aproximado 2025; verificar anualmente
+  var SALARIO_MINIMO_CR = _obtenerSalarioMinimoInterno();
   if (emp.salario === '' || emp.salario === null || isNaN(salario) || salario <= 0) {
     return 'El salario debe ser un número mayor a 0.';
   }
-  if (salario < SALARIO_MINIMO_CR) {
-    return 'El salario ₡' + salario + ' es inferior al mínimo legal CR (~₡' + SALARIO_MINIMO_CR + '). Verificar con RR.HH.';
+  if (SALARIO_MINIMO_CR > 0 && salario < SALARIO_MINIMO_CR) {
+    return 'El salario ₡' + salario + ' es inferior al mínimo configurado (~₡' + SALARIO_MINIMO_CR + '). Verificar con RR.HH. (ajustable en Configuración).';
   }
   // Fecha de ingreso: obligatoria y con formato válido (yyyy-mm-dd).
   if (!emp.fecha_ingreso || isNaN(new Date(emp.fecha_ingreso).getTime())) {
@@ -2148,6 +2151,43 @@ function guardarConfigAlertas(cfg, token) {
 
   PropertiesService.getScriptProperties().setProperty(CLAVE_CONFIG_ALERTAS, JSON.stringify(cfg));
   return { ok: true };
+}
+
+var CLAVE_CONFIG_SALARIO = 'CONFIG_SALARIO';
+
+/**
+ * Uso interno (sin token) — llamado desde validarEmpleado, que corre en
+ * medio de crearEmpleado/actualizarEmpleado (la sesión ya se validó ahí).
+ */
+function _obtenerSalarioMinimoInterno() {
+  var raw = PropertiesService.getScriptProperties().getProperty(CLAVE_CONFIG_SALARIO);
+  if (!raw) return 500000; // valor por defecto (mínimo legal CR aproximado 2025)
+  var n = Number(JSON.parse(raw).salarioMinimo);
+  return isNaN(n) ? 500000 : n;
+}
+
+/** Versión pública para la pantalla de Configuración. */
+function obtenerConfigSalario(token) {
+  var _authErr = requiereAdmin(token);
+  if (_authErr) return _authErr;
+  return { salarioMinimo: _obtenerSalarioMinimoInterno() };
+}
+
+/**
+ * Guarda el salario mínimo usado por validarEmpleado. Poner 0 desactiva la
+ * validación (útil para plazas de medio tiempo o convenios especiales que
+ * legítimamente están por debajo del mínimo general).
+ */
+function guardarConfigSalario(cfg, token) {
+  var _authErr = requiereAdmin(token);
+  if (_authErr) return _authErr;
+
+  var n = Number(cfg && cfg.salarioMinimo);
+  if (isNaN(n) || n < 0) {
+    return { ok: false, mensaje: 'El salario mínimo debe ser un número mayor o igual a 0.' };
+  }
+  PropertiesService.getScriptProperties().setProperty(CLAVE_CONFIG_SALARIO, JSON.stringify({ salarioMinimo: n }));
+  return { ok: true, mensaje: 'Salario mínimo guardado.' };
 }
 
 /**

@@ -37,6 +37,23 @@
     cargarEstadoRespaldo();
     cargarConfigRoles();
     cargarModulosConfig();
+    cargarConfigSalario();
+  }
+
+  // ── Salario mínimo ──────────────────────────────────────────
+  function cargarConfigSalario() {
+    llamarBackend('obtenerConfigSalario', [], function (cfg) {
+      if (!cfg || cfg.ok === false) return;
+      var el = document.getElementById('cfgSalarioMinimo');
+      if (el) el.value = cfg.salarioMinimo != null ? cfg.salarioMinimo : '';
+    });
+  }
+
+  function guardarConfigSalarioUI() {
+    var valor = document.getElementById('cfgSalarioMinimo').value;
+    llamarBackend('guardarConfigSalario', [{ salarioMinimo: valor }], function (res) {
+      mostrarMensaje(res.mensaje || (res.ok ? 'Guardado.' : 'Error al guardar.'), res.ok ? 'exito' : 'error');
+    });
   }
 
   // ── Módulos visibles en el menú ────────────────────────────

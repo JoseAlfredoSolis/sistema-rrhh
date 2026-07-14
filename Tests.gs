@@ -45,6 +45,7 @@ var PRUEBAS_REGISTRO = [
   { nombre: 'generarId produce IDs únicos con el prefijo dado',                 fn: test_generarId },
   { nombre: 'crearEmpleado rechaza una cédula duplicada',                       fn: test_crearEmpleado_cedulaDuplicada },
   { nombre: 'crearEmpleado rechaza datos incompletos',                         fn: test_crearEmpleado_datosIncompletos },
+  { nombre: 'El salario mínimo es configurable desde Configuración y afecta la validación', fn: test_configSalarioMinimo_esConfigurableYAfectaValidacion },
   { nombre: 'calcularLiquidacion funciona con la fecha real guardada en la hoja (regresión Date/Sheets)', fn: test_calcularLiquidacion_fechaDesdeSheet },
   { nombre: 'calcularLiquidacion rechaza fecha de salida anterior al ingreso',  fn: test_calcularLiquidacion_fechaInvalida },
   { nombre: 'calcularLiquidacion bloquea sin sesión válida',                   fn: test_calcularLiquidacion_bloqueaSinToken },
@@ -270,6 +271,44 @@ function test_crearEmpleado_cedulaDuplicada(ctx) {
 function test_crearEmpleado_datosIncompletos(ctx) {
   var res = crearEmpleado({ nombre: '', cedula: '', salario: 0, fecha_ingreso: '' }, ctx.token);
   _assertFalla(res, 'Debería rechazar datos vacíos/incompletos');
+}
+
+function test_configSalarioMinimo_esConfigurableYAfectaValidacion(ctx) {
+  var original = _obtenerSalarioMinimoInterno();
+  try {
+    var guardarBajo = guardarConfigSalario({ salarioMinimo: 100000 }, ctx.token);
+    _assertOk(guardarBajo, 'Debería poder guardar un salario mínimo más bajo');
+    _assertIgual(_obtenerSalarioMinimoInterno(), 100000, 'El nuevo mínimo debería quedar activo de inmediato');
+
+    var conMinimoBajo = crearEmpleado({
+      nombre: PRUEBA_PREFIJO + 'SalarioBajo', cedula: '000000089',
+      departamento: ctx.departamentoNombre, puesto: 'Puesto de prueba',
+      fecha_ingreso: '2022-01-15', salario: 150000
+    }, ctx.token);
+    _assertOk(conMinimoBajo, 'Con el mínimo bajado a 100000, un salario de 150000 debería aceptarse');
+    eliminarFila(HOJAS.EMPLEADOS, conMinimoBajo.id, 'Empleado');
+
+    var guardarCero = guardarConfigSalario({ salarioMinimo: 0 }, ctx.token);
+    _assertOk(guardarCero, 'Debería poder desactivar la validación con 0');
+    var conValidacionDesactivada = crearEmpleado({
+      nombre: PRUEBA_PREFIJO + 'SalarioLibre', cedula: '000000088',
+      departamento: ctx.departamentoNombre, puesto: 'Puesto de prueba',
+      fecha_ingreso: '2022-01-15', salario: 1000
+    }, ctx.token);
+    _assertOk(conValidacionDesactivada, 'Con el mínimo en 0 no debería validarse el salario mínimo');
+    eliminarFila(HOJAS.EMPLEADOS, conValidacionDesactivada.id, 'Empleado');
+
+    var guardarInvalido = guardarConfigSalario({ salarioMinimo: -5 }, ctx.token);
+    _assertFalla(guardarInvalido, 'Debería rechazar un salario mínimo negativo');
+
+    var res = obtenerConfigSalario(ctx.token);
+    _assertIgual(res.salarioMinimo, 0, 'obtenerConfigSalario debería reflejar el último valor guardado');
+
+    var sinSesion = obtenerConfigSalario('');
+    _assert(sinSesion && sinSesion.ok === false, 'obtenerConfigSalario debería bloquear sin sesión de Admin');
+  } finally {
+    guardarConfigSalario({ salarioMinimo: original }, ctx.token);
+  }
 }
 
 function test_calcularLiquidacion_fechaDesdeSheet(ctx) {
