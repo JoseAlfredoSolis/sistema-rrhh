@@ -4823,26 +4823,14 @@ function migrarColumnas(hoja, columnasEsperadas) {
 // ===================================================================
 
 /**
- * Calcula deducciones en CR: CCSS 10.67% + Renta progresiva.
- *
- * TABLA RENTA (Tramos 2025 - VERIFICAR ACTUALIZACIÓN 2026 CON AUTORIDADES):
- * Hasta ₡929,000:      0%
- * ₡929,001-1,364,000:  10%
- * ₡1,364,001-2,388,000: 15% (+ ₡43,500)
- * ₡2,388,001-4,775,000: 20% (+ ₡197,100)
- * Arriba ₡4,775,000:   25% (+ ₡674,500)
- *
- * IMPORTANTE: Esta fórmula está DUPLICADA en Js_Nomina.html para previsualizar sin round-trip.
- * Al actualizar: MODIFICAR AMBAS UBICACIONES.
- * TODO: Centralizar en una sola fuente de verdad.
- */
-/**
  * Tabla de deducciones CR (CCSS + tramos de renta) — fuente única de verdad.
- * El frontend (Js_Nomina.html, Js_Expediente.html) la obtiene UNA vez al
- * cargar el módulo vía obtenerParametrosDeduccionesCR() y la cachea
- * client-side, en vez de tener su propia copia hardcodeada (que se
- * desincronizaba cuando cambiaban los tramos legales). Actualizar SOLO
- * aquí cuando cambien los tramos vigentes.
+ * Js_Nomina.html la obtiene UNA vez al cargar el módulo vía
+ * obtenerParametrosDeduccionesCR() y la cachea client-side para previsualizar
+ * sin round-trip, en vez de tener su propia copia hardcodeada (que se
+ * desincronizaba cuando cambiaban los tramos legales). Js_Expediente.html no
+ * necesita los tramos: recibe el desglose ya calculado (calcularDeduccionesCR)
+ * dentro de la respuesta de obtenerExpediente(). Actualizar SOLO aquí cuando
+ * cambien los tramos vigentes.
  */
 var PARAMETROS_DEDUCCIONES_CR = {
   ccssPct: 0.1067,
