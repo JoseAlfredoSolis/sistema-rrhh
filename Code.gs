@@ -105,6 +105,7 @@ var COLS = (function () {
     EMP_CUENTA_IBAN: col('Empleados',     'cuenta_iban'),
     EMP_CARNE_CCSS:  col('Empleados',     'carne_ccss'),
     EMP_LICENCIA:    col('Empleados',     'licencia_conducir'),
+    EMP_CALLMEBOT_APIKEY: col('Empleados', 'callmebot_apikey'),
     EMP_ESTADO_IDX:        idx('Empleados', 'estado'),
     EMP_SALARIO_IDX:       idx('Empleados', 'salario'),
     EMP_FECHA_INGRESO_IDX: idx('Empleados', 'fecha_ingreso'),
@@ -623,7 +624,7 @@ function formatearFecha(valor) {
  * (ej. detección de cédulas duplicadas) y la visualización.
  */
 function _forzarTextoCamposIdEmpleado(hoja, filaIndex) {
-  [COLS.EMP_CEDULA, COLS.EMP_TELEFONO, COLS.EMP_CUENTA_IBAN, COLS.EMP_CARNE_CCSS, COLS.EMP_LICENCIA]
+  [COLS.EMP_CEDULA, COLS.EMP_TELEFONO, COLS.EMP_CUENTA_IBAN, COLS.EMP_CARNE_CCSS, COLS.EMP_LICENCIA, COLS.EMP_CALLMEBOT_APIKEY]
     .forEach(function (col) { hoja.getRange(filaIndex, col).setNumberFormat('@'); });
 }
 
@@ -828,54 +829,60 @@ function cambiarEstadoEmpleado(id, nuevoEstado, token) {
     return { ok: false, mensaje: 'Estado no válido.' };
   }
   _asegurarEncabezados(HOJAS.EMPLEADOS);
-  var hoja = getHoja(HOJAS.EMPLEADOS);
-  var fila = buscarFilaPorId(hoja, id);
-  if (fila === -1) {
-    return { ok: false, mensaje: 'No se encontró el empleado.' };
-  }
-  var estadoAnterior = String(hoja.getRange(fila, COLS.EMP_ESTADO).getValue() || 'activo');
-  var fechaIngresoAnterior = formatearFecha(hoja.getRange(fila, COLS.EMP_FECHA_INGRESO).getValue());
-  var fechaSalidaAnterior  = formatearFecha(hoja.getRange(fila, COLS.EMP_FECHA_SALIDA).getValue());
-  var reactivando = (nuevoEstado === 'activo' && estadoAnterior.toLowerCase() === 'inactivo');
-  var dandoBaja    = (nuevoEstado === 'inactivo' && estadoAnterior.toLowerCase() !== 'inactivo');
-  var fechaIngresoNueva = fechaIngresoAnterior;
-  var fechaSalidaNueva  = fechaSalidaAnterior;
+  // Leer estado actual, decidir reactivando/dandoBaja y escribir todo debe
+  // quedar en el mismo lock: si no, dos cambios de estado concurrentes para
+  // el mismo empleado podrían leer el mismo estadoAnterior y duplicar el
+  // historial o pisarse las fechas entre sí.
+  return conLock(function () {
+    var hoja = getHoja(HOJAS.EMPLEADOS);
+    var fila = buscarFilaPorId(hoja, id);
+    if (fila === -1) {
+      return { ok: false, mensaje: 'No se encontró el empleado.' };
+    }
+    var estadoAnterior = String(hoja.getRange(fila, COLS.EMP_ESTADO).getValue() || 'activo');
+    var fechaIngresoAnterior = formatearFecha(hoja.getRange(fila, COLS.EMP_FECHA_INGRESO).getValue());
+    var fechaSalidaAnterior  = formatearFecha(hoja.getRange(fila, COLS.EMP_FECHA_SALIDA).getValue());
+    var reactivando = (nuevoEstado === 'activo' && estadoAnterior.toLowerCase() === 'inactivo');
+    var dandoBaja    = (nuevoEstado === 'inactivo' && estadoAnterior.toLowerCase() !== 'inactivo');
+    var fechaIngresoNueva = fechaIngresoAnterior;
+    var fechaSalidaNueva  = fechaSalidaAnterior;
 
-  hoja.getRange(fila, COLS.EMP_ESTADO).setValue(nuevoEstado);
-  if (reactivando) {
-    fechaIngresoNueva = hoy();
-    fechaSalidaNueva = '';
-    hoja.getRange(fila, COLS.EMP_FECHA_INGRESO).setValue(fechaIngresoNueva);
-    hoja.getRange(fila, COLS.EMP_FECHA_SALIDA).setValue(fechaSalidaNueva);
-  } else if (dandoBaja) {
-    fechaSalidaNueva = hoy();
-    hoja.getRange(fila, COLS.EMP_FECHA_SALIDA).setValue(fechaSalidaNueva);
-  }
-  invalidarCache(HOJAS.EMPLEADOS);
+    hoja.getRange(fila, COLS.EMP_ESTADO).setValue(nuevoEstado);
+    if (reactivando) {
+      fechaIngresoNueva = hoy();
+      fechaSalidaNueva = '';
+      hoja.getRange(fila, COLS.EMP_FECHA_INGRESO).setValue(fechaIngresoNueva);
+      hoja.getRange(fila, COLS.EMP_FECHA_SALIDA).setValue(fechaSalidaNueva);
+    } else if (dandoBaja) {
+      fechaSalidaNueva = hoy();
+      hoja.getRange(fila, COLS.EMP_FECHA_SALIDA).setValue(fechaSalidaNueva);
+    }
+    invalidarCache(HOJAS.EMPLEADOS);
 
-  var usuario = '';
-  try { usuario = Session.getActiveUser().getEmail(); } catch (e) {}
+    var usuario = '';
+    try { usuario = Session.getActiveUser().getEmail(); } catch (e) {}
 
-  _asegurarEncabezados(HOJAS.HISTORIAL_ESTADOS);
-  getHoja(HOJAS.HISTORIAL_ESTADOS).appendRow(sanitizarFilaSheets([
-    generarId('HES'), id, hoy(), estadoAnterior, nuevoEstado,
-    fechaIngresoAnterior, fechaIngresoNueva, usuario, fechaSalidaAnterior, fechaSalidaNueva
-  ]));
-  invalidarCache(HOJAS.HISTORIAL_ESTADOS);
+    _asegurarEncabezados(HOJAS.HISTORIAL_ESTADOS);
+    getHoja(HOJAS.HISTORIAL_ESTADOS).appendRow(sanitizarFilaSheets([
+      generarId('HES'), id, hoy(), estadoAnterior, nuevoEstado,
+      fechaIngresoAnterior, fechaIngresoNueva, usuario, fechaSalidaAnterior, fechaSalidaNueva
+    ]));
+    invalidarCache(HOJAS.HISTORIAL_ESTADOS);
 
-  var detalleFechas = '';
-  if (reactivando) detalleFechas = ' | Fecha de ingreso actualizada: ' + fechaIngresoAnterior + ' → ' + fechaIngresoNueva;
-  else if (dandoBaja) detalleFechas = ' | Fecha de salida registrada: ' + (fechaSalidaAnterior || '—') + ' → ' + fechaSalidaNueva;
+    var detalleFechas = '';
+    if (reactivando) detalleFechas = ' | Fecha de ingreso actualizada: ' + fechaIngresoAnterior + ' → ' + fechaIngresoNueva;
+    else if (dandoBaja) detalleFechas = ' | Fecha de salida registrada: ' + (fechaSalidaAnterior || '—') + ' → ' + fechaSalidaNueva;
 
-  registrarBitacora('actualizar', 'Empleados', id,
-    'Estado: ' + estadoAnterior + ' → ' + nuevoEstado + detalleFechas + ' | Usuario: ' + usuario);
-  var accion = (nuevoEstado === 'activo') ? 'reactivado' : 'dado de baja';
-  var mensajeFecha = reactivando ? ' Fecha de ingreso actualizada a ' + fechaIngresoNueva + '.'
-    : (dandoBaja ? ' Fecha de salida registrada: ' + fechaSalidaNueva + '.' : '');
-  return {
-    ok: true,
-    mensaje: 'Empleado ' + accion + ' correctamente.' + mensajeFecha
-  };
+    registrarBitacora('actualizar', 'Empleados', id,
+      'Estado: ' + estadoAnterior + ' → ' + nuevoEstado + detalleFechas + ' | Usuario: ' + usuario);
+    var accion = (nuevoEstado === 'activo') ? 'reactivado' : 'dado de baja';
+    var mensajeFecha = reactivando ? ' Fecha de ingreso actualizada a ' + fechaIngresoNueva + '.'
+      : (dandoBaja ? ' Fecha de salida registrada: ' + fechaSalidaNueva + '.' : '');
+    return {
+      ok: true,
+      mensaje: 'Empleado ' + accion + ' correctamente.' + mensajeFecha
+    };
+  });
 }
 
 /**
@@ -979,21 +986,26 @@ function eliminarDepartamento(id, token) {
   var _authErr = requiereEscritura(token);
   if (_authErr) return _authErr;
 
-  var hoja = getHoja(HOJAS.DEPARTAMENTOS);
-  var fila = buscarFilaPorId(hoja, id);
-  if (fila === -1) return { ok: false, mensaje: 'No se encontró el departamento.' };
+  // La búsqueda de fila y el deleteRow deben quedar en el mismo lock: si no,
+  // dos eliminaciones concurrentes en departamentos distintos podrían borrar
+  // la fila equivocada porque los índices se corren tras cada deleteRow.
+  return conLock(function () {
+    var hoja = getHoja(HOJAS.DEPARTAMENTOS);
+    var fila = buscarFilaPorId(hoja, id);
+    if (fila === -1) return { ok: false, mensaje: 'No se encontró el departamento.' };
 
-  var nombre = hoja.getRange(fila, 2).getValue();
-  var empleados = leerTabla(HOJAS.EMPLEADOS);
-  var enUso = empleados.some(function (e) {
-    return String(e.departamento).trim() === String(nombre).trim();
+    var nombre = hoja.getRange(fila, 2).getValue();
+    var empleados = leerTabla(HOJAS.EMPLEADOS);
+    var enUso = empleados.some(function (e) {
+      return String(e.departamento).trim() === String(nombre).trim();
+    });
+    if (enUso) {
+      return { ok: false, mensaje: 'No se puede eliminar: hay empleados en este departamento.' };
+    }
+    hoja.deleteRow(fila);
+    invalidarCache(HOJAS.DEPARTAMENTOS);
+    return { ok: true, mensaje: 'Departamento eliminado.' };
   });
-  if (enUso) {
-    return { ok: false, mensaje: 'No se puede eliminar: hay empleados en este departamento.' };
-  }
-  hoja.deleteRow(fila);
-  invalidarCache(HOJAS.DEPARTAMENTOS);
-  return { ok: true, mensaje: 'Departamento eliminado.' };
 }
 
 
@@ -1160,11 +1172,13 @@ function eliminarAsistencia(id, token) {
   var _authErr = requiereEscritura(token);
   if (_authErr) return _authErr;
 
-  var hoja = getHoja(HOJAS.ASISTENCIA);
-  var fila = buscarFilaPorId(hoja, id);
-  if (fila === -1) return { ok: false, mensaje: 'No se encontró el registro.' };
-  hoja.deleteRow(fila);
-  return { ok: true, mensaje: 'Registro eliminado.' };
+  return conLock(function () {
+    var hoja = getHoja(HOJAS.ASISTENCIA);
+    var fila = buscarFilaPorId(hoja, id);
+    if (fila === -1) return { ok: false, mensaje: 'No se encontró el registro.' };
+    hoja.deleteRow(fila);
+    return { ok: true, mensaje: 'Registro eliminado.' };
+  });
 }
 
 
@@ -3901,7 +3915,7 @@ function _obtenerEmpleadoCompletoInterno(empleadoId) {
     tipo_nomina: tipo,
     dias_periodo: diasPeriodo,
     salario_diario: calcularSalarioDiario(emp.salario, tipo),
-    fecha_ingreso: emp.fecha_ingreso,
+    fecha_ingreso: formatearFecha(emp.fecha_ingreso),
     fecha_salida: emp.fecha_salida ? formatearFecha(emp.fecha_salida) : '',
     estado: emp.estado
   };
@@ -5556,7 +5570,7 @@ function crearIncapacidad(datos, token) {
     datos.especialidad || '', datos.notas || '']));
   invalidarCache(HOJAS.INCAPACIDADES);
   registrarBitacora('crear', 'Incapacidad', id, dias + ' días (' + entidad + ')');
-  return { ok: true, mensaje: 'Incapacidad registrada (' + dias + ' días).' };
+  return { ok: true, mensaje: 'Incapacidad registrada (' + dias + ' días).', id: id };
 }
 
 /**

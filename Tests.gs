@@ -773,7 +773,7 @@ function test_liquidacion_guardaSalariosMensuales(ctx) {
 }
 
 function test_asegurarEncabezadosLiquidaciones_posicionCorrecta(ctx) {
-  _asegurarEncabezadosLiquidaciones();
+  _asegurarEncabezados(HOJAS.LIQUIDACIONES);
   var hoja = getHoja(HOJAS.LIQUIDACIONES);
   var esperados = ENCABEZADOS.Liquidaciones;
   var actuales = hoja.getRange(1, 1, 1, esperados.length).getValues()[0];
