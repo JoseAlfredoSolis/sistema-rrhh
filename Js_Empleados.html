@@ -18,12 +18,20 @@
   function llenarSelectDepartamentosEmpleado() {
     llamarBackend('listarNombresDepartamentos', [], function (nombres) {
         var select = document.getElementById('departamento');
+        var valorActual = select.value;
         select.length = 1;
         (nombres || []).forEach(function (nombre) {
           var opt = document.createElement('option');
           opt.value = nombre; opt.textContent = nombre;
           select.appendChild(opt);
         });
+        // Preserva la selección si el modal de edición ya estaba abierto
+        // cuando esta llamada (asíncrona) terminó — si no, reconstruir la
+        // lista de opciones borraba el departamento que se acababa de elegir.
+        if (valorActual) {
+          _asegurarOpcionSelect(select, valorActual);
+          select.value = valorActual;
+        }
     });
   }
 
@@ -185,6 +193,27 @@
     'prueba_doping', 'prueba_confiabilidad', 'prueba_alcoholimetro',
     'callmebot_apikey'];
 
+  /**
+   * Si el <select> todavía no tiene esta opción, la agrega. Existe por una
+   * condición de carrera real: cargarEmpleados() dispara la carga de
+   * departamentos (llenarSelectDepartamentosEmpleado, asíncrona) pero NO
+   * espera a que termine antes de dibujar la tabla — si el usuario hace clic
+   * en "Editar" mientras esa llamada sigue en curso, el <select> de
+   * departamento solo tiene la opción "Sin asignar" y asignarle `.value` al
+   * departamento real no hace nada (el navegador ignora un value sin option
+   * que lo respalde), dejando el campo en blanco y borrando el departamento
+   * al guardar.
+   */
+  function _asegurarOpcionSelect(selectEl, valor) {
+    if (!selectEl || !valor) return;
+    var existe = Array.prototype.some.call(selectEl.options, function (o) { return o.value === valor; });
+    if (!existe) {
+      var opt = document.createElement('option');
+      opt.value = valor; opt.textContent = valor;
+      selectEl.appendChild(opt);
+    }
+  }
+
   function editarEmpleado(id) {
     if (!puedeEditar()) { mostrarMensaje('Necesitas rol RRHH o Admin para editar.', 'error'); return; }
     var e = EMPLEADOS.filter(function (x) { return String(x.id) === String(id); })[0];
@@ -192,6 +221,7 @@
     document.getElementById('id').value           = e.id;
     document.getElementById('nombre').value       = e.nombre || '';
     document.getElementById('cedula').value       = e.cedula || '';
+    _asegurarOpcionSelect(document.getElementById('departamento'), e.departamento);
     document.getElementById('departamento').value = e.departamento || '';
     document.getElementById('puesto').value       = e.puesto || '';
     document.getElementById('fecha_ingreso').value = e.fecha_ingreso || '';
