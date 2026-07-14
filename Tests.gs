@@ -105,6 +105,7 @@ var PRUEBAS_REGISTRO = [
   { nombre: 'obtenerPuestosCriticos alerta ítems de cumplimiento sin marcar y el Dashboard los incluye', fn: test_obtenerPuestosCriticos_alertaChecklistCumplimiento },
   { nombre: 'listarEmpleados formatea las fechas de cumplimiento crítico (regresión input type=date)', fn: test_listarEmpleados_formateaFechasCumplimientoCritico },
   { nombre: 'obtenerExpediente incluye alertas, liquidaciones, incapacidades y el resto de módulos del empleado', fn: test_obtenerExpediente_incluyeTodosLosDatos },
+  { nombre: 'obtenerExpediente permite rol consulta (solo lectura) pero oculta salario/nómina', fn: test_obtenerExpediente_rolConsultaVePeroSinSalario },
   { nombre: '_overrideWhatsAppEmpleado usa la API Key de CallMeBot propia del empleado cuando existe', fn: test_overrideWhatsAppEmpleado_usaApikeyPropiaSiExiste },
   { nombre: 'crearEmpleado guarda y devuelve la API Key de CallMeBot propia del empleado', fn: test_crearEmpleado_guardaApikeyCallMeBotPropia }
 ];
@@ -1081,6 +1082,26 @@ function test_crearEmpleado_guardaApikeyCallMeBotPropia(ctx) {
   } finally {
     eliminarFila(HOJAS.EMPLEADOS, empId, 'Empleado');
   }
+}
+
+/**
+ * Regresión: el rol 'consulta' (PERMISOS_POR_ROL.consulta.ver_expediente en
+ * Auth.gs) debe poder abrir el expediente — antes exigía rol 'rrhh' y la
+ * pantalla se quedaba en blanco para cualquier sesión de solo lectura. El
+ * salario/nómina sigue oculto para ese rol, igual que en listarEmpleados.
+ */
+function test_obtenerExpediente_rolConsultaVePeroSinSalario(ctx) {
+  var tokenConsulta = crearSesion('consulta');
+  var exp = obtenerExpediente(ctx.empleadoId, tokenConsulta);
+  _assertOk(exp, 'obtenerExpediente debería permitir el rol consulta (ver_expediente=true en PERMISOS_POR_ROL)');
+  _assertIgual(exp.empleado.salario, undefined, 'El salario no debería exponerse con rol consulta');
+  _assertIgual(exp.deducciones, null, 'Las deducciones no deberían exponerse con rol consulta');
+  _assert(Array.isArray(exp.nomina) && exp.nomina.length === 0, 'La nómina no debería exponerse con rol consulta');
+  _assert(Array.isArray(exp.historialSalarios) && exp.historialSalarios.length === 0, 'El historial de salarios no debería exponerse con rol consulta');
+
+  var expRrhh = obtenerExpediente(ctx.empleadoId, ctx.token);
+  _assertOk(expRrhh, 'obtenerExpediente debería seguir funcionando con rol admin/rrhh');
+  _assertIgual(expRrhh.empleado.salario, 550000, 'El salario sí debería exponerse con rol admin/rrhh');
 }
 
 function test_obtenerExpediente_incluyeTodosLosDatos(ctx) {

@@ -17,7 +17,15 @@
   }
 
   function _pintarExpHeader(e, bal, ded) {
+    // ded llega null cuando el rol no alcanza para ver salario (rol
+    // 'consulta' — ver obtenerExpediente en Code.gs). No confundir con un
+    // salario real de ₡0: en ese caso mostramos un candado, no "₡0.00".
+    var sinPermisoSalario = ded === null;
     var d = ded || { neto: e.salario };
+    var kpisSalario = sinPermisoSalario
+      ? '<div class="exp-kpi"><span class="exp-kpi-num">🔒</span><span class="exp-kpi-lbl">Salario (sin permiso)</span></div>'
+      : '<div class="exp-kpi"><span class="exp-kpi-num">'+formatoDinero(e.salario)+'</span><span class="exp-kpi-lbl">Salario bruto</span></div>'+
+        '<div class="exp-kpi"><span class="exp-kpi-num">'+formatoDinero(d.neto)+'</span><span class="exp-kpi-lbl">Salario neto</span></div>';
     document.getElementById('expHeader').innerHTML =
       '<div class="exp-avatar">'+escapar((e.nombre||'?').charAt(0).toUpperCase())+'</div>'+
       '<div class="exp-datos">'+
@@ -28,8 +36,7 @@
         ((e.sede||e.jefe_inmediato) ? '<p>Sede: '+escapar(e.sede||'—')+' · Jefe: '+escapar(e.jefe_inmediato||'—')+'</p>' : '')+
       '</div>'+
       '<div class="exp-kpis">'+
-        '<div class="exp-kpi"><span class="exp-kpi-num">'+formatoDinero(e.salario)+'</span><span class="exp-kpi-lbl">Salario bruto</span></div>'+
-        '<div class="exp-kpi"><span class="exp-kpi-num">'+formatoDinero(d.neto)+'</span><span class="exp-kpi-lbl">Salario neto</span></div>'+
+        kpisSalario+
         '<div class="exp-kpi"><span class="exp-kpi-num">'+(bal&&bal.ok?bal.diasDisponibles:'—')+'</span><span class="exp-kpi-lbl">Días vacac. disp.</span></div>'+
       '</div>';
   }
@@ -42,20 +49,28 @@
 
     // Deducciones (calculadas en el backend — calcularDeduccionesCR en Code.gs
     // es la única fuente de verdad de los tramos, ver obtenerExpediente).
-    var d = res.deducciones || { ccss: 0, renta: 0, neto: res.empleado.salario };
-    html += _expSeccion('💰 Desglose salarial', '<div class="ded-grid">'+
-      '<div class="ded-item"><span class="ded-lbl">Salario bruto</span><span class="ded-val">'+formatoDinero(res.empleado.salario)+'</span></div>'+
-      '<div class="ded-item"><span class="ded-lbl">CCSS (10.67%)</span><span class="ded-val" style="color:var(--err)">-'+formatoDinero(d.ccss)+'</span></div>'+
-      '<div class="ded-item"><span class="ded-lbl">Imp. Renta</span><span class="ded-val" style="color:var(--err)">-'+formatoDinero(d.renta)+'</span></div>'+
-      '<div class="ded-item" style="border-top:1px solid var(--border);padding-top:8px"><span class="ded-lbl"><strong>Salario neto</strong></span><span class="ded-val" style="color:var(--ok);font-size:18px;font-weight:700">'+formatoDinero(d.neto)+'</span></div>'+
-    '</div>');
+    // res.deducciones llega null cuando el rol no alcanza para ver salario
+    // (rol 'consulta') — mostramos un aviso, no ceros que parecen datos reales.
+    var sinPermisoSalario = res.deducciones === null;
+    if (sinPermisoSalario) {
+      html += _expSeccion('💰 Desglose salarial', '<p class="sin-datos" style="margin:0">🔒 No tienes permiso para ver esta información.</p>');
+    } else {
+      var d = res.deducciones || { ccss: 0, renta: 0, neto: res.empleado.salario };
+      html += _expSeccion('💰 Desglose salarial', '<div class="ded-grid">'+
+        '<div class="ded-item"><span class="ded-lbl">Salario bruto</span><span class="ded-val">'+formatoDinero(res.empleado.salario)+'</span></div>'+
+        '<div class="ded-item"><span class="ded-lbl">CCSS (10.67%)</span><span class="ded-val" style="color:var(--err)">-'+formatoDinero(d.ccss)+'</span></div>'+
+        '<div class="ded-item"><span class="ded-lbl">Imp. Renta</span><span class="ded-val" style="color:var(--err)">-'+formatoDinero(d.renta)+'</span></div>'+
+        '<div class="ded-item" style="border-top:1px solid var(--border);padding-top:8px"><span class="ded-lbl"><strong>Salario neto</strong></span><span class="ded-val" style="color:var(--ok);font-size:18px;font-weight:700">'+formatoDinero(d.neto)+'</span></div>'+
+      '</div>');
+    }
 
     // Historial salarios
     var hsSal = (res.historialSalarios||[]).map(function(h){
       return '<tr><td>'+escapar(h.fecha)+'</td><td>'+formatoDinero(h.salario_anterior)+'</td><td>'+formatoDinero(h.salario_nuevo)+'</td><td>'+escapar(h.notas||'—')+'</td></tr>';
     }).join('');
-    html += _expSeccion('📈 Historial de salarios', hsSal ?
-      '<table class="tabla" style="margin:0"><thead><tr><th>Fecha</th><th>Anterior</th><th>Nuevo</th><th>Notas</th></tr></thead><tbody>'+hsSal+'</tbody></table>'
+    html += _expSeccion('📈 Historial de salarios', sinPermisoSalario ?
+      '<p class="sin-datos" style="margin:0">🔒 No tienes permiso para ver esta información.</p>' :
+      hsSal ? '<table class="tabla" style="margin:0"><thead><tr><th>Fecha</th><th>Anterior</th><th>Nuevo</th><th>Notas</th></tr></thead><tbody>'+hsSal+'</tbody></table>'
       : '<p class="sin-datos" style="margin:0">Sin cambios de salario.</p>');
 
     // Historial de bajas / reactivaciones
@@ -152,8 +167,9 @@
     var nomRows = (res.nomina||[]).map(function(n){
       return '<tr><td>'+escapar(n.mes)+'</td><td>'+formatoDinero(n.salario_base)+'</td><td>'+formatoDinero(n.deducciones)+'</td><td>'+formatoDinero(n.neto)+'</td></tr>';
     }).join('');
-    html += _expSeccion('📋 Nómina ('+(res.nomina||[]).length+')', nomRows ?
-      '<table class="tabla" style="margin:0"><thead><tr><th>Mes</th><th>Salario base</th><th>Deducciones</th><th>Neto</th></tr></thead><tbody>'+nomRows+'</tbody></table>'
+    html += _expSeccion('📋 Nómina' + (sinPermisoSalario ? '' : ' ('+(res.nomina||[]).length+')'), sinPermisoSalario ?
+      '<p class="sin-datos" style="margin:0">🔒 No tienes permiso para ver esta información.</p>' :
+      nomRows ? '<table class="tabla" style="margin:0"><thead><tr><th>Mes</th><th>Salario base</th><th>Deducciones</th><th>Neto</th></tr></thead><tbody>'+nomRows+'</tbody></table>'
       : '<p class="sin-datos" style="margin:0">Sin nóminas generadas.</p>');
 
     // Liquidaciones

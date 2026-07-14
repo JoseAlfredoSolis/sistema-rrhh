@@ -5440,7 +5440,7 @@ function eliminarTurno(id, token) {
 // ===================================================================
 
 function obtenerExpediente(empleadoId, token) {
-  var _authErr = requiereEscritura(token);
+  var _authErr = requiereSesion(token);
   if (_authErr) return _authErr;
 
   var emp = leerTabla(HOJAS.EMPLEADOS).filter(function (e) { return String(e.id) === String(empleadoId); })[0];
@@ -5448,6 +5448,14 @@ function obtenerExpediente(empleadoId, token) {
   _normalizarFechasEmpleado(emp);
   var balance = _obtenerBalanceVacacionesInterno(empleadoId);
   _asegurarEncabezados(HOJAS.HISTORIAL_ESTADOS);
+
+  // Rol 'consulta' puede ver el expediente (PERMISOS_POR_ROL.consulta.ver_expediente
+  // en Auth.gs) pero no datos de salario/nómina — mismo criterio que listarEmpleados.
+  var puedeVerSalario = !requiereEscritura(token);
+  if (!puedeVerSalario) {
+    emp = Object.assign({}, emp);
+    delete emp.salario;
+  }
 
   // Alertas propias del empleado: el motor general (cédula/licencia por
   // vencer, evaluación y período de prueba próximos) más, si es cargo
@@ -5465,9 +5473,9 @@ function obtenerExpediente(empleadoId, token) {
 
   return {
     ok: true, empleado: emp, balance: balance,
-    deducciones: calcularDeduccionesCR(emp.salario),
+    deducciones: puedeVerSalario ? calcularDeduccionesCR(emp.salario) : null,
     alertas:           alertasEmp,
-    historialSalarios: leerTabla(HOJAS.HISTORIAL_SALARIOS).filter(function (h) { return String(h.empleado_id) === String(empleadoId); }),
+    historialSalarios: puedeVerSalario ? leerTabla(HOJAS.HISTORIAL_SALARIOS).filter(function (h) { return String(h.empleado_id) === String(empleadoId); }) : [],
     historialEstados:  leerTabla(HOJAS.HISTORIAL_ESTADOS).filter(function (h) { return String(h.empleado_id) === String(empleadoId); }),
     capacitaciones:    leerTabla(HOJAS.CAPACITACIONES).filter(function (c) { return String(c.empleado_id) === String(empleadoId); }),
     evaluaciones:      leerTabla(HOJAS.EVALUACIONES).filter(function (e) { return String(e.empleado_id) === String(empleadoId); }),
@@ -5480,7 +5488,7 @@ function obtenerExpediente(empleadoId, token) {
     permisos:          leerTabla(HOJAS.PERMISOS).filter(function (p) { return String(p.empleado_id) === String(empleadoId); }),
     comunicaciones:    leerTabla(HOJAS.COMUNICACIONES).filter(function (c) { return String(c.empleado_id) === String(empleadoId); }),
     turnos:            leerTabla(HOJAS.TURNOS).filter(function (t) { return String(t.empleado_id) === String(empleadoId); }),
-    nomina:            leerTabla(HOJAS.NOMINA).filter(function (n) { return String(n.empleado_id) === String(empleadoId); })
+    nomina:            puedeVerSalario ? leerTabla(HOJAS.NOMINA).filter(function (n) { return String(n.empleado_id) === String(empleadoId); }) : []
   };
 }
 
